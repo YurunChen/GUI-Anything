@@ -1,0 +1,21 @@
+{
+  "name": "scheme5-activity-tree",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/main.ts -- \"Summarize this project\"",
+    "start": "bun run src/main.ts --",
+    "web": "bun run src/main.ts --web",
+    "observer": "bun run src/main.ts --observer"
+  },
+  "dependencies": {
+    "@opentui/core": "0.1.72",
+    "@opentui/react": "0.1.72",
+    "react": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14"
+  }
+}

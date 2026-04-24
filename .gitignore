@@ -1,0 +1,45 @@
+# Reference repos (excluded from upload)
+reference/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.history/
+
+# Env / local config
+.env
+.env.*
+!.env.example
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# JavaScript / TypeScript / Bun
+node_modules/
+dist/
+build/
+.turbo/
+.next/
+.cache/
+coverage/
+*.tsbuildinfo
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Runtime / temp files
+tmp/
+temp/
+*.tmp
+*.swp
+

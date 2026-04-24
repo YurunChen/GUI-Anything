@@ -1,0 +1,39 @@
+import { startClaudeStdoutStream } from '../runtime/stream';
+import { parseClaudeJsonLine } from '../runtime/parser';
+import type { ParseContext, CliEventEnvelope } from '@protocol/cli-event/v0.1/types';
+import { ActivityTreeBuilder } from '../tree/builder';
+
+export async function createSession(
+  prompt: string,
+  onTreeChange: (tree: ActivityTreeBuilder['getTree'] extends () => infer T ? T : never) => void,
+  onComplete: () => void,
+  onError: (error: string) => void
+): Promise<void> {
+  const sessionId = `session_${Date.now()}`;
+
+  const ctx: ParseContext = {
+    seq: 0,
+    source: { agent: 'claude', sessionId, model: undefined },
+    traceId: `trace_${Date.now()}`
+  };
+
+  const builder = new ActivityTreeBuilder(prompt, {
+    onChange: (tree) => onTreeChange(tree),
+    onComplete,
+    onError
+  });
+
+  startClaudeStdoutStream({
+    prompt,
+    onStdoutLine: (line: string) => {
+      const events = parseClaudeJsonLine(line, ctx);
+      for (const event of events) {
+        builder.addEvent(event);
+      }
+    },
+    onStderrLine: () => {},
+    onExit: () => {
+      builder.markComplete();
+    }
+  });
+}
