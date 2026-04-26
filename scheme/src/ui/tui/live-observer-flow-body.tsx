@@ -2,7 +2,7 @@
  * ABOUTME: Flow list + directions for live observer — static display, no animations.
  */
 
-import type { MutableRefObject, ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import { memo } from 'react';
 import type { Exploration } from '../../runtime/posthoc';
 import type { PotentialDirection } from '../../core/flow-summaries';
@@ -12,7 +12,8 @@ import { colors } from './theme';
 export type LiveObserverFlowBodyProps = {
   explorations: Exploration[];
   summaries: Record<string, string>;
-  pendingSummaryRef: MutableRefObject<Set<string>>;
+  wikiPersistStatus: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  pendingSummaryCount: number;
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
   directionsMessage: string;
   potentialDirections: PotentialDirection[];
@@ -26,13 +27,56 @@ function padLabel(label: string, width = 5): string {
   return label.padEnd(width, ' ');
 }
 
+function clampText(value: string, maxLen: number): string {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
+}
+
+function charDisplayWidth(ch: string): number {
+  const code = ch.codePointAt(0) ?? 0;
+  if (
+    (code >= 0x1100 && code <= 0x115f) ||
+    (code >= 0x2e80 && code <= 0xa4cf) ||
+    (code >= 0xac00 && code <= 0xd7a3) ||
+    (code >= 0xf900 && code <= 0xfaff) ||
+    (code >= 0xfe10 && code <= 0xfe6f) ||
+    (code >= 0xff00 && code <= 0xff60) ||
+    (code >= 0xffe0 && code <= 0xffe6)
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+function lineDisplayWidth(line: string): number {
+  let width = 0;
+  for (const ch of line) {
+    width += charDisplayWidth(ch);
+  }
+  return width;
+}
+
+function summaryHeight(value: string): number {
+  // Account for both explicit newlines and soft-wrap in terminal width.
+  // Use display width (CJK full-width chars count as 2).
+  const approxColsPerLine = 52;
+  const lines = value.split(/\r?\n/);
+  let visualLines = 0;
+  for (const line of lines) {
+    visualLines += Math.max(1, Math.ceil(lineDisplayWidth(line) / approxColsPerLine));
+  }
+  // Add one safety line to avoid clipping by border/padding variance.
+  return Math.max(1, visualLines + 1);
+}
+
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   props: LiveObserverFlowBodyProps
 ): ReactNode {
   const {
     explorations,
     summaries,
-    pendingSummaryRef,
+    wikiPersistStatus,
+    pendingSummaryCount,
     directionsStatus,
     directionsMessage,
     potentialDirections,
@@ -85,7 +129,8 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
 
   const rows = explorations.map((exploration, index) => {
     const summary = summaries[exploration.id];
-    const summarizing = pendingSummaryRef.current.has(exploration.id);
+    // If summary is missing and exploration is complete, likely summarizing
+    const summarizing = !summary && exploration.status === 'complete' && pendingSummaryCount > 0;
     const toolNodes = exploration.nodes.filter((node) => node.type === 'tool');
     const errorNodes = exploration.nodes.filter((node) => node.status === 'error' || node.type === 'error');
     const statusColor =
@@ -100,6 +145,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
         : exploration.status === 'interrupted'
           ? 'INTERRUPTED'
           : 'RUNNING';
+    const persistStatus = wikiPersistStatus[exploration.id];
     const isActive = index === latestRunningIdx;
     const toolCounts = new Map<string, number>();
     for (const node of toolNodes) {
@@ -108,8 +154,8 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     }
     const toolSummary = [...toolCounts.entries()]
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([name, count]) => `${name}×${count}`)
+      .slice(0, 4)
+      .map(([name, count]) => `${clampText(name, 14)}×${count}`)
       .join('  ');
 
     const summaryBody =
@@ -117,7 +163,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
         ? formatSummaryForTui(summary)
         : (summarizing ? 'summarizing...' : 'pending');
     const summaryBodyFg = summarizing || !summary ? colors.fg.muted : colors.fg.secondary;
-    const questionText = exploration.question.replace(/\s+/g, ' ').trim();
+    const questionText = clampText(exploration.question.replace(/\s+/g, ' ').trim(), 96);
 
     return (
       <box
@@ -128,7 +174,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
           marginBottom: 1,
           paddingLeft: 1,
           paddingRight: 1,
-          paddingTop: 0,
+          paddingTop: 1,
           paddingBottom: 0,
           backgroundColor: colors.bg.primary,
         }}
@@ -137,20 +183,46 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
           <span fg={isActive ? colors.accent.tertiary : colors.accent.primary}>{`● Exploration ${index + 1}`}</span>
           <span fg={colors.fg.dim}>{'  │  '}</span>
           <span fg={statusColor}>{statusBadge}</span>
+          {exploration.status === 'complete' && persistStatus === 'saved' && (
+            <>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+              <span fg={colors.status.success}>Wiki SAVED</span>
+            </>
+          )}
+          {exploration.status === 'complete' && persistStatus === 'skipped' && (
+            <>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+              <span fg={colors.fg.muted}>Wiki SKIPPED</span>
+            </>
+          )}
+          {exploration.status === 'complete' && persistStatus === 'failed' && (
+            <>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+              <span fg={colors.status.error}>Wiki FAILED</span>
+            </>
+          )}
+          {exploration.status === 'complete' && persistStatus === 'pending' && (
+            <>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+              <span fg={colors.status.info}>Wiki PENDING</span>
+            </>
+          )}
         </text>
         <text>
           <span fg={colors.fg.secondary}>{'└─ '}</span>
           <span fg={colors.fg.secondary}>{questionText || 'N/A'}</span>
         </text>
-        <text>
-          <span fg={colors.status.info}>{`Tools ${fixedNum(toolNodes.length)}`}</span>
-          <span fg={colors.fg.dim}>{' │ '}</span>
-          <span fg={errorNodes.length > 0 ? colors.status.error : colors.fg.secondary}>
-            {`Errors ${fixedNum(errorNodes.length)}`}
-          </span>
-          <span fg={colors.fg.dim}>{' │ '}</span>
-          <span fg={colors.fg.muted}>{toolSummary || 'none yet'}</span>
-        </text>
+        <box style={{ flexDirection: 'row', paddingLeft: 2 }}>
+          <text>
+            <span fg={colors.status.info}>{`Tools ${fixedNum(toolNodes.length)}`}</span>
+            <span fg={colors.fg.dim}>{' │ '}</span>
+            <span fg={errorNodes.length > 0 ? colors.status.error : colors.fg.secondary}>
+              {`Errors ${fixedNum(errorNodes.length)}`}
+            </span>
+            <span fg={colors.fg.dim}>{' │ '}</span>
+            <span fg={colors.fg.muted}>{toolSummary || 'none yet'}</span>
+          </text>
+        </box>
 
         {exploration.status === 'complete' && (
           <box
@@ -159,6 +231,8 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
               marginTop: 1,
               paddingLeft: 2,
               paddingRight: 1,
+              paddingTop: 0,
+              paddingBottom: 0,
               border: ['left'],
               borderColor: colors.status.success,
               borderStyle: 'single',
@@ -166,7 +240,17 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
             }}
           >
             <text fg={colors.status.success}>{'✦ Summary'}</text>
-            <text fg={summaryBodyFg}>{summaryBody}</text>
+            <textarea
+              key={`summary_${exploration.id}_${summaryBody}`}
+              initialValue={summaryBody}
+              focused={false}
+              style={{
+                height: summaryHeight(summaryBody),
+                wrapMode: 'char',
+                backgroundColor: 'transparent',
+                textColor: summaryBodyFg,
+              }}
+            />
           </box>
         )}
       </box>

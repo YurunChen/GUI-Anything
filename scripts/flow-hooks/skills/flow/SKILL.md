@@ -1,11 +1,13 @@
 ---
 name: flow
-description: Launch and manage the dual-pane flow workflow (Claude Code + scheme live observer) with automatic cleanup, and handle stale sessions or visual glitches. Use when the user asks to start flow mode, run flow-run.sh, observe live summaries, fix scrollback duplication, or clean flow background processes.
+description: Launch and manage the dual-pane flow workflow (Claude Code + scheme live observer) with automatic cleanup, and handle stale sessions or visual glitches. Supports three session modes (new, continue, resume) and two backends (tmux, zellij). Use when the user asks to start flow mode, continue a session, run flow-run.sh, observe live summaries, fix scrollback duplication, or clean flow background processes.
 ---
 
 # Flow
 
 Dual-pane terminal workflow that runs Claude Code interactively alongside a real-time observer showing exploration cards and summaries.
+
+Design principles: **心流 (flow state)** — observer defaults passive; **按需知识** — Wiki/directions appear only when relevant; **无感使用** — one command starts, auto-discovers sessions.
 
 ## When to use
 
@@ -25,47 +27,75 @@ Repository must contain `scripts/flow-run.sh` at the project root.
 
 ## Launch workflow
 
-`flow-run.sh` supports two modes:
-- **Interactive mode** (default when run in terminal): Creates session and attaches
-- **Detach mode** (`--detach` or auto-detected in non-interactive shell): Creates session only, outputs attach command
+`flow-run.sh` supports three session modes and two launch styles:
+
+| Mode | Flag | Use When |
+|------|------|----------|
+| **new** (default) | (none) | Starting fresh work |
+| **continue** | `--continue` | Resuming the most recent session |
+| **resume** | `--resume <id>` | Specific session ID |
+
+Launch styles:
+- **Interactive**: Creates session and attaches (for terminals)
+- **Detach** (`--detach`): Creates session, outputs attach command (for Claude Code)
 
 ### When user asks to start flow mode
 
-1. **Try running with `--detach` first** (this works in Claude Code's non-interactive shell):
+1. **New session** (default):
 
    ```bash
    ./scripts/flow-run.sh --detach
    ```
 
-   This creates the session and outputs the attach command for the user.
-
-2. **If user wants specific options**, use the same pattern:
+2. **Continue last session**:
 
    ```bash
-   # With model
-   ./scripts/flow-run.sh -m sonnet --detach
-
-   # With prompt
-   ./scripts/flow-run.sh "Analyze codebase" --detach
+   ./scripts/flow-run.sh --continue --detach
    ```
 
-3. **After session is created**, instruct user to attach manually:
+3. **Resume specific session**:
+
+   ```bash
+   ./scripts/flow-run.sh --resume <session-id> --detach
+   ```
+
+4. **With options**:
+
+   ```bash
+   ./scripts/flow-run.sh -m sonnet --detach
+   ./scripts/flow-run.sh "Analyze codebase" --continue --detach
+   ```
+
+5. **After session is created**, instruct user to attach:
 
    ```bash
    tmux attach -t flow-main
    ```
 
-   Or simply run `./scripts/flow-run.sh` again from their terminal (it will attach to existing session).
-
 ### For users running directly in their terminal
 
-They can use the normal interactive mode (no `--detach` needed):
+Interactive mode (no `--detach` needed):
 
 ```bash
-./scripts/flow-run.sh                    # Interactive mode
+./scripts/flow-run.sh                    # New session
+./scripts/flow-run.sh --continue         # Continue last
+./scripts/flow-run.sh --resume <id>      # Specific session
 ./scripts/flow-run.sh -m sonnet         # With model
 ./scripts/flow-run.sh "Your prompt"     # With prompt
 ```
+
+### Zellij alternative (current terminal)
+
+For users who prefer native terminal splits:
+
+```bash
+./scripts/flow-run-zellij.sh             # New session
+./scripts/flow-run-zellij.sh -m sonnet   # With model
+```
+
+**Differences from tmux**:
+- Zellij: unique session names, clipboard-only inject, current terminal
+- tmux: fixed session names, supports direct inject, detach/reattach capable
 
 ### Expected behavior
 
@@ -101,6 +131,8 @@ Use when user reports "too many background processes" or before starting fresh a
 
 ## Environment variables
 
+### Core Variables
+
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `FLOW_TMUX_SESSION` | `flow-main` | Tmux session name to use |
@@ -109,6 +141,22 @@ Use when user reports "too many background processes" or before starting fresh a
 | `FLOW_CLEAR_HISTORY` | `1` | Set to `0` to skip tmux history clear on exit |
 | `FLOW_TMUX_HISTORY_LIMIT` | `5000` | Tmux scrollback buffer size |
 | `FLOW_PROJECT_DIR` | auto | Override project directory for observer |
+| `FLOW_SESSION_ID` | auto | Pin observer to specific session |
+
+### Zellij Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FLOW_ZELLIJ_SESSION` | auto | Session name (default: unique short) |
+| `FLOW_ZELLIJ_REUSE` | `0` | Set `1` to reuse existing session |
+| `ZELLIJ_SOCKET_DIR` | `/tmp/zellij` | Socket path (macOS TMPDIR fix) |
+
+### UX Variables
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FLOW_QUIET` | `0` | Set `1` for minimal UI (心流模式) |
+| `FLOW_INJECT_BACKEND` | auto | `tmux`, `clipboard`, or `none` |
 
 ## Troubleshooting
 

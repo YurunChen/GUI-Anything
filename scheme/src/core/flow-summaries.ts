@@ -6,7 +6,213 @@
 
 import { spawn } from 'node:child_process';
 import type { FlowNodeRow } from '../core/flow-store';
+import type { WikiPersistMeta, WikiPersistType } from '../runtime/wiki-auto-extractor';
 import { typeIcons } from '../ui/tui/theme';
+
+// ── Claude Task Executor with timeout/concurrency control ──
+
+type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timeout';
+
+interface QueuedTask<T> {
+  id: string;
+  status: TaskStatus;
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (reason: Error) => void;
+  timeoutMs: number;
+  startTime?: number;
+}
+
+class ClaudeTaskExecutor {
+  private maxConcurrency: number;
+  private defaultTimeoutMs: number;
+  private queue: QueuedTask<unknown>[] = [];
+  private running: Map<string, QueuedTask<unknown>> = new Map();
+  private taskCounter = 0;
+
+  constructor(options?: { maxConcurrency?: number; defaultTimeoutMs?: number }) {
+    this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 2);
+    this.defaultTimeoutMs = Math.max(5000, options?.defaultTimeoutMs ?? 45000);
+  }
+
+  get stats() {
+    return {
+      queued: this.queue.length,
+      running: this.running.size,
+      maxConcurrency: this.maxConcurrency,
+    };
+  }
+
+  execute<T>(
+    runFn: (abortSignal: AbortSignal) => Promise<T>,
+    options?: { timeoutMs?: number; taskId?: string }
+  ): Promise<T> {
+    const taskId = options?.taskId ?? `task_${++this.taskCounter}_${Date.now()}`;
+    const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
+
+    let resolve: (value: T) => void;
+    let reject: (reason: Error) => void;
+    const promise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    const task: QueuedTask<T> = {
+      id: taskId,
+      status: 'queued',
+      promise,
+      resolve: resolve!,
+      reject: reject!,
+      timeoutMs,
+    };
+
+    this.queue.push(task as QueuedTask<unknown>);
+    this.processQueue();
+
+    return promise;
+  }
+
+  private processQueue(): void {
+    while (this.running.size < this.maxConcurrency && this.queue.length > 0) {
+      const task = this.queue.shift();
+      if (!task) break;
+      this.runTask(task);
+    }
+  }
+
+  private runTask(task: QueuedTask<unknown>): void {
+    task.status = 'running';
+    task.startTime = Date.now();
+    this.running.set(task.id, task);
+
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      abortController.abort();
+      task.status = 'timeout';
+      this.running.delete(task.id);
+      task.reject(new Error(`Task ${task.id} timed out after ${task.timeoutMs}ms`));
+      this.processQueue();
+    }, task.timeoutMs);
+
+    // Wrap user function to handle cleanup
+    const originalPromise = (task as any)._runFn?.(abortController.signal);
+    if (!originalPromise) {
+      // Internal spawn-based execution
+      this.runSpawnTask(task, abortController, timeoutId);
+      return;
+    }
+
+    originalPromise
+      .then((result: unknown) => {
+        clearTimeout(timeoutId);
+        if (task.status !== 'running') return;
+        task.status = 'completed';
+        this.running.delete(task.id);
+        task.resolve(result);
+        this.processQueue();
+      })
+      .catch((error: Error) => {
+        clearTimeout(timeoutId);
+        if (task.status !== 'running') return;
+        task.status = 'failed';
+        this.running.delete(task.id);
+        task.reject(error);
+        this.processQueue();
+      });
+  }
+
+  private runSpawnTask(
+    task: QueuedTask<unknown>,
+    abortController: AbortController,
+    timeoutId: NodeJS.Timeout
+  ): void {
+    // This is a placeholder - actual spawn logic is in the wrapper below
+    clearTimeout(timeoutId);
+    task.reject(new Error('Internal: runSpawnTask should not be called directly'));
+    this.processQueue();
+  }
+}
+
+// Global executor instance (singleton)
+const claudeExecutor = new ClaudeTaskExecutor({
+  maxConcurrency: 2,
+  defaultTimeoutMs: 45000,
+});
+
+// Wrapper for spawn-based Claude execution with proper timeout/cleanup
+interface SpawnOptions {
+  args: string[];
+  promptText: string;
+  timeoutMs?: number;
+  taskId?: string;
+}
+
+interface SpawnResult {
+  output: string;
+  exitCode: number | null;
+  error?: string;
+  timedOut: boolean;
+}
+
+function runClaudeSpawn(options: SpawnOptions): Promise<SpawnResult> {
+  const { args, promptText, timeoutMs = 45000 } = options;
+  const claudeCommand = process.env.CLAUDE_COMMAND?.trim() || 'claude';
+
+  return new Promise((resolve) => {
+    const child = spawn(claudeCommand, args, {
+      cwd: process.cwd(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let output = '';
+    let errorOutput = '';
+    let timedOut = false;
+    let resolved = false;
+
+    const timeoutId = setTimeout(() => {
+      if (resolved) return;
+      timedOut = true;
+      child.kill('SIGTERM');
+      // Give it 5s to cleanup, then force kill.
+      setTimeout(() => {
+        if (resolved) return;
+        child.kill('SIGKILL');
+      }, 5000);
+    }, timeoutMs);
+
+    child.stdin.write(promptText);
+    child.stdin.end();
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      errorOutput += chunk.toString();
+    });
+
+    const finish = (exitCode: number | null) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timeoutId);
+      resolve({
+        output,
+        exitCode,
+        error: errorOutput || undefined,
+        timedOut,
+      });
+    };
+
+    child.on('close', (code) => {
+      finish(code);
+    });
+
+    child.on('error', (err) => {
+      errorOutput += err.message;
+      finish(null);
+    });
+  });
+}
 
 const SUMMARY_PROMPT = `你是一位技术文档作者。以下是一次 Claude Code 会话的完整操作日志。请将其整理为结构化的 Markdown 文档，包含：
 
@@ -24,26 +230,30 @@ const SUMMARY_PROMPT = `你是一位技术文档作者。以下是一次 Claude 
 - 如果某个阶段没有发生，省略该部分
 - 输出纯 Markdown，不要包裹在代码块中`;
 
-const EXPLORATION_SUMMARY_PROMPT = `你是"心流记录者"。请用一句话概括本次 Exploration 的核心心流。
+const EXPLORATION_SUMMARY_PROMPT = `你是"心流记录者"。请阅读本次 Exploration 的节点日志，输出**仅一段严格 JSON**（不要 Markdown、不要代码围栏、不要前后解释文字）。
 
 【角色定义】
 - "你" = 用户
 - "Claude Code" = 探索执行者
 
-【核心结构】
-你提出了什么问题 → Claude Code 给出的结论/答案是什么
+【JSON 字段契约】
+{
+  "summary": "一句话心流：你问了什么 → Claude Code 的结论。与问题同语言；≤160 字；纯文本不含换行",
+  "solution_detail": "用于写入 Wiki“解决方案”的详细过程。建议 3-8 行，按步骤描述关键动作、观察和结论，必须基于日志事实。",
+  "persist": {
+    "should_persist": boolean,
+    "type": "error" | "snippet" | "decision" | "context" | "none",
+    "confidence": 0 到 1 的小数（你对 should_persist 与 type 判断的把握）,
+    "reason": "简短说明为何值得/不值得写入个人 Wiki（同语言）"
+  },
+  "tags": ["可选", "最多 6 个短标签"],
+  "key_command": "若有值得固化的单条命令则填字符串，否则 null"
+}
 
-【写作要求】
-- 聚焦问题与结论，中间探索链路一句话带过或省略
-- 句式简洁："你询问/要求...，Claude Code 确认/得出/建议..."
-- 只用输入中的事实，不推测、不编造
-- 语言与你提出的问题保持一致（中文或英文）
-- 纯文本，不要用 Markdown 格式
-- 控制在 120 字符以内，极度凝练
-
-【风格示例】
-好："你询问项目核心模块位置，Claude Code 确认逻辑集中在 core/ 目录，建议从该入口深入。"
-差："你询问项目架构，Claude Code 先查看 package.json 梳理依赖，再浏览 src 目录，最终确定核心逻辑集中在 core/ 模块..."`;
+【persist 规则】
+- 闲聊、问候 → should_persist=false, type=none
+- 可复用的错误与修复、命令片段、架构/流程决策、重要上下文 → should_persist=true 并选对 type
+- 只用日志中的事实，不编造`;
 
 
 function formatNodesForClaude(prompt: string, nodes: FlowNodeRow[]): string {
@@ -219,13 +429,82 @@ function fallbackExplorationSummary(question: string, nodes: ExplorationSummaryN
   return `围绕“${question}”完成探索，过程包含${toolCount}次工具调用、${responseCount}次回复，当前可见输出为部分信息，需结合节点详情查看。`;
 }
 
-/** Pass through model stdout: only trim outer whitespace; no line pick or prefix stripping. */
-function normalizeExplorationSummary(question: string, nodes: ExplorationSummaryNode[], raw: string): string {
+export interface ExplorationSummaryAIResult {
+  displaySummary: string;
+  persist: WikiPersistMeta | null;
+}
+
+function normalizeWikiPersistType(value: unknown): WikiPersistType {
+  if (value === 'error' || value === 'snippet' || value === 'decision' || value === 'context' || value === 'none') {
+    return value;
+  }
+  return 'none';
+}
+
+function clamp01(n: unknown): number {
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    return 0.5;
+  }
+  return Math.min(1, Math.max(0, n));
+}
+
+/** Parse Claude stdout into display line + optional Wiki persist metadata. */
+export function parseExplorationSummaryAIOutput(
+  question: string,
+  nodes: ExplorationSummaryNode[],
+  raw: string,
+): ExplorationSummaryAIResult {
   const trimmed = raw.trim();
   if (!trimmed) {
-    return fallbackExplorationSummary(question, nodes);
+    return { displaySummary: fallbackExplorationSummary(question, nodes), persist: null };
   }
-  return trimmed;
+  const jsonText = parseJsonObjectFromText(trimmed);
+  if (!jsonText) {
+    return { displaySummary: fallbackExplorationSummary(question, nodes), persist: null };
+  }
+  try {
+    const parsed = JSON.parse(jsonText) as {
+      summary?: string;
+      solution_detail?: string;
+      persist?: {
+        should_persist?: boolean;
+        type?: string;
+        confidence?: number;
+        reason?: string;
+      };
+      tags?: unknown;
+      key_command?: unknown;
+    };
+    const summaryLine = (parsed.summary || '').trim().replace(/\s+/g, ' ');
+    const displaySummary =
+      summaryLine.length > 0 ? summaryLine.slice(0, 220) : fallbackExplorationSummary(question, nodes);
+
+    let persist: WikiPersistMeta | null = null;
+    if (parsed.persist && typeof parsed.persist === 'object') {
+      persist = {
+        should_persist: Boolean(parsed.persist.should_persist),
+        type: normalizeWikiPersistType(parsed.persist.type),
+        confidence: clamp01(parsed.persist.confidence),
+        reason: typeof parsed.persist.reason === 'string' ? parsed.persist.reason.trim() : undefined,
+        solution_detail:
+          typeof parsed.solution_detail === 'string'
+            ? parsed.solution_detail.trim()
+            : undefined,
+        tags: Array.isArray(parsed.tags)
+          ? parsed.tags.filter((t): t is string => typeof t === 'string' && t.trim().length > 0).slice(0, 6).map((t) => t.trim())
+          : undefined,
+        key_command:
+          typeof parsed.key_command === 'string'
+            ? parsed.key_command.trim() || null
+            : parsed.key_command === null
+              ? null
+              : undefined,
+      };
+    }
+    return { displaySummary, persist };
+  } catch {
+    return { displaySummary: fallbackExplorationSummary(question, nodes), persist: null };
+  }
 }
 
 function fallbackPotentialDirections(
@@ -326,45 +605,35 @@ export async function generateFlowSummaryAI(
   model?: string,
 ): Promise<{ title: string; content: string; nodeRefs: string[] }> {
   const nodeRefs = nodes.map(n => n.id);
-  const claudeCommand = process.env.CLAUDE_COMMAND?.trim() || 'claude';
+  const args = ['--print'];
+  if (model) args.push('-m', model);
 
-  return new Promise((resolve) => {
-    const args = ['--print'];
-    if (model) args.push('-m', model);
+  const promptText = `${SUMMARY_PROMPT}\n\n---\n\n${formatNodesForClaude(prompt, nodes)}`;
 
-    const child = spawn(claudeCommand, args, {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    const promptText = `${SUMMARY_PROMPT}\n\n---\n\n${formatNodesForClaude(prompt, nodes)}`;
-    child.stdin.write(promptText);
-    child.stdin.end();
-
-    let output = '';
-    let errorOutput = '';
-
-    child.stdout.on('data', (chunk: Buffer) => {
-      output += chunk.toString();
-    });
-
-    child.stderr.on('data', (chunk: Buffer) => {
-      errorOutput += chunk.toString();
-    });
-
-    child.on('close', () => {
-      const content = output.trim() || `# ${prompt}\n\n*(Summary generation failed)*`;
-      resolve({ title: prompt, content, nodeRefs });
-    });
-
-    child.on('error', () => {
-      resolve({
-        title: prompt,
-        content: `# ${prompt}\n\n*(Failed to generate summary via Claude)*`,
-        nodeRefs,
-      });
-    });
+  const result = await runClaudeSpawn({
+    args,
+    promptText,
+    timeoutMs: 60000, // Flow summary may need more time
+    taskId: `flow_${Date.now()}`,
   });
+
+  if (result.timedOut) {
+    return {
+      title: prompt,
+      content: `# ${prompt}\n\n*(Summary generation timed out after 60s)*`,
+      nodeRefs,
+    };
+  }
+
+  if (result.exitCode !== 0 || !result.output.trim()) {
+    return {
+      title: prompt,
+      content: `# ${prompt}\n\n*(Summary generation failed: ${result.error || 'empty output'})*`,
+      nodeRefs,
+    };
+  }
+
+  return { title: prompt, content: result.output.trim(), nodeRefs };
 }
 
 export async function generateExplorationSummaryAI(
@@ -372,37 +641,40 @@ export async function generateExplorationSummaryAI(
   nodes: ExplorationSummaryNode[],
   history: ExplorationHistoryContext[] = [],
   model?: string,
-): Promise<string> {
-  const claudeCommand = process.env.CLAUDE_COMMAND?.trim() || 'claude';
-  return new Promise((resolve) => {
-    const args = ['--print'];
-    if (model) args.push('-m', model);
-    const child = spawn(claudeCommand, args, {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+): Promise<ExplorationSummaryAIResult> {
+  const args = ['--print'];
+  if (model) args.push('-m', model);
 
-    const promptText = `${EXPLORATION_SUMMARY_PROMPT}
+  const promptText = `${EXPLORATION_SUMMARY_PROMPT}
 
 【前序心流上下文】
 ${formatExplorationHistory(history)}
 
 【输入】
 ${formatExplorationForClaude(question, nodes)}`;
-    child.stdin.write(promptText);
-    child.stdin.end();
 
-    let output = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      output += chunk.toString();
-    });
-    child.on('close', () => {
-      resolve(normalizeExplorationSummary(question, nodes, output));
-    });
-    child.on('error', () => {
-      resolve(fallbackExplorationSummary(question, nodes));
-    });
+  const result = await runClaudeSpawn({
+    args,
+    promptText,
+    timeoutMs: 45000,
+    taskId: `exp_${Date.now()}`,
   });
+
+  if (result.timedOut) {
+    return {
+      displaySummary: fallbackExplorationSummary(question, nodes) + ' (生成超时)',
+      persist: null,
+    };
+  }
+
+  if (result.exitCode !== 0 || !result.output.trim()) {
+    return {
+      displaySummary: fallbackExplorationSummary(question, nodes),
+      persist: null,
+    };
+  }
+
+  return parseExplorationSummaryAIOutput(question, nodes, result.output);
 }
 
 export async function generatePotentialDirectionsAI(
@@ -410,32 +682,25 @@ export async function generatePotentialDirectionsAI(
   explorations: DirectionExplorationInput[],
   model?: string,
 ): Promise<PotentialDirectionsResult> {
-  const claudeCommand = process.env.CLAUDE_COMMAND?.trim() || 'claude';
   if (explorations.length === 0) {
     return fallbackPotentialDirections(explorations);
   }
 
-  return new Promise((resolve) => {
-    const args = ['--print'];
-    if (model) args.push('-m', model);
-    const child = spawn(claudeCommand, args, {
-      cwd: process.cwd(),
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+  const args = ['--print'];
+  if (model) args.push('-m', model);
 
-    const promptText = `${POTENTIAL_DIRECTIONS_PROMPT}\n\n【输入】\n${formatPotentialDirectionsInput(runtimeModel, explorations)}`;
-    child.stdin.write(promptText);
-    child.stdin.end();
+  const promptText = `${POTENTIAL_DIRECTIONS_PROMPT}\n\n【输入】\n${formatPotentialDirectionsInput(runtimeModel, explorations)}`;
 
-    let output = '';
-    child.stdout.on('data', (chunk: Buffer) => {
-      output += chunk.toString();
-    });
-    child.on('close', () => {
-      resolve(normalizePotentialDirections(output, explorations));
-    });
-    child.on('error', () => {
-      resolve(fallbackPotentialDirections(explorations));
-    });
+  const result = await runClaudeSpawn({
+    args,
+    promptText,
+    timeoutMs: 45000,
+    taskId: `dir_${Date.now()}`,
   });
+
+  if (result.timedOut || result.exitCode !== 0 || !result.output.trim()) {
+    return fallbackPotentialDirections(explorations);
+  }
+
+  return normalizePotentialDirections(result.output, explorations);
 }

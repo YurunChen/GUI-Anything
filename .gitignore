@@ -43,3 +43,11 @@ temp/
 *.tmp
 *.swp
 
+# Claude Code local cache
+.claude/codespace/
+.claude/projects/
+.flow-runtime/
+
+# Wiki (entire directory)
+wiki/
+

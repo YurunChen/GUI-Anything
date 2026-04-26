@@ -3,9 +3,9 @@
  */
 
 import type { ReactNode } from 'react';
-import type { ActivityTree, ActivityNode } from '../../core/types';
-import { nodeLabel } from './node-label';
-import { typeIcons, typeColors, colors } from './theme';
+import type { ActivityTree, ActivityNode } from '../../core/types.js';
+import { nodeLabel } from './node-label.js';
+import { typeIcons, typeColors, colors } from './theme.js';
 
 /**
  * Render each node with depth-aware indentation and tree connectors.

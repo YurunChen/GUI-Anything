@@ -4,6 +4,15 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+function parseTimestamp(ts: unknown): number {
+  if (typeof ts === 'number') return ts;
+  if (typeof ts === 'string') {
+    const parsed = Date.parse(ts);
+    return isNaN(parsed) ? Date.now() : parsed;
+  }
+  return Date.now();
+}
+
 function nextSeq(ctx: ParseContext): number {
   ctx.seq += 1;
   return ctx.seq;
@@ -60,6 +69,7 @@ export function parseClaudeJsonLine(
     const message = parsed.message as {
       content?: Array<Record<string, unknown>>;
       model?: string;
+      stop_reason?: string;
     } | undefined;
     if (typeof message?.model === "string" && message.model.length > 0) {
       ctx.source = {
@@ -92,9 +102,55 @@ export function parseClaudeJsonLine(
         }
       }
     }
+    // Detect exploration completion via end_turn.
+    // Some logs store stop_reason on the top-level entry.
+    const stopReason =
+      (typeof message?.stop_reason === "string" ? message.stop_reason : undefined) ??
+      (typeof parsed.stop_reason === "string" ? parsed.stop_reason : undefined);
+    if (stopReason === "end_turn") {
+      events.push(
+        makeEnvelope(ctx, "completion", {
+          reason: "end_turn",
+          timestamp: parseTimestamp(parsed.timestamp)
+        })
+      );
+    }
   } else if (msgType === "user") {
-    const message = parsed.message as { content?: Array<Record<string, unknown>> } | undefined;
-    if (message?.content) {
+    const isMeta = parsed.isMeta === true;
+    const message = parsed.message as {
+      content?: string | Array<Record<string, unknown>>;
+    } | undefined;
+
+    // Extract user text content for exploration start.
+    // Claude logs may encode user content as a plain string or block array.
+    if (!isMeta && typeof message?.content === "string" && message.content.trim()) {
+      events.push(
+        makeEnvelope(ctx, "user_message", {
+          text: message.content,
+          timestamp: parseTimestamp(parsed.timestamp)
+        })
+      );
+    } else if (!isMeta && Array.isArray(message?.content)) {
+      for (const block of message.content) {
+        if (block.type === "text" && typeof block.text === "string") {
+          events.push(
+            makeEnvelope(ctx, "user_message", {
+              text: block.text,
+              timestamp: parseTimestamp(parsed.timestamp)
+            })
+          );
+        } else if (block.type === "tool_result") {
+          events.push(
+            makeEnvelope(ctx, "tool_result", {
+              toolCallId: block.tool_use_id,
+              content: block.content,
+              isError: block.is_error === true
+            })
+          );
+        }
+      }
+    } else if (Array.isArray(message?.content)) {
+      // For meta or non-text user messages, just process tool_results
       for (const block of message.content) {
         if (block.type === "tool_result") {
           events.push(
@@ -146,9 +202,12 @@ export function parseClaudeJsonLine(
           ? "result error"
           : "result complete";
     events.push(
-      makeEnvelope(ctx, isError ? "error" : "text_final", {
+      makeEnvelope(ctx, "completion", {
+        reason: isError ? "error" : "result",
+        isError,
         text: resultText,
-        durationMs: duration
+        durationMs: duration,
+        timestamp: parseTimestamp(parsed.timestamp)
       })
     );
   }

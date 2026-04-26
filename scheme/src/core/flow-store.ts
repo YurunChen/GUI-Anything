@@ -83,10 +83,11 @@ export class FlowStore {
         tool_name TEXT,
         tool_input_preview TEXT,
         result_preview TEXT,
-        FOREIGN KEY (session_id) REFERENCES flow_sessions(id)
+        FOREIGN KEY (session_id) REFERENCES flow_sessions(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_nodes_session ON flow_nodes(session_id);
+      CREATE INDEX IF NOT EXISTS idx_nodes_parent ON flow_nodes(parent_id);
 
       CREATE TABLE IF NOT EXISTS flow_events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,7 +95,7 @@ export class FlowStore {
         event_type TEXT NOT NULL,
         raw_json TEXT NOT NULL,
         seq INTEGER NOT NULL,
-        FOREIGN KEY (node_id) REFERENCES flow_nodes(id)
+        FOREIGN KEY (node_id) REFERENCES flow_nodes(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_events_node ON flow_events(node_id);
@@ -106,9 +107,16 @@ export class FlowStore {
         content TEXT NOT NULL DEFAULT '',
         node_refs TEXT DEFAULT '[]',
         created_at INTEGER NOT NULL,
-        FOREIGN KEY (session_id) REFERENCES flow_sessions(id)
+        FOREIGN KEY (session_id) REFERENCES flow_sessions(id) ON DELETE CASCADE
       );
     `);
+  }
+
+  /**
+   * Delete a session and all related data (cascades via foreign keys)
+   */
+  deleteSession(id: string): void {
+    this.db.prepare('DELETE FROM flow_sessions WHERE id = ?').run(id);
   }
 
   createSession(id: string, prompt: string, model: string): void {
@@ -128,11 +136,24 @@ export class FlowStore {
     resultPreview?: string,
     parentId?: string
   ): void {
-    this.db.prepare(
-      `INSERT OR REPLACE INTO flow_nodes
-       (id, session_id, parent_id, type, timestamp, summary, phase, tool_name, tool_input_preview, result_preview)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(nodeId, sessionId, parentId ?? null, type, Date.now(), summary, phase, toolName ?? null, inputPreview ?? null, resultPreview ?? null);
+    // Use INSERT with conflict handling to avoid accidental overwrites
+    // If node exists with same ID, update it; otherwise insert
+    const existing = this.db.prepare('SELECT id FROM flow_nodes WHERE id = ?').get(nodeId);
+    if (existing) {
+      // Update existing node (preserving timestamp)
+      this.db.prepare(
+        `UPDATE flow_nodes SET
+         session_id = ?, parent_id = ?, type = ?, summary = ?, phase = ?,
+         tool_name = ?, tool_input_preview = ?, result_preview = ?
+         WHERE id = ?`
+      ).run(sessionId, parentId ?? null, type, summary, phase, toolName ?? null, inputPreview ?? null, resultPreview ?? null, nodeId);
+    } else {
+      this.db.prepare(
+        `INSERT INTO flow_nodes
+         (id, session_id, parent_id, type, timestamp, summary, phase, tool_name, tool_input_preview, result_preview)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(nodeId, sessionId, parentId ?? null, type, Date.now(), summary, phase, toolName ?? null, inputPreview ?? null, resultPreview ?? null);
+    }
   }
 
   insertEvent(nodeId: string, eventType: string, rawJson: string, seq: number): void {
@@ -148,9 +169,13 @@ export class FlowStore {
   }
 
   insertSummary(sessionId: string, title: string, content: string, nodeRefs: string[]): void {
+    // Use crypto.randomUUID for collision-resistant ID generation
+    const id = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? `sum_${crypto.randomUUID()}`
+      : `sum_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
     this.db.prepare(
       'INSERT INTO flow_summaries (id, session_id, title, content, node_refs, created_at) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(`sum_${Date.now()}`, sessionId, title, content, JSON.stringify(nodeRefs), Date.now());
+    ).run(id, sessionId, title, content, JSON.stringify(nodeRefs), Date.now());
   }
 
   getAllSessions(): FlowSessionRow[] {

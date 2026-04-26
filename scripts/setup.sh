@@ -34,6 +34,24 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+setup_zellij_env() {
+  log_info "Checking Zellij installation (optional, current-terminal split layout)..."
+  if command_exists zellij; then
+    local zellij_version
+    zellij_version="$(zellij --version 2>/dev/null || true)"
+    log_success "Zellij found: ${zellij_version:-installed}"
+    return 0
+  fi
+
+  log_warn "Zellij not found."
+  if [[ "$OSTYPE" == "darwin"* ]] && command_exists brew; then
+    log_info "Install with:"
+    log_info "  brew install zellij"
+  else
+    log_info "Install Zellij: https://zellij.dev/documentation/installation.html"
+  fi
+}
+
 # Install tmux
 install_tmux() {
   log_info "Checking tmux installation..."
@@ -172,6 +190,11 @@ set_permissions() {
   if [[ -f "$ROOT_DIR/scripts/setup.sh" ]]; then
     chmod +x "$ROOT_DIR/scripts/setup.sh"
   fi
+
+  if [[ -f "$ROOT_DIR/scripts/flow-run-zellij.sh" ]]; then
+    chmod +x "$ROOT_DIR/scripts/flow-run-zellij.sh"
+    log_success "flow-run-zellij.sh is executable"
+  fi
 }
 
 # Verify installation
@@ -217,29 +240,41 @@ print_summary() {
   echo "  Setup Complete!"
   echo "========================================"
   echo ""
-  echo "Run Flow Observer in your terminal:"
+  echo "Design Principles: 心流 / 按需知识 / 无感使用"
   echo ""
-  echo "  ./scripts/flow-run.sh"
+  echo "Run Flow Observer (tmux - best for long sessions):"
+  echo "  ./scripts/flow-run.sh                    # New session"
+  echo "  ./scripts/flow-run.sh --continue         # Continue last session"
+  echo "  ./scripts/flow-run.sh --resume <id>      # Specific session"
   echo ""
-  echo "With a prompt:"
-  echo "  ./scripts/flow-run.sh \"Your prompt here\""
+  echo "With options:"
+  echo "  ./scripts/flow-run.sh \"Your prompt\"    # With initial prompt"
+  echo "  ./scripts/flow-run.sh -m sonnet          # Specific model"
+  echo "  FLOW_QUIET=1 ./scripts/flow-run.sh       # Minimal UI"
   echo ""
-  echo "With specific model:"
-  echo "  ./scripts/flow-run.sh -m sonnet"
+  echo "Run with Zellij (current terminal, quick tasks):"
+  echo "  ./scripts/flow-run-zellij.sh"
+  echo "  ./scripts/flow-run-zellij.sh -m sonnet"
+  echo ""
+  echo "Key Differences:"
+  echo "  tmux:  Fixed session name, supports inject-to-Claude, detach/reattach"
+  echo "  zellij: Unique session names, clipboard-only, native terminal feel"
   echo ""
   if [[ -f "${HOME}/.claude/skills/flow/SKILL.md" ]]; then
     echo "Claude Code skill installed to ~/.claude/skills/flow/"
     echo ""
     echo "The skill helps you:"
-    echo "  - Get the right command to run (ask: 'how do I start flow?')"
-    echo "  - Clean up stale sessions (ask: 'clean flow sessions')"
-    echo "  - Fix display issues (ask: 'fix scrollback duplication')"
+    echo "  - Start flow (ask: 'start flow mode')"
+    echo "  - Continue session (ask: 'continue flow')"
+    echo "  - Clean sessions (ask: 'clean flow sessions')"
     echo ""
-    echo "Note: Flow mode requires an interactive terminal."
-    echo "The skill will guide you but cannot launch it directly from Claude Code."
+    echo "Note: Flow requires an interactive terminal."
     echo ""
   fi
-  echo "See README.md for detailed documentation."
+  echo "Architecture: Run / Capture / Guide layers"
+  echo "Contracts: wiki/00-meta/schema.md, flow-summaries.ts, this README"
+  echo ""
+  echo "See README.md for full documentation."
   echo ""
 }
 
@@ -262,6 +297,8 @@ main() {
   install_bun
   echo ""
   install_project_deps
+  echo ""
+  setup_zellij_env
   echo ""
   set_permissions
   echo ""

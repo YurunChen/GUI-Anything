@@ -1,6 +1,16 @@
 # GUI-Anything
 
-A Claude Code Flow Observer with dual-pane terminal UI.
+A Claude Code Flow Observer with dual-pane terminal UI — designed for **心流 (flow state)**, **按需知识 (knowledge on-demand)**, and **无感使用 (seamless UX)**.
+
+## Design Principles
+
+Three core principles guide every design decision:
+
+| Principle | What it means | In Practice |
+|-----------|---------------|-------------|
+| **心流 (Flow State)** | Don't interrupt the left pane (Claude) | Observer defaults to passive mode; context panels (Wiki/Inspiration/Directions) only expand when explicitly requested |
+| **按需知识 (On-Demand)** | Retrieve and persist knowledge only when needed | Wiki search has thresholds; auto-extract only when model signals persist; quiet mode available |
+| **无感使用 (Seamless)** | One command to start; failures don't block; no manual path hunting | `FLOW_PROJECT_DIR` + `FLOW_SESSION_ID` auto-bound; loading states neutral (not error-like) |
 
 ## Directory Structure
 
@@ -11,6 +21,31 @@ A Claude Code Flow Observer with dual-pane terminal UI.
 | `reference/` | **Reference implementations** — OpenTUI, tail-claude, and other UI patterns |
 | `docs/` | **Documentation** — Protocol specs and design docs |
 | `protocol/` | **Normative protocols** — cli-event and ui-surface protocol definitions |
+
+## Mental Model: Run / Capture / Guide
+
+Flow Observer organizes work into three layers:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Run (执行态)                                                │
+│  ├── Current session / exploration                           │
+│  ├── Phase indicators                                        │
+│  └── Tool/error signals                                      │
+├─────────────────────────────────────────────────────────────┤
+│  Capture (沉淀态)                                            │
+│  ├── Summary JSON (AI-generated)                              │
+│  ├── Wiki staging (auto-extract)                            │
+│  └── Inspiration notes (manual capture)                     │
+├─────────────────────────────────────────────────────────────┤
+│  Guide (导航态)                                              │
+│  ├── Potential directions (AI suggestions)                  │
+│  ├── Wiki matches (search results)                          │
+│  └── Command bar (available actions)                        │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Each layer has clear boundaries and contracts — see [Architecture Boundaries](#architecture-boundaries).
 
 ## Installation
 
@@ -23,9 +58,10 @@ A Claude Code Flow Observer with dual-pane terminal UI.
 This automatically:
 1. Checks and installs **tmux** (if not found)
 2. Checks and installs **Bun** (if not found)
-3. Installs project dependencies (`bun install`)
-4. Sets executable permissions
-5. Installs Claude Code skill to `~/.claude/skills/`
+3. Checks **Zellij** (optional, for current-terminal split layout)
+4. Installs project dependencies (`bun install`)
+5. Sets executable permissions
+6. Installs Claude Code skill to `~/.claude/skills/`
 
 After setup, run:
 ```bash
@@ -186,6 +222,30 @@ bun run src/main.ts --help
 
 If you see usage information, the installation is successful.
 
+## Launch Matrix: tmux vs Zellij
+
+Choose your terminal multiplexer based on your workflow:
+
+| Feature | `flow-run.sh` (tmux) | `flow-run-zellij.sh` (zellij) |
+|---------|----------------------|-------------------------------|
+| **Session naming** | Fixed (`flow-main` default, kills existing) | Unique short names (`f-mmdd-HHMMSS-xxxx`) |
+| **Window behavior** | New tmux session | Current terminal split |
+| **Inject to Claude** | Yes (`injectToClaudeInput` via tmux) | No (clipboard only) |
+| **Best for** | Long-running sessions, detach/reattach | Quick tasks, native terminal feel |
+| **Socket path** | N/A | `ZELLIJ_SOCKET_DIR=/tmp/zellij` (short path for macOS) |
+
+### Session Lifecycle Modes
+
+Flow supports three session modes (tmux and zellij):
+
+| Mode | Script Flag | Left Pane (Claude) | Observer `FLOW_SESSION_ID` | Use When |
+|------|-------------|-------------------|---------------------------|----------|
+| **new** (default) | (none) | `claude --session-id <new-uuid>` | Same UUID | Starting fresh work |
+| **continue** | `--continue` | `claude -c` (continue last) | Not set (uses mtime latest) | Resuming recent work |
+| **resume** | `--resume <id>` | `claude --resume <id>` | Set to `<id>` | Specific session |
+
+**Known limitation**: `continue` mode uses mtime to find latest session — may follow wrong file if multiple sessions write concurrently. Use `resume <id>` for production workflows.
+
 ## Quick Start
 
 ### Start Flow Mode (Dual Pane)
@@ -200,15 +260,62 @@ This creates a tmux session (`flow-main` by default) with:
 - **Left pane**: Native Claude Code interactive TUI
 - **Right pane**: Live observer polling the same session JSONL
 
+### Continue Previous Session
+
+```bash
+./scripts/flow-run.sh --continue
+```
+
+Resumes your last Claude Code session in the current directory. Observer auto-discovers the session file by mtime.
+
+### Resume Specific Session
+
+```bash
+./scripts/flow-run.sh --resume <session-id>
+```
+
+### Start Flow Mode with Zellij (Current Terminal Split, Optional)
+
+```bash
+./scripts/flow-run-zellij.sh
+```
+
+This starts a named Zellij session and opens:
+- **Left pane**: Claude Code
+- **Right pane**: Live observer
+
+Useful options:
+
+```bash
+./scripts/flow-run-zellij.sh -m sonnet
+FLOW_ZELLIJ_SESSION=flow-main FLOW_ZELLIJ_REUSE=1 ./scripts/flow-run-zellij.sh
+```
+
+By default, this script now creates a unique session name each run.
+If you prefer a fixed session, set `FLOW_ZELLIJ_SESSION`.
+
 ### Controls
+
+#### Tmux Session
 
 | Key | Action |
 |-----|--------|
 | `Ctrl+B D` | Detach from tmux session (flow continues in background) |
 | `tmux attach -t flow-main` | Reattach to existing session |
-| `t` | Toggle `flow` / `tree` view in observer |
-| `g` | Generate potential directions |
-| `q` / `Esc` | Safe quit with terminal restore |
+
+#### Observer (Right Pane)
+
+| Key | Action | Context |
+|-----|--------|---------|
+| `t` | Toggle `flow` / `tree` view | Global |
+| `g` | Generate potential directions | Global |
+| `w` | Open Wiki tab in ContextPanel | When Wiki match available |
+| `i` | Open Inspiration tab | Global |
+| `d` | Open Directions tab | Global |
+| `Esc` | Close Context / safe quit | Global |
+| `q` | Quit observer | Global |
+
+> **心流提示**: ContextPanel (Wiki/Inspiration/Directions) only opens when explicitly requested or when there's a strong signal (Wiki match). Default view shows only the flow timeline to avoid interrupting your focus.
 
 ### Usage Examples
 
@@ -261,7 +368,9 @@ In Claude Code chat, use natural prompts:
 
 Claude Code will apply the skill automatically.
 
-## Environment Variables
+## Environment Variables & Contracts
+
+### Core Flow Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -272,6 +381,27 @@ Claude Code will apply the skill automatically.
 | `FLOW_TMUX_HISTORY_LIMIT` | `5000` | Scrollback buffer size |
 | `FLOW_PROJECT_DIR` | auto | Project directory override |
 | `FLOW_SESSION_ID` | auto | Pin observer to specific session |
+| `FLOW_ZELLIJ_SESSION` | auto-generated | Zellij session name for `flow-run-zellij.sh` |
+| `FLOW_ZELLIJ_REUSE` | `0` | Set `1` to reuse existing Zellij session |
+| `FLOW_ZELLIJ_OBSERVER_WIDTH` | auto | Right pane width (%) for `flow-run-zellij.sh` |
+| `ZELLIJ_SOCKET_DIR` | `/tmp/zellij` | Short socket path (macOS TMPDIR fix) |
+
+### UX Tuning Variables
+
+| Variable | Values | Purpose |
+|----------|--------|---------|
+| `FLOW_QUIET` | `0` (default), `1` | Quiet mode: suppress Wiki banners, minimal status |
+| `FLOW_INJECT_BACKEND` | `tmux`, `clipboard`, `none` | How to send text to Claude pane |
+
+### Inject Strategy by Backend
+
+| Backend | tmux | zellij | Command Bar Shows |
+|---------|------|--------|-------------------|
+| `tmux` | `injectToClaudeInput` available | N/A | "Press Enter to inject" |
+| `clipboard` | N/A | `pbcopy` + manual paste | "Copied to clipboard — paste with Cmd+V" |
+| `none` | No-op | No-op | "Manual input required" |
+
+Default is backend-aware: tmux sessions default to `tmux`, zellij to `clipboard`.
 
 ## Modes (scheme/)
 
@@ -283,6 +413,48 @@ Claude Code will apply the skill automatically.
 | **Observer** | `bun run src/main.ts --observer "<prompt>"` | OpenTUI observer with stream |
 | **Posthoc** | `bun run src/main.ts --posthoc [path]` | Analyze finished session |
 | **Web API** | `bun run src/main.ts --web` | HTTP server at `:3000` |
+
+## Architecture Boundaries
+
+Flow is organized into layers with strict dependency directions (single-source-of-truth for each concern):
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  Shell Scripts (scripts/)                                    │
+│  ├── Process orchestration                                   │
+│  ├── Set FLOW_PROJECT_DIR / FLOW_SESSION_ID                  │
+│  └── DO NOT implement session selection logic                │
+├────────────────────────────────────────────────────────────┤
+│  scheme/src/                                                 │
+│  ├── ui/tui/      → Layout, hotkeys, state-driven rendering  │
+│  ├── runtime/     → Disk I/O, parsing, search, persist       │
+│  └── core/        → Types, AI contracts, pure logic          │
+├────────────────────────────────────────────────────────────┤
+│  External Truth Sources                                      │
+│  ├── Claude session JSONL (Claude Code writes)               │
+│  ├── wiki/ file system                                       │
+│  └── tmux / zellij / clipboard binaries                      │
+└────────────────────────────────────────────────────────────┘
+```
+
+### Layer Rules
+
+| Layer | Can Import | Cannot |
+|-------|------------|--------|
+| `ui/tui/` | `runtime/*`, `core/*`, `@opentui/*` | Direct `execSync` for inject (use inject module) |
+| `runtime/` | `core/*`, `node:*` | `@opentui/*`, React |
+| `core/` | `node:*` only | UI or runtime concerns |
+| Shell | N/A (bash) | Implement "latest session" selection (use TS) |
+
+### Contracts (Source of Truth)
+
+| Contract | Location | Consumers |
+|----------|----------|-----------|
+| Wiki schema | `wiki/00-meta/schema.md` | `wiki-auto-extractor.ts`, UI display |
+| Summary JSON shape | `scheme/src/core/flow-summaries.ts` | Generator, UI, Wiki staging |
+| Environment vars | This README table | `flow-run.sh`, `flow-run-zellij.sh`, observer |
+
+Changes to contracts must update all consumers and this documentation.
 
 ## Troubleshooting
 
@@ -297,6 +469,20 @@ bun install
 ### "tmux: command not found"
 
 Install tmux for your platform (see Installation section above).
+
+### "zellij: command not found"
+
+Install Zellij:
+
+```bash
+brew install zellij
+```
+
+Then run:
+
+```bash
+./scripts/flow-run-zellij.sh
+```
 
 ### Scrollback shows duplicated conversation
 

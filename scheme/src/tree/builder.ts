@@ -160,6 +160,25 @@ export class ActivityTreeBuilder {
         break;
       }
 
+      case 'completion': {
+        this.flushResponse();
+        const isError = payload.isError === true;
+        const text = payload.text as string | undefined;
+        if (isError && text) {
+          const node: ActivityNode = {
+            id: nextId('error'),
+            type: 'thinking',
+            parentId: this.promptNodeId,
+            childrenIds: [],
+            timestamp: Date.now(),
+            content: { error: text }
+          };
+          this.addNode(node);
+          this.callbacks.onError(text);
+        }
+        break;
+      }
+
       case 'status': {
         const status = payload.status as string | undefined;
         if (status?.includes('stream_init')) {

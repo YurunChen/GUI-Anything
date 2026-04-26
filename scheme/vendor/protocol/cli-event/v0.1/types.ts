@@ -3,11 +3,13 @@ export type CliEventType =
   | "session_end"
   | "turn_start"
   | "turn_end"
+  | "user_message"
   | "text_delta"
   | "text_final"
   | "status"
   | "tool_use"
   | "tool_result"
+  | "completion"
   | "error"
   | "artifact"
   | "raw_line";

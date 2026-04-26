@@ -33,7 +33,8 @@ export function resolveGitRoot(dir: string): string {
       cwd: dir, stdio: ['pipe', 'pipe', 'pipe']
     }).toString().trim();
     return root || dir;
-  } catch {
+  } catch (error) {
+    // Git not available or not a repo - expected fallback
     return dir;
   }
 }
@@ -45,7 +46,9 @@ export function resolveGitRoot(dir: string): string {
 export function projectDir(cwd: string): string {
   // Resolve symlinks
   let resolved = cwd;
-  try { resolved = fs.realpathSync(cwd); } catch { /* keep original */ }
+  try { resolved = fs.realpathSync(cwd); } catch {
+    // Not a symlink or permission issue - use original path
+  }
 
   // Resolve git root (handles worktrees where Claude stores sessions under main repo)
   resolved = resolveGitRoot(resolved);
@@ -234,6 +237,8 @@ export interface ExplorationNode {
   timestamp: number;
   type: 'tool' | 'result' | 'response' | 'thinking' | 'error';
   label: string;
+  rawText?: string;
+  rawCommand?: string;
   status?: 'running' | 'ok' | 'error';
   toolCallId?: string;
   phase?: 'explore' | 'execute' | 'verify';
@@ -368,6 +373,15 @@ export function extractSessionStats(jsonlPath: string, preloadedContent?: string
   const lines = nonEmptyJsonlLines(jsonlPath, preloadedContent);
   stats.events = lines.length;
   const countedMessageIds = new Set<string>();
+  let latestContextUsage:
+    | {
+      input: number;
+      output: number;
+      cacheRead: number;
+      cacheWrite: number;
+      hasAnyField: boolean;
+    }
+    | null = null;
 
   for (const line of lines) {
     try {
@@ -409,6 +423,22 @@ export function extractSessionStats(jsonlPath: string, preloadedContent?: string
         }
       }
 
+      const contextUsage = entry?.context_window?.current_usage;
+      if (contextUsage && typeof contextUsage === 'object') {
+        const hasAnyField =
+          contextUsage.input_tokens !== undefined ||
+          contextUsage.output_tokens !== undefined ||
+          contextUsage.cache_read_input_tokens !== undefined ||
+          contextUsage.cache_creation_input_tokens !== undefined;
+        latestContextUsage = {
+          input: asNumber(contextUsage.input_tokens),
+          output: asNumber(contextUsage.output_tokens),
+          cacheRead: asNumber(contextUsage.cache_read_input_tokens),
+          cacheWrite: asNumber(contextUsage.cache_creation_input_tokens),
+          hasAnyField,
+        };
+      }
+
       if (entry?.type === 'result') {
         const total = asNumber(entry.total_cost_usd);
         const partial = asNumber(entry.cost_usd);
@@ -420,6 +450,23 @@ export function extractSessionStats(jsonlPath: string, preloadedContent?: string
       }
     } catch {
       // Skip malformed lines.
+    }
+  }
+
+  // Prefer latest context window usage snapshot when available.
+  if (latestContextUsage?.hasAnyField) {
+    stats.inputTokens = latestContextUsage.input;
+    stats.outputTokens = latestContextUsage.output;
+    stats.cacheReadTokens = latestContextUsage.cacheRead;
+    stats.cacheWriteTokens = latestContextUsage.cacheWrite;
+    stats.hasUsageField = true;
+    if (
+      latestContextUsage.input > 0 ||
+      latestContextUsage.output > 0 ||
+      latestContextUsage.cacheRead > 0 ||
+      latestContextUsage.cacheWrite > 0
+    ) {
+      stats.hasPositiveUsage = true;
     }
   }
 
@@ -515,6 +562,10 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
         if (block.type === 'tool_use') {
           const toolName = typeof block.name === 'string' ? block.name : 'unknown';
           const inputPreview = toPreview(block.input, 50);
+          const rawCommand =
+            block.input && typeof block.input === 'object' && typeof (block.input as Record<string, unknown>).command === 'string'
+              ? (block.input as Record<string, unknown>).command as string
+              : undefined;
           const phase = detectPhaseForTool(toolName, block.input);
           const node: ExplorationNode = {
             id: `exp_node_${++seq}`,
@@ -523,6 +574,7 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
             status: 'running',
             phase,
             label: `${toolName} ${inputPreview}`.trim(),
+            rawCommand: rawCommand?.trim() || undefined,
             toolCallId: typeof block.id === 'string' ? block.id : undefined
           };
           current.nodes.push(node);
@@ -537,7 +589,8 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
               id: `exp_node_${++seq}`,
               timestamp,
               type: 'response',
-              label: truncate(text, 88)
+              label: truncate(text, 88),
+              rawText: text,
             });
           }
         } else if (block.type === 'thinking' && typeof block.text === 'string') {
@@ -547,7 +600,8 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
               id: `exp_node_${++seq}`,
               timestamp,
               type: 'thinking',
-              label: truncate(text, 88)
+              label: truncate(text, 88),
+              rawText: text,
             });
           }
         }
