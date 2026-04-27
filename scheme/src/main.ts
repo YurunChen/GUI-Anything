@@ -1,4 +1,4 @@
-import { startWebServer } from './ui/server';
+import { startWebServer } from './app/server';
 
 async function main() {
   const args = Bun.argv.slice(2);
@@ -10,7 +10,7 @@ async function main() {
   const prompt = args.filter(a => !a.startsWith('--')).join(' ').trim();
 
   if (isLiveMode || isPostHoc) {
-    const { renderLiveObserver } = await import('./ui/tui/live-observer');
+    const { renderLiveObserver } = await import('./app/ui/live-observer');
     const cwd = process.cwd();
     await renderLiveObserver(cwd);
   } else if (isWebMode) {
@@ -19,10 +19,10 @@ async function main() {
     console.log(`Web API listening on http://localhost:${port}${isFlowMode ? ' (flow mode)' : ''}`);
     await new Promise(() => {});
   } else if ((isObserverMode || isFlowMode) && prompt) {
-    const { renderTUI } = await import('./ui/tui/index');
+    const { renderTUI } = await import('./app/ui/index');
     await renderTUI(prompt, isFlowMode);
   } else if (prompt) {
-    const { renderTUI } = await import('./ui/tui/index');
+    const { renderTUI } = await import('./app/ui/index');
     await renderTUI(prompt, false);
   } else {
     console.log('Usage:');

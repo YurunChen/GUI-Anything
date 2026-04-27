@@ -159,14 +159,16 @@ install_project_deps() {
     exit 1
   fi
 
-  # Clean install if node_modules exists but may be corrupted
-  if [[ -d "node_modules" ]]; then
-    log_warn "Existing node_modules found. Cleaning..."
-    rm -rf node_modules bun.lock
+  if [[ -f "bun.lock" ]]; then
+    log_info "Lockfile detected. Running bun install --frozen-lockfile..."
+    if ! bun install --frozen-lockfile; then
+      log_warn "Frozen lockfile install failed. Falling back to bun install."
+      bun install
+    fi
+  else
+    log_warn "bun.lock not found. Running bun install without frozen lockfile."
+    bun install
   fi
-
-  log_info "Running bun install..."
-  bun install
 
   # Verify OpenTUI is installed
   if [[ ! -d "node_modules/@opentui" ]]; then
@@ -176,6 +178,20 @@ install_project_deps() {
   fi
 
   log_success "Dependencies installed successfully"
+}
+
+# Check Claude Code CLI availability
+check_claude_cli() {
+  log_info "Checking Claude Code CLI..."
+  if command_exists claude; then
+    local claude_version
+    claude_version="$(claude --version 2>/dev/null || true)"
+    log_success "Claude CLI found${claude_version:+: $claude_version}"
+    return 0
+  fi
+
+  log_warn "Claude CLI not found in PATH."
+  log_info "Install Claude Code CLI and ensure 'claude' is available before running flow scripts."
 }
 
 # Set executable permissions
@@ -297,6 +313,8 @@ main() {
   install_bun
   echo ""
   install_project_deps
+  echo ""
+  check_claude_cli
   echo ""
   setup_zellij_env
   echo ""

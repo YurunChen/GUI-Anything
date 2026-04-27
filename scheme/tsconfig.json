@@ -10,10 +10,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "jsx": "react-jsx",
-    "jsxImportSource": "@opentui/react",
-    "paths": {
-      "@protocol/*": ["./vendor/protocol/*"]
-    }
+    "jsxImportSource": "@opentui/react"
   },
   "include": ["src/**/*"]
 }

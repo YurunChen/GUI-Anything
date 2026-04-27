@@ -16,7 +16,8 @@ set -euo pipefail
 
 ROOT_DIR="${FLOW_ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCHEME_DIR="$ROOT_DIR/scheme"
-SNAPSHOT_DIR="${FLOW_SNAPSHOT_DIR:-$ROOT_DIR/.flow-runtime}"
+FLOW_DATA_DIR="${FLOW_DATA_DIR:-$ROOT_DIR/.flow-runtime}"
+SNAPSHOT_DIR="${FLOW_SNAPSHOT_DIR:-$FLOW_DATA_DIR}"
 MODEL=""
 CONTINUE=0
 RESUME=0
@@ -224,10 +225,10 @@ if [[ "$REUSE_SESSION" != "1" && "$CONTINUE" != "1" && "$RESUME" != "1" && -z "$
   zellij kill-session "$SESSION_NAME" >/dev/null 2>&1 || true
 fi
 
-mkdir -p "$SNAPSHOT_DIR"
+mkdir -p "$FLOW_DATA_DIR/layouts"
 # Use SESSION_ID for layout filename; fallback to SESSION_NAME if SESSION_ID is empty
 LAYOUT_BASENAME="${SESSION_ID:-$SESSION_NAME}"
-LAYOUT_FILE="$SNAPSHOT_DIR/zellij-layout-${LAYOUT_BASENAME}.kdl"
+LAYOUT_FILE="$FLOW_DATA_DIR/layouts/zellij-layout-${LAYOUT_BASENAME}.kdl"
 
 # Build Claude command based on session mode
 claude_args=()
