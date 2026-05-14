@@ -5,6 +5,7 @@ import type { CliEventEnvelope, ParseContext } from '../../domain/protocol';
 import { parseClaudeJsonLine } from '../protocol/parser';
 import { ActivityTreeBuilder } from '../../domain/tree-builder';
 import { truncate, toPreview } from '../../utils/string';
+import { reportError } from '../../utils/observability';
 
 // ── Session Discovery (ported from tail-claude parser/session.go + parser/project.go) ──
 
@@ -108,14 +109,6 @@ function discoverSessions(projectDir: string): SessionFile[] {
 export function findLatestSession(cwd: string): string | null {
   const sessionId = process.env.FLOW_SESSION_ID;
 
-  console.error('[findLatestSession] Debug:', {
-    cwd,
-    sessionId,
-    FLOW_PROJECT_DIR: process.env.FLOW_PROJECT_DIR,
-    claudeHome: claudeHome(),
-    projectDir: projectDir(cwd),
-  });
-
   if (sessionId) {
     // Exact session ID match — no fallback to mtime
     const overrideDir = process.env.FLOW_PROJECT_DIR;
@@ -127,7 +120,10 @@ export function findLatestSession(cwd: string): string | null {
         const encoded = encodePath(resolvedOverride);
         dirs.push(path.join(claudeHome(), 'projects', encoded));
       } catch (e) {
-        console.error('[findLatestSession] Error resolving overrideDir:', e);
+        reportError('io', 'failed to resolve FLOW_PROJECT_DIR override', {
+          overrideDir,
+          error: e instanceof Error ? e.message : String(e),
+        });
         // Fallback to cwd-based resolution only if overrideDir fails
         dirs.push(projectDir(cwd));
       }
@@ -136,14 +132,11 @@ export function findLatestSession(cwd: string): string | null {
       dirs.push(projectDir(cwd));
     }
     const uniqueDirs = [...new Set(dirs)];
-    console.error('[findLatestSession] Searching dirs:', uniqueDirs);
     for (const dir of uniqueDirs) {
       const sessionPath = path.join(dir, sessionId + '.jsonl');
-      console.error('[findLatestSession] Checking:', sessionPath, 'exists:', fs.existsSync(sessionPath));
       if (fs.existsSync(sessionPath)) return sessionPath;
     }
     // File not yet created — return null, caller will retry on next poll tick
-    console.error('[findLatestSession] Session not found in any dir');
     return null;
   }
 

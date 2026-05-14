@@ -1,9 +1,9 @@
 /**
- * Summary layout utilities - 文本布局计算工具
- * 被 SummaryPanel 和测试共享
+ * Summary layout utilities - text layout helpers.
+ * Shared by `SummaryPanel` and tests.
  */
 
-/** 字符显示宽度：CJK 字符算 2 个宽度 */
+/** Character display width: CJK chars count as width 2. */
 export function charDisplayWidth(ch: string): number {
   const code = ch.codePointAt(0) ?? 0;
   if (
@@ -20,7 +20,7 @@ export function charDisplayWidth(ch: string): number {
   return 1;
 }
 
-/** 计算整行的显示宽度 */
+/** Calculate display width of one line. */
 export function lineDisplayWidth(line: string): number {
   let width = 0;
   for (const ch of line) {
@@ -29,14 +29,14 @@ export function lineDisplayWidth(line: string): number {
   return width;
 }
 
-/** 计算 summary 文本可用列数 */
+/** Calculate available columns for summary text. */
 export function summaryTextColumns(availableWidth: number): number {
   // Parent row + scrollbox padding + summary box padding + left border.
   const RESERVED_COLUMNS = 8;
   return Math.max(20, availableWidth - RESERVED_COLUMNS);
 }
 
-/** 文本折行计算 */
+/** Wrap text by display width. */
 export function wrapDisplayLines(value: string, columns: number): string[] {
   const safeColumns = Math.max(1, columns);
   const output: string[] = [];
@@ -66,7 +66,7 @@ export function wrapDisplayLines(value: string, columns: number): string[] {
   return output.length > 0 ? output : [''];
 }
 
-/** 计算 textarea 需要的高度 */
+/** Calculate textarea height. */
 export function summaryTextareaHeight(value: string, availableWidth: number): number {
   return wrapDisplayLines(value, summaryTextColumns(availableWidth)).length;
 }

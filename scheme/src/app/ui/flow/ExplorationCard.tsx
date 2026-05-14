@@ -1,6 +1,6 @@
 /**
- * ExplorationCard - 单个 exploration 的状态卡片
- * 属于 "Now" 区块的列表项
+ * ExplorationCard - status card for one exploration.
+ * Used as a list item in the "Now" section.
  */
 
 import type { ReactNode } from 'react';
@@ -30,13 +30,13 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     availableWidth,
   } = props;
 
-  // 统计信息
+  // Stats
   const toolNodes = exploration.nodes.filter((node: ExplorationNode) => node.type === 'tool');
   const errorNodes = exploration.nodes.filter(
     (node: ExplorationNode) => node.status === 'error' || node.type === 'error'
   );
 
-  // 工具使用统计
+  // Tool usage stats
   const toolCounts = new Map<string, number>();
   for (const node of toolNodes) {
     const toolName = node.label.split(' ')[0] || 'unknown';
@@ -48,7 +48,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     .map(([name, count]) => `${truncate(name, 14)}×${count}`)
     .join('  ');
 
-  // 状态样式
+  // Status style
   const statusInfo = getStatusInfo(exploration.status);
 
   return (
@@ -64,7 +64,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
         backgroundColor: colors.bg.primary,
       }}
     >
-      {/* 标题行：Exploration 序号 + 状态 */}
+      {/* Title row: exploration index + status */}
       <box style={{ flexDirection: 'row' }}>
         <text>
           <span fg={isActive ? colors.accent.tertiary : colors.accent.primary}>
@@ -75,7 +75,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
         </text>
       </box>
 
-      {/* 问题文本 */}
+      {/* Question text */}
       <text>
         <span fg={colors.fg.secondary}>{'└─ '}</span>
         <span fg={colors.fg.secondary}>
@@ -83,7 +83,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
         </span>
       </text>
 
-      {/* 工具统计行 */}
+      {/* Tool stats row */}
       <box style={{ flexDirection: 'row', paddingLeft: 2 }}>
         <text>
           <span fg={colors.status.info}>{`Tools ${padNum(toolNodes.length, 3)}`}</span>
@@ -108,7 +108,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
   );
 });
 
-// -------- 辅助函数 --------
+// -------- Helpers --------
 
 function getStatusInfo(status: Exploration['status']): { badge: string; color: string } {
   switch (status) {

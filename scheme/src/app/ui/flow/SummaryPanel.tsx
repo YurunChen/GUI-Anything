@@ -1,6 +1,6 @@
 /**
- * SummaryPanel - 显示 exploration summary + provenance 轻提示
- * 属于 "Learned" 区块的核心组件
+ * SummaryPanel - renders exploration summary with lightweight provenance context.
+ * Core component in the "Learned" section.
  */
 
 import type { ReactNode } from 'react';
@@ -62,7 +62,7 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
   );
 });
 
-// -------- 辅助函数 --------
+// -------- Helpers --------
 
 /** Calculate textarea height (number of lines) */
 function calculateTextareaHeight(value: string, availableWidth: number): number {

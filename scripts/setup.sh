@@ -231,7 +231,7 @@ verify_installation() {
 install_claude_skill() {
   log_info "Installing Claude Code skill..."
 
-  SKILL_SOURCE="$ROOT_DIR/scripts/flow-hooks/skills/flow/SKILL.md"
+  SKILL_SOURCE="$ROOT_DIR/docs/skills/flow/SKILL.md"
   SKILL_TARGET="${HOME}/.claude/skills/flow/SKILL.md"
 
   if [[ ! -f "$SKILL_SOURCE" ]]; then

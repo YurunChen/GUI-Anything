@@ -16,11 +16,12 @@ Three core principles guide every design decision:
 
 | Directory | Purpose |
 |-----------|---------|
+| `cli/` | **Public CLI entrypoint** — `ga flow` and `ga doctor` |
 | `scheme/` | **Flow observer implementation** — OpenTUI-based real-time observer for Claude Code sessions |
-| `scripts/` | **Utility scripts** — `flow-run.sh` for dual-pane launch, skill definitions |
+| `scripts/` | **Runtime scripts** — tmux/zellij launchers and helper tooling |
 | `reference/` | **Reference implementations** — OpenTUI, tail-claude, and other UI patterns |
-| `docs/` | **Documentation** — Protocol specs and design docs |
-| `protocol/` | **Normative protocols** — cli-event and ui-surface protocol definitions |
+| `docs/` | **Documentation** — protocol specs, design docs, release checklist |
+| `wiki/` | **Local runtime knowledge data** — knowledge base, evidence, runtime cache, notes (gitignored) |
 
 ## Mental Model: Run / Capture / Guide
 
@@ -46,6 +47,35 @@ Flow Observer organizes work into three layers:
 ```
 
 Each layer has clear boundaries and contracts — see [Architecture Boundaries](#architecture-boundaries).
+
+## Commercial CLI (ga)
+
+Use `ga` as the only public entrypoint for flow sessions.
+
+### Install
+
+```bash
+# one-off
+npx gui-anything@latest doctor
+
+# global
+npm i -g gui-anything
+```
+
+### Quickstart
+
+```bash
+ga doctor
+ga flow
+```
+
+Supported external commands:
+- `ga flow`
+- `ga flow --continue`
+- `ga flow --resume`
+- `ga flow --resume <sessionId>`
+- `ga flow --model <model>`
+- `ga doctor`
 
 ## Installation
 
@@ -213,14 +243,13 @@ ls node_modules/@opentui  # Should show core and react
 
 ### 3. Verify Installation
 
-Run the observer directly to ensure everything works:
+Verify CLI entrypoint is available:
 
 ```bash
-cd scheme
-bun run src/main.ts --help
+ga doctor
 ```
 
-If you see usage information, the installation is successful.
+If checks pass (or only non-blocking warnings appear), installation is successful.
 
 ## Launch Matrix: tmux vs Zellij
 
@@ -248,51 +277,54 @@ Flow supports three session modes (tmux and zellij):
 
 ## Quick Start
 
-### Start Flow Mode (Dual Pane)
+### Start Flow Mode (Recommended)
 
 From repo root:
 
 ```bash
-./scripts/flow-run.sh
+ga doctor
+ga flow
 ```
 
-This creates a tmux session (`flow-main` by default) with:
+This launches the dual-pane flow session:
 - **Left pane**: Native Claude Code interactive TUI
-- **Right pane**: Live observer polling the same session JSONL
+- **Right pane**: Flow timeline UI
 
 ### Continue Previous Session
 
 ```bash
-./scripts/flow-run.sh --continue
+ga flow --continue
 ```
 
-Resumes your last Claude Code session in the current directory. Observer auto-discovers the session file by mtime.
+Resumes your latest Claude Code session in the current project context.
 
 ### Resume Specific Session
 
 ```bash
-./scripts/flow-run.sh --resume <session-id>
+ga flow --resume <session-id>
 ```
 
-### Start Flow Mode with Zellij (Current Terminal Split, Optional)
+### Resume via Native Picker
 
 ```bash
+ga flow --resume
+```
+
+### Specify Model
+
+```bash
+ga flow --model sonnet
+ga flow --model opus "Analyze codebase structure"
+```
+
+### Legacy Script Entrypoints (Maintainers)
+
+The following script-based launchers remain available for maintainers and internal debugging:
+
+```bash
+./scripts/flow-run.sh
 ./scripts/flow-run-zellij.sh
 ```
-
-This starts a named Zellij session and opens:
-- **Left pane**: Claude Code
-- **Right pane**: Live observer
-
-Useful options:
-
-```bash
-./scripts/flow-run-zellij.sh -m sonnet
-FLOW_ZELLIJ_SESSION=flow-main FLOW_ZELLIJ_REUSE=1 ./scripts/flow-run-zellij.sh
-```
-
-By default, this script now creates a unique session name each run.
-If you prefer a fixed session, set `FLOW_ZELLIJ_SESSION`.
 
 ### Controls
 
@@ -321,19 +353,19 @@ If you prefer a fixed session, set `FLOW_ZELLIJ_SESSION`.
 
 **Basic start:**
 ```bash
-./scripts/flow-run.sh
+ga flow
 ```
 
 **With initial prompt:**
 ```bash
-./scripts/flow-run.sh "Refactor auth middleware to use JWT"
+ga flow "Refactor auth middleware to use JWT"
 ```
 
 **Specify model:**
 ```bash
-./scripts/flow-run.sh -m sonnet
-./scripts/flow-run.sh -m opus "Analyze codebase structure"
-./scripts/flow-run.sh -m qwen3.6-plus "Summarize this project"
+ga flow --model sonnet
+ga flow --model opus "Analyze codebase structure"
+ga flow --model qwen3.6-plus "Summarize this project"
 ```
 
 **Debug mode (preserve session after exit):**
@@ -349,7 +381,7 @@ Install the Flow skill to enable natural language workflow control in Claude Cod
 
 ```bash
 mkdir -p ~/.claude/skills/flow
-cp scripts/flow-hooks/skills/flow/SKILL.md ~/.claude/skills/flow/SKILL.md
+cp docs/skills/flow/SKILL.md ~/.claude/skills/flow/SKILL.md
 ```
 
 ### Verify
@@ -407,16 +439,14 @@ Default is backend-aware: tmux sessions default to `tmux`, zellij to `clipboard`
 
 | Mode | Command | Description |
 |------|---------|-------------|
-| **Live** | `bun run src/main.ts --live` | Poll existing Claude session |
 | **Direct** | `bun run src/main.ts "<prompt>"` | One-shot TUI run |
 | **Flow** | `bun run src/main.ts --flow "<prompt>"` | Flow observer mode |
-| **Observer** | `bun run src/main.ts --observer "<prompt>"` | OpenTUI observer with stream |
 | **Posthoc** | `bun run src/main.ts --posthoc [path]` | Analyze finished session |
 | **Web API** | `bun run src/main.ts --web` | HTTP server at `:3000` |
 
 ## Architecture Boundaries
 
-Flow is organized into layers with strict dependency directions (single-source-of-truth for each concern):
+Flow is organized into layers with strict dependency directions (single source of truth per concern):
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -426,9 +456,12 @@ Flow is organized into layers with strict dependency directions (single-source-o
 │  └── DO NOT implement session selection logic                │
 ├────────────────────────────────────────────────────────────┤
 │  scheme/src/                                                 │
-│  ├── ui/tui/      → Layout, hotkeys, state-driven rendering  │
-│  ├── runtime/     → Disk I/O, parsing, search, persist       │
-│  └── core/        → Types, AI contracts, pure logic          │
+│  ├── app/        → UI and app composition                    │
+│  ├── services/   → AI/session/wiki orchestration logic       │
+│  ├── data/       → repository + protocol + env adapters      │
+│  ├── domain/     → pure domain models and tree logic         │
+│  ├── constants/  → stable config/constants                   │
+│  └── utils/      → shared pure utilities                     │
 ├────────────────────────────────────────────────────────────┤
 │  External Truth Sources                                      │
 │  ├── Claude session JSONL (Claude Code writes)               │
@@ -441,20 +474,40 @@ Flow is organized into layers with strict dependency directions (single-source-o
 
 | Layer | Can Import | Cannot |
 |-------|------------|--------|
-| `ui/tui/` | `runtime/*`, `core/*`, `@opentui/*` | Direct `execSync` for inject (use inject module) |
-| `runtime/` | `core/*`, `node:*` | `@opentui/*`, React |
-| `core/` | `node:*` only | UI or runtime concerns |
-| Shell | N/A (bash) | Implement "latest session" selection (use TS) |
+| `app/` | `services/*`, `data/protocol/*`, `domain/*`, `constants/*`, `utils/*`, UI libs | direct file persistence logic |
+| `services/` | `data/*`, `domain/*`, `constants/*`, `utils/*` | UI component code |
+| `data/` | `domain/*`, `constants/*`, `utils/*`, `node:*` | React/OpenTUI imports |
+| `domain/` | `constants/*`, `utils/*` | `app/*`, `services/*`, `data/*` |
+| Shell scripts | N/A (bash) | duplicate parser/repository logic already in TS layers |
 
 ### Contracts (Source of Truth)
 
 | Contract | Location | Consumers |
 |----------|----------|-----------|
-| Wiki schema | `wiki/00-meta/schema.md` | `wiki-auto-extractor.ts`, UI display |
-| Summary JSON shape | `scheme/src/core/flow-summaries.ts` | Generator, UI, Wiki staging |
+| Summary JSON shape | `scheme/src/services/ai/flow-summaries.ts` | summary generation, UI rendering, wiki persistence |
+| Wiki storage structure | `docs/data-governance/data-flow.md` | `services/wiki/*`, `services/ai/summary-cache.ts`, observer hooks |
 | Environment vars | This README table | `flow-run.sh`, `flow-run-zellij.sh`, observer |
 
 Changes to contracts must update all consumers and this documentation.
+
+## Code and Data Governance Rules
+
+### Code Classification Rules
+
+- UI rendering and keyboard behavior stay in `scheme/src/app/`.
+- Business orchestration stays in `scheme/src/services/`.
+- File/protocol/env adapters stay in `scheme/src/data/`.
+- Pure models and flow logic stay in `scheme/src/domain/`.
+- Cross-cutting constants and helpers stay in `scheme/src/constants/` and `scheme/src/utils/`.
+- Avoid cross-layer shortcuts (for example, app code writing wiki files directly).
+
+### Data Management Rules
+
+- `wiki/evidence/{sessionId}.json` is the session evidence source.
+- `wiki/runtime/{sessionId}-summaries.json` is transient AI summary cache.
+- `wiki/knowledge-base/{type}/` holds long-lived knowledge entries.
+- `.flow-runtime/` is for runtime layout/snapshot artifacts, not wiki knowledge.
+- `wiki/` and `.flow-runtime/` are local runtime data and should stay out of Git.
 
 ## Troubleshooting
 
@@ -484,6 +537,17 @@ Then run:
 ./scripts/flow-run-zellij.sh
 ```
 
+### `ga doctor` failure matrix
+
+| Check | Meaning | How to fix |
+|------|---------|------------|
+| Claude CLI | `claude` is missing from `PATH` | Install Claude Code CLI and confirm `claude --version` works |
+| Claude auth readiness | Login artifacts are missing | Run `claude` once and finish authentication |
+| Bun runtime | `bun` is missing from `PATH` | Install Bun from [bun.sh](https://bun.sh) |
+| Terminal backend | Neither zellij nor tmux is available | Install zellij (preferred) or tmux |
+| Writable wiki directory | `wiki/` is not writable | Fix directory permissions |
+| Writable flow runtime directory | `.flow-runtime/` is not writable | Fix directory permissions |
+
 ### Scrollback shows duplicated conversation
 
 This is tmux TUI redraw residue. Fix:
@@ -502,7 +566,7 @@ tmux ls
 tmux ls | awk -F: '/^flow/{print $1}' | xargs -I{} tmux kill-session -t {}
 
 # Check for orphan processes
-ps aux | awk '/claude --session-id|src\/main\.ts --live|flow-run\.sh/ && !/awk/'
+ps aux | awk '/claude --session-id|flow-run\.sh|flow-run-zellij\.sh/ && !/awk/'
 
 # Kill specific PID if needed
 kill <PID>

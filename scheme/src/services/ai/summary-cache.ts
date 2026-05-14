@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SessionId, ExplorationId, SummaryItem, WikiPersistMeta } from '../../data/protocol/observer-protocol';
+import { resolveWikiRoot } from '../../data/env';
 
 export interface CachedSummary {
   text: string;
@@ -29,21 +30,9 @@ export interface CacheLoadResult {
   reason: string;
 }
 
-// Use wiki/runtime/summaries as the cache directory (separate from evidence)
-function getWikiRoot(): string {
-  const projectRoot = process.env.FLOW_PROJECT_DIR || process.env.FLOW_ROOT_DIR;
-  if (projectRoot) {
-    return path.join(projectRoot, 'wiki');
-  }
-  const cwdWiki = path.join(process.cwd(), 'wiki');
-  if (fs.existsSync(cwdWiki)) return cwdWiki;
-  const parentWiki = path.join(process.cwd(), '..', 'wiki');
-  if (fs.existsSync(parentWiki)) return parentWiki;
-  return cwdWiki;
-}
-
 function getCacheDir(): string {
-  return path.join(getWikiRoot(), 'runtime');
+  // Use wiki/runtime for AI summary cache; wiki root is resolved by centralized env rules.
+  return path.join(resolveWikiRoot(), 'runtime');
 }
 
 function getCacheFilePath(sessionId: string): string {

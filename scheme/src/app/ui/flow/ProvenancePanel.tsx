@@ -1,10 +1,10 @@
 /**
- * ProvenancePanel - 用户可理解的数据血缘展示
- * 
- * 展示：
- * - summary 从哪来（实时生成/缓存/知识库/降级）
- * - wiki 保存状态及原因
- * - 生成耗时（如果有）
+ * ProvenancePanel - user-readable data lineage display.
+ *
+ * Shows:
+ * - summary origin (live/cache/wiki/fallback)
+ * - wiki persistence status and reason
+ * - timing info (when available)
  */
 
 import type { ReactNode } from 'react';
@@ -14,7 +14,7 @@ import type { HumanReadableProvenance } from '../../../services/ai/provenance-se
 
 interface ProvenancePanelProps {
   provenance: HumanReadableProvenance;
-  /** 是否紧凑模式（只显示一行） */
+  /** Compact mode (single line). */
   compact?: boolean;
 }
 
@@ -24,11 +24,11 @@ export const ProvenancePanel = memo(function ProvenancePanel(
   const { provenance, compact = false } = props;
   const { summarySource, summaryDetail, wikiStatus, wikiDetail } = provenance;
 
-  // 紧凑模式：一行展示
+  // Compact mode: single-line rendering.
   if (compact) {
     return (
       <text fg={colors.fg.muted}>
-        <span>{'─ 来源: '}</span>
+        <span>{'─ Source: '}</span>
         <span fg={getSourceColor(summarySource)}>{summarySource}</span>
         {summaryDetail && <span>{` (${summaryDetail})`}</span>}
         {wikiStatus && (
@@ -41,7 +41,7 @@ export const ProvenancePanel = memo(function ProvenancePanel(
     );
   }
 
-  // 完整模式：多行展示
+  // Full mode: multi-line rendering.
   return (
     <box
       style={{
@@ -50,16 +50,16 @@ export const ProvenancePanel = memo(function ProvenancePanel(
         paddingLeft: 2,
       }}
     >
-      {/* Summary 来源行 */}
+      {/* Summary source row */}
       <text>
-        <span fg={colors.fg.dim}>{'─ 来源: '}</span>
+        <span fg={colors.fg.dim}>{'─ Source: '}</span>
         <span fg={getSourceColor(summarySource)}>{summarySource}</span>
         {summaryDetail && (
           <span fg={colors.fg.muted}>{` (${summaryDetail})`}</span>
         )}
       </text>
 
-      {/* Wiki 状态行（如果有） */}
+      {/* Wiki status row (if available). */}
       {wikiStatus && (
         <text>
           <span fg={colors.fg.dim}>{'─ Wiki: '}</span>
@@ -73,20 +73,20 @@ export const ProvenancePanel = memo(function ProvenancePanel(
   );
 });
 
-/** 根据来源获取颜色 */
+/** Select color for source label. */
 function getSourceColor(source: string): string {
-  if (source.includes('实时生成')) return colors.accent.primary;
-  if (source.includes('缓存')) return colors.status.info;
-  if (source.includes('知识库')) return colors.status.success;
-  if (source.includes('降级')) return colors.status.warning;
+  if (source.toLowerCase().includes('live') || source.includes('实时生成')) return colors.accent.primary;
+  if (source.toLowerCase().includes('cache') || source.includes('缓存')) return colors.status.info;
+  if (source.toLowerCase().includes('wiki') || source.includes('知识库')) return colors.status.success;
+  if (source.toLowerCase().includes('fallback') || source.includes('降级')) return colors.status.warning;
   return colors.fg.secondary;
 }
 
-/** 根据 Wiki 状态获取颜色 */
+/** Select color for wiki status label. */
 function getWikiColor(status: string): string {
-  if (status.includes('已保存')) return colors.status.success;
-  if (status.includes('已跳过')) return colors.fg.muted;
-  if (status.includes('失败')) return colors.status.error;
-  if (status.includes('中')) return colors.status.info;
+  if (status.toLowerCase().includes('saved') || status.includes('已保存')) return colors.status.success;
+  if (status.toLowerCase().includes('skipped') || status.includes('已跳过')) return colors.fg.muted;
+  if (status.toLowerCase().includes('fail') || status.includes('失败')) return colors.status.error;
+  if (status.toLowerCase().includes('pending') || status.includes('中')) return colors.status.info;
   return colors.fg.secondary;
 }

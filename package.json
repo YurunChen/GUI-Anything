@@ -1,0 +1,27 @@
+{
+  "name": "gui-anything",
+  "version": "0.1.0",
+  "description": "Commercial CLI wrapper for GUI-Anything flow sessions.",
+  "type": "module",
+  "private": false,
+  "bin": {
+    "ga": "./cli/ga.mjs"
+  },
+  "files": [
+    "cli",
+    "scripts",
+    "scheme",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node --test cli/**/*.test.mjs",
+    "smoke": "node ./cli/ga.mjs --help",
+    "verify": "npm run test && npm run smoke",
+    "release:dry-run": "npm pack --dry-run",
+    "release:publish": "npm publish --access public"
+  },
+  "license": "MIT"
+}

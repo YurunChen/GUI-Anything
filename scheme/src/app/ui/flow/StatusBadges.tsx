@@ -1,6 +1,6 @@
 /**
- * StatusBadges - 轻量 provenance 标签组件
- * 显示 summary source、wiki persist status、cache status
+ * StatusBadges - lightweight provenance badge components.
+ * Displays summary source, wiki persistence status, and cache status.
  */
 
 import type { ReactNode } from 'react';
@@ -12,12 +12,12 @@ interface SourceBadgeProps {
   reason?: string;
 }
 
-/** Summary 来源标签：CACHE / WIKI / AI / FALLBACK
- * 注意：返回的是 <span> 数组，必须在父组件的 <text> 中渲染
+/** Summary source badge: CACHE / WIKI / AI / FALLBACK
+ * Note: returns a <span>, must be rendered inside a parent <text>.
  */
 export function SourceBadge({ source, reason }: SourceBadgeProps): ReactNode {
   const { text, fg } = formatSource(source, reason);
-  // 返回 fragment 包含 span，调用方必须包裹在 <text> 中
+  // Caller must wrap this in <text>.
   return <span fg={fg}>{text}</span>;
 }
 
@@ -26,7 +26,7 @@ interface PersistBadgeProps {
   result?: PersistResult;
 }
 
-/** Wiki 持久化状态标签 */
+/** Wiki persistence status badge. */
 export function PersistBadge({ status, result }: PersistBadgeProps): ReactNode {
   if (!status) return null;
 
@@ -39,7 +39,7 @@ interface CacheBadgeProps {
   reason?: string;
 }
 
-/** Cache 状态标签（通常只在 header 或调试模式显示） */
+/** Cache status badge (typically shown in header/debug view). */
 export function CacheBadge({ status, reason }: CacheBadgeProps): ReactNode {
   if (!status) return null;
 
@@ -47,12 +47,12 @@ export function CacheBadge({ status, reason }: CacheBadgeProps): ReactNode {
   return <span fg={fg}>{text}</span>;
 }
 
-// -------- 格式化辅助函数 --------
+// -------- Formatting helpers --------
 
 function formatSource(source: SummaryItem['source'], reason?: string): { text: string; fg: string } {
   switch (source) {
     case 'cache': {
-      // 从 reason 解析原始来源，如 "from_ai" -> "CACHE[ai]"
+      // Parse original source from reason, e.g. "from_ai" -> "CACHE[ai]".
       const origin = reason?.startsWith('from_') ? reason.slice(5) : '';
       const text = origin ? `CACHE[${origin}]` : 'CACHE';
       return { text, fg: colors.status.info };
@@ -62,7 +62,7 @@ function formatSource(source: SummaryItem['source'], reason?: string): { text: s
     case 'ai':
       return { text: 'AI', fg: colors.accent.primary };
     case 'fallback': {
-      // 简要显示失败原因
+      // Show compact failure hint.
       const hint = reason ? `[${truncate(reason, 10)}]` : '';
       return { text: `FALLBACK${hint}`, fg: colors.status.warning };
     }
@@ -77,7 +77,7 @@ function formatPersist(
     case 'saved':
       return { text: 'Wiki SAVED', fg: colors.status.success };
     case 'skipped': {
-      // 映射内部 reason 到简短显示
+      // Map internal reason to a short UI label.
       const shortReason = formatSkipReason(reason);
       return { text: `Wiki SKIP[${shortReason}]`, fg: colors.fg.muted };
     }
@@ -115,12 +115,12 @@ function formatSkipReason(reason?: string): string {
     'already_persisted': 'exists',
   };
   
-  // 检查是否是已知的简短 reason
+  // Check known reason aliases.
   for (const [key, value] of Object.entries(reasonMap)) {
     if (reason.includes(key)) return value;
   }
   
-  // 否则截断显示
+  // Otherwise truncate.
   return truncate(reason, 8);
 }
 

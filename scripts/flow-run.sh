@@ -4,6 +4,7 @@
 # Usage:
 #   ./scripts/flow-run.sh              # interactive Claude + live observer (new session)
 #   ./scripts/flow-run.sh --continue     # continue last Claude session
+#   ./scripts/flow-run.sh --resume       # resume via native picker
 #   ./scripts/flow-run.sh --resume ID    # resume specific session ID
 #   ./scripts/flow-run.sh "Summarize"    # run with prompt + live observer
 #   ./scripts/flow-run.sh -m sonnet      # specify model
@@ -23,6 +24,7 @@ MODEL=""
 PROMPT=""
 DETACH=0
 CONTINUE=0
+RESUME=0
 RESUME_ID=""
 
 while [[ $# -gt 0 ]]; do
@@ -30,14 +32,23 @@ while [[ $# -gt 0 ]]; do
     -m|--model) MODEL="$2"; shift 2 ;;
     --detach) DETACH=1; shift ;;
     --continue) CONTINUE=1; shift ;;
-    --resume) RESUME_ID="$2"; shift 2 ;;
+    --resume)
+      RESUME=1
+      if [[ -n "${2:-}" && ! "${2:-}" =~ ^- ]]; then
+        RESUME_ID="$2"
+        shift 2
+      else
+        RESUME_ID=""
+        shift
+      fi
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS] [PROMPT]"
       echo ""
       echo "Session Modes:"
       echo "  (none)               Start new session (default)"
       echo "  --continue           Continue last Claude session (uses mtime)"
-      echo "  --resume ID          Resume specific session ID"
+      echo "  --resume [ID]        Resume with native picker or specific session ID"
       echo ""
       echo "Options:"
       echo "  -m, --model MODEL    Specify Claude model (sonnet, opus, etc.)"
@@ -82,16 +93,24 @@ CLEAR_PANES="${FLOW_CLEAR_PANES:-1}"
 CLEAR_HISTORY="${FLOW_CLEAR_HISTORY:-1}"
 TMUX_HISTORY_LIMIT="${FLOW_TMUX_HISTORY_LIMIT:-5000}"
 SNAPSHOT_DIR="${FLOW_SNAPSHOT_DIR:-$ROOT_DIR/.flow-runtime}"
+RESUME_PICKER=0
+if [[ "$RESUME" == "1" && -z "$RESUME_ID" ]]; then
+  RESUME_PICKER=1
+fi
 
 # Determine session mode and ID
-if [[ -n "$RESUME_ID" ]]; then
-  # Resume specific session
-  SESSION_ID="$RESUME_ID"
-  echo "[flow-run] Resuming session: $SESSION_ID"
-elif [[ "$CONTINUE" == "1" ]]; then
+if [[ "$CONTINUE" == "1" ]]; then
   # Continue last session - don't kill existing, observer will auto-discover
   SESSION_ID=""
   echo "[flow-run] Continue mode: observer will auto-discover latest session"
+elif [[ "$RESUME_PICKER" == "1" ]]; then
+  # Resume picker mode (no explicit ID)
+  SESSION_ID=""
+  echo "[flow-run] Resume mode: using Claude native picker"
+elif [[ -n "$RESUME_ID" ]]; then
+  # Resume specific session
+  SESSION_ID="$RESUME_ID"
+  echo "[flow-run] Resuming session: $SESSION_ID"
 else
   # New session (default)
   SESSION_ID="$(uuidgen | tr 'A-Z' 'a-z')"
@@ -122,7 +141,10 @@ if [[ -n "$MODEL" ]]; then
 fi
 
 # Build Claude command based on session mode
-if [[ -n "$RESUME_ID" ]]; then
+if [[ "$RESUME_PICKER" == "1" ]]; then
+  # Resume picker mode
+  tmux send-keys -t "$SESSION_NAME:0" "claude $MODEL_FLAG --resume ${PROMPT:+\"$PROMPT\"}" Enter
+elif [[ -n "$RESUME_ID" ]]; then
   # Resume specific session
   tmux send-keys -t "$SESSION_NAME:0" "claude $MODEL_FLAG --resume $SESSION_ID ${PROMPT:+"\"$PROMPT\""}" Enter
 elif [[ "$CONTINUE" == "1" ]]; then
@@ -136,10 +158,10 @@ fi
 # Right pane: live observer (polls session JSONL)
 # For continue mode: don't set FLOW_SESSION_ID (observer auto-discovers by mtime)
 # For new/resume mode: set exact SESSION_ID to avoid stale session
-if [[ "$CONTINUE" == "1" ]]; then
-  FLOW_SESSION_ID="" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+if [[ "$CONTINUE" == "1" || "$RESUME_PICKER" == "1" ]]; then
+  FLOW_SESSION_ID="" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
 else
-  FLOW_SESSION_ID="$SESSION_ID" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+  FLOW_SESSION_ID="$SESSION_ID" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
 fi
 
 if [[ "$CLEAR_PANES" == "1" ]]; then
@@ -148,12 +170,12 @@ fi
 tmux send-keys -t "$SESSION_NAME:0.1" "mkdir -p \"$SNAPSHOT_DIR\"" Enter
 
 # Observer command based on mode
-if [[ "$CONTINUE" == "1" ]]; then
+if [[ "$CONTINUE" == "1" || "$RESUME_PICKER" == "1" ]]; then
   # Continue mode: only PROJECT_DIR, no SESSION_ID (auto-discovery)
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 else
   # New/resume mode: explicit SESSION_ID
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 fi
 
 # Label panes

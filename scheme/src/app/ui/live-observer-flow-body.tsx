@@ -1,15 +1,15 @@
 /**
- * LiveObserverFlowBody - 三段式心流面板
- * 
+ * LiveObserverFlowBody - three-section flow panel.
+ *
  * Layout:
- *   Now      - exploration 列表（状态、工具统计）
- *   Learned  - summary + provenance（每个 exploration 内嵌）
- *   Next     - directions + wiki match（底部或侧边）
+ *   Now      - exploration list (status, tool stats)
+ *   Learned  - summary + provenance (embedded per exploration)
+ *   Next     - suggestions + wiki match (bottom/side)
  */
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import type { Exploration, CacheLoadStatus } from '../../data/protocol/observer-protocol';
+import type { Exploration, CacheLoadStatus, PersistResult, SummaryItem } from '../../data/protocol/observer-protocol';
 import type { PotentialDirection } from '../../services/ai/flow-summaries';
 import { colors } from './theme';
 import { ExplorationCard } from './flow/ExplorationCard';
@@ -18,6 +18,7 @@ import { CacheBadge } from './flow/StatusBadges';
 export type LiveObserverFlowBodyProps = {
   explorations: Exploration[];
   summaries: Record<string, string>;
+  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
   directionsMessage: string;
@@ -28,6 +29,9 @@ export type LiveObserverFlowBodyProps = {
   cacheStatus?: CacheLoadStatus | null;
   /** Cache reason/description */
   cacheReason?: string;
+  summarySources?: Record<string, SummaryItem['source']>;
+  summaryReasons?: Record<string, string>;
+  persistResults?: Record<string, PersistResult>;
 };
 
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
@@ -49,7 +53,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     return <text fg={colors.fg.muted}>Waiting for explorations...</text>;
   }
 
-  // 找到最新的 running exploration（用于高亮）
+  // Find the latest running exploration (for highlight).
   let latestRunningIdx = -1;
   for (let i = explorations.length - 1; i >= 0; i--) {
     if (explorations[i].status === 'running') {
@@ -60,7 +64,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
 
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
-      {/* ========== NOW 区块：当前 exploration 列表 ========== */}
+      {/* NOW: exploration list */}
       <box style={{ width: '100%', flexDirection: 'column' }}>
         {cacheStatus && (
           <text fg={colors.fg.dim}>
@@ -89,7 +93,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
         })}
       </box>
 
-      {/* ========== NEXT 区块：方向建议（轻提示，不打断） ========== */}
+      {/* NEXT: lightweight suggestions */}
       <NextPanel
         status={directionsStatus}
         message={directionsMessage}
@@ -99,7 +103,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   );
 });
 
-// -------- Next 区块组件 --------
+// -------- Next section component --------
 
 interface NextPanelProps {
   status: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
@@ -110,7 +114,7 @@ interface NextPanelProps {
 function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'idle') return null;
 
-  // 轻提示样式：不占用过多空间，默认折叠感
+  // Lightweight style: small footprint, low interruption.
   const panelStyle = {
     width: '100%' as const,
     flexDirection: 'column' as const,
@@ -133,8 +137,8 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'insufficient') {
     return (
       <box style={panelStyle}>
-        <text fg={colors.status.warning}>Next: 证据不足</text>
-        <text fg={colors.fg.secondary}>{message || '继续探索以获取建议'}</text>
+        <text fg={colors.status.warning}>Next: insufficient evidence</text>
+        <text fg={colors.fg.secondary}>{message || 'Continue exploring to unlock suggestions.'}</text>
       </box>
     );
   }
@@ -142,7 +146,7 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'error') {
     return (
       <box style={panelStyle}>
-        <text fg={colors.status.error}>Next: 建议生成失败</text>
+        <text fg={colors.status.error}>Next: failed to generate suggestions</text>
       </box>
     );
   }
@@ -162,12 +166,12 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   );
 }
 
-// -------- 辅助函数 --------
+// -------- Helpers --------
 
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 1)}…`;
 }
 
-// 保留导出，供测试使用
+// Keep exports for tests.
 export { lineDisplayWidth, wrapDisplayLines } from './flow/summary-layout';

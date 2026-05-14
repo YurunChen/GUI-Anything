@@ -6,8 +6,12 @@
   "scripts": {
     "dev": "bun run src/main.ts -- \"Summarize this project\"",
     "start": "bun run src/main.ts --",
+    "start:live": "bun run src/main.ts --live",
     "web": "bun run src/main.ts --web",
-    "observer": "bun run src/main.ts --observer"
+    "observer": "bun run src/main.ts --observer",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit",
+    "build": "bunx tsc -p tsconfig.json"
   },
   "dependencies": {
     "@opentui/core": "0.1.72",

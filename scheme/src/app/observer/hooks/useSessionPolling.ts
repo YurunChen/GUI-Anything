@@ -6,6 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ActivityTree } from '../../../domain/types';
 import type { Exploration } from '../../../data/protocol/observer-protocol';
 import { PollingObserverSessionService } from '../../../services/session/observer-session-service';
+import { reportError } from '../../../utils/observability';
 
 interface SessionData {
   sessionPath: string;
@@ -26,17 +27,6 @@ export function useSessionPolling(cwd: string, explicitSessionId?: string) {
     runtimeModel: 'unknown',
   });
 
-  // Debug: log environment
-  useEffect(() => {
-    console.error('[useSessionPolling] Debug:', {
-      cwd,
-      explicitSessionId,
-      FLOW_PROJECT_DIR: process.env.FLOW_PROJECT_DIR,
-      FLOW_SESSION_ID: process.env.FLOW_SESSION_ID,
-      HOME: process.env.HOME,
-    });
-  }, []);
-
   const sessionServiceRef = useRef<PollingObserverSessionService | null>(null);
   if (!sessionServiceRef.current) {
     sessionServiceRef.current = new PollingObserverSessionService();
@@ -44,9 +34,7 @@ export function useSessionPolling(cwd: string, explicitSessionId?: string) {
 
   const tick = useCallback(async () => {
     try {
-      console.error('[useSessionPolling] Polling with:', { cwd, explicitSessionId });
       const snapshot = await sessionServiceRef.current!.poll({ cwd, explicitSessionId });
-      console.error('[useSessionPolling] Got snapshot:', snapshot ? 'yes' : 'no');
       if (!snapshot) return;
       setData({
         sessionPath: snapshot.sessionPath,
@@ -58,7 +46,11 @@ export function useSessionPolling(cwd: string, explicitSessionId?: string) {
       });
     } catch (error) {
       // Silently ignore polling errors (e.g., session file not yet created)
-      console.error('[useSessionPolling] Poll error:', error);
+      reportError('io', 'observer polling failed', {
+        cwd,
+        explicitSessionId,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }, [cwd, explicitSessionId]);
 
