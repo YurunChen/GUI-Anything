@@ -156,12 +156,20 @@ else
 fi
 
 # Right pane: live observer (polls session JSONL)
-# For continue mode: don't set FLOW_SESSION_ID (observer auto-discovers by mtime)
-# For new/resume mode: set exact SESSION_ID to avoid stale session
-if [[ "$CONTINUE" == "1" || "$RESUME_PICKER" == "1" ]]; then
-  FLOW_SESSION_ID="" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+FLOW_RESUME_MODE="auto_latest"
+if [[ -n "$RESUME_ID" ]]; then
+  FLOW_RESUME_MODE="resume_specific"
+elif [[ "$RESUME_PICKER" == "1" ]]; then
+  FLOW_RESUME_MODE="resume_picker"
+elif [[ "$CONTINUE" != "1" ]]; then
+  # Default new-session mode: bind observer to explicit session id without resume hide-gate.
+  FLOW_RESUME_MODE="bind_specific"
+fi
+
+if [[ "$FLOW_RESUME_MODE" == "resume_specific" || "$FLOW_RESUME_MODE" == "bind_specific" ]]; then
+  FLOW_SESSION_ID="$SESSION_ID" FLOW_RESUME_MODE="$FLOW_RESUME_MODE" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
 else
-  FLOW_SESSION_ID="$SESSION_ID" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+  FLOW_RESUME_MODE="$FLOW_RESUME_MODE" FLOW_PROJECT_DIR="$ROOT_DIR" FLOW_ROOT_DIR="$ROOT_DIR" FLOW_DATA_DIR="$SNAPSHOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
 fi
 
 if [[ "$CLEAR_PANES" == "1" ]]; then
@@ -169,13 +177,11 @@ if [[ "$CLEAR_PANES" == "1" ]]; then
 fi
 tmux send-keys -t "$SESSION_NAME:0.1" "mkdir -p \"$SNAPSHOT_DIR\"" Enter
 
-# Observer command based on mode
-if [[ "$CONTINUE" == "1" || "$RESUME_PICKER" == "1" ]]; then
-  # Continue mode: only PROJECT_DIR, no SESSION_ID (auto-discovery)
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+# Observer command based on normalized binding intent
+if [[ "$FLOW_RESUME_MODE" == "resume_specific" || "$FLOW_RESUME_MODE" == "bind_specific" ]]; then
+  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_RESUME_MODE=\"$FLOW_RESUME_MODE\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 else
-  # New/resume mode: explicit SESSION_ID
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ROOT_DIR=\"$ROOT_DIR\" FLOW_DATA_DIR=\"$SNAPSHOT_DIR\" FLOW_RESUME_MODE=\"$FLOW_RESUME_MODE\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 fi
 
 # Label panes

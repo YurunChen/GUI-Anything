@@ -3,7 +3,14 @@
  */
 
 import { useState, useEffect, useRef } from 'react';
-import type { Exploration, WikiPersistMeta, SessionScopedId, SummaryItem, CacheLoadStatus } from '../../../data/protocol/observer-protocol';
+import type {
+  Exploration,
+  WikiPersistMeta,
+  SessionScopedId,
+  SummaryItem,
+  CacheLoadStatus,
+  FlowchartHint,
+} from '../../../data/protocol/observer-protocol';
 import {
   DefaultExplorationSummaryService,
   type CacheHydrateResult,
@@ -18,11 +25,16 @@ interface SummaryState {
   cacheReason: string;
 }
 
+export interface SummaryGenerationPolicy {
+  allowRegen: boolean;
+}
+
 export function useExplorationSummaries(
   explorations: Exploration[],
   sessionId: string,
   sessionPath: string,
   summaryModel?: string,
+  summaryPolicy: SummaryGenerationPolicy = { allowRegen: true },
 ) {
   const [state, setState] = useState<SummaryState>({
     items: {},
@@ -42,6 +54,13 @@ export function useExplorationSummaries(
     summaryServiceRef.current = new DefaultExplorationSummaryService();
   }
   const lastSessionRef = useRef<string>('');
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const sid = (sessionId || '').trim();
@@ -59,20 +78,14 @@ export function useExplorationSummaries(
     // Try to load from cache immediately on session change
     if (sid && sessionPath) {
       const cached = summaryServiceRef.current!.hydrateFromCache(sid, sessionPath);
-      if (cached) {
-        setState((prev) => ({
-          ...prev,
-          items: { ...prev.items, ...cached.items },
-          cacheStatus: cached.cacheStatus,
-          cacheReason: cached.cacheReason,
-        }));
-      } else {
-        setState((prev) => ({
-          ...prev,
-          cacheStatus: 'miss',
-          cacheReason: 'no_cache_or_expired',
-        }));
-      }
+      setState((prev) => ({
+        ...prev,
+        items: Object.keys(cached.items).length > 0
+          ? { ...prev.items, ...cached.items }
+          : prev.items,
+        cacheStatus: cached.cacheStatus,
+        cacheReason: cached.cacheReason,
+      }));
     }
   }, [sessionId, sessionPath]);
 
@@ -92,7 +105,13 @@ export function useExplorationSummaries(
         }));
       })
       .catch((error) => {
+        if (cancelled) return;
         console.error('[useExplorationSummaries] Hydrate error:', error);
+        // Degrade gracefully: allow AI generation path to proceed even if wiki hydration fails.
+        setState((prev) => ({
+          ...prev,
+          wikiHydratedSessionId: sessionId,
+        }));
       });
     return () => {
       cancelled = true;
@@ -100,8 +119,19 @@ export function useExplorationSummaries(
   }, [sessionId]);
 
   useEffect(() => {
-    if (!sessionId || state.wikiHydratedSessionId !== sessionId || !sessionPath) return;
-    let cancelled = false;
+    if (!shouldGenerateMissingSummaries({
+      allowRegen: summaryPolicy.allowRegen,
+      sessionId,
+      wikiHydratedSessionId: state.wikiHydratedSessionId,
+      sessionPath,
+    })) {
+      setState((prev) => ({
+        ...prev,
+        pendingCount: 0,
+      }));
+      return;
+    }
+    const runSessionId = sessionId;
     const service = summaryServiceRef.current!;
     const pending = service.generateMissing({
       sessionId,
@@ -116,7 +146,10 @@ export function useExplorationSummaries(
     }));
     pending
       .then((generatedItems) => {
-        if (cancelled) return;
+        // Keep results if still mounted and same session.
+        // exploration updates can re-run this effect frequently; those should not drop completed results.
+        if (!mountedRef.current) return;
+        if (runSessionId !== lastSessionRef.current) return;
         setState((prev) => ({
           ...prev,
           items: Object.keys(generatedItems).length > 0
@@ -126,20 +159,19 @@ export function useExplorationSummaries(
         }));
       })
       .catch((error) => {
-        if (cancelled) return;
+        if (!mountedRef.current) return;
+        if (runSessionId !== lastSessionRef.current) return;
         console.error('[useExplorationSummaries] Generate error:', error);
         setState((prev) => ({
           ...prev,
           pendingCount: summaryServiceRef.current!.pendingCount(),
         }));
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [explorations, sessionId, state.wikiHydratedSessionId]);
+  }, [explorations, sessionId, state.wikiHydratedSessionId, sessionPath, summaryPolicy.allowRegen]);
 
   return {
     summaries: toExplorationSummaryMap(state.items),
+    flowchartHints: toExplorationFlowchartHintMap(state.items),
     persistMeta: toExplorationPersistMetaMap(state.items),
     pendingCount: state.pendingCount,
     // Provenance for UI badges
@@ -148,6 +180,18 @@ export function useExplorationSummaries(
     // Full items for source/reason access
     summaryItems: state.items,
   };
+}
+
+export function shouldGenerateMissingSummaries(input: {
+  allowRegen: boolean;
+  sessionId: string;
+  wikiHydratedSessionId: string;
+  sessionPath: string;
+}): boolean {
+  if (!input.allowRegen) return false;
+  if (!input.sessionId) return false;
+  if (!input.sessionPath) return false;
+  return input.wikiHydratedSessionId === input.sessionId;
 }
 
 function toExplorationSummaryMap(items: Record<SessionScopedId, SummaryItem>): Record<string, string> {
@@ -166,4 +210,15 @@ function toExplorationPersistMetaMap(
     persistMeta[item.explorationId] = item.persistMeta;
   }
   return persistMeta;
+}
+
+function toExplorationFlowchartHintMap(
+  items: Record<SessionScopedId, SummaryItem>,
+): Record<string, FlowchartHint> {
+  const hints: Record<string, FlowchartHint> = {};
+  for (const item of Object.values(items)) {
+    if (!item.flowchart) continue;
+    hints[item.explorationId] = item.flowchart;
+  }
+  return hints;
 }

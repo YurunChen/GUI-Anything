@@ -48,7 +48,7 @@ temp/
 .claude/projects/
 .flow-runtime/
 
-# Local wiki knowledge data
-wiki/
+# Local wiki knowledge data (root only)
+/wiki/
 
 

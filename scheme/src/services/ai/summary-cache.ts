@@ -1,6 +1,12 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { SessionId, ExplorationId, SummaryItem, WikiPersistMeta } from '../../data/protocol/observer-protocol';
+import type {
+  SessionId,
+  ExplorationId,
+  SummaryItem,
+  WikiPersistMeta,
+  FlowchartHint,
+} from '../../data/protocol/observer-protocol';
 import { resolveWikiRoot } from '../../data/env';
 
 export interface CachedSummary {
@@ -11,6 +17,7 @@ export interface CachedSummary {
   createdAt: number;
   /** Reason for fallback or additional provenance info */
   reason?: string;
+  flowchart?: FlowchartHint;
 }
 
 export interface SummaryCacheData {
@@ -160,6 +167,7 @@ export function saveSummary(
     persistMeta: summary.persistMeta,
     createdAt: Date.now(),
     reason: summary.reason,
+    flowchart: summary.flowchart,
   };
 
   cache.cachedAt = Date.now();
@@ -196,6 +204,7 @@ export function saveSummaries(
       persistMeta: summary.persistMeta,
       createdAt: Date.now(),
       reason: summary.reason,
+      flowchart: summary.flowchart,
     };
   }
 
@@ -222,6 +231,7 @@ export function cachedToSummaryItems(
       source: 'cache',
       status: cached.status,
       persistMeta: cached.persistMeta,
+      flowchart: cached.flowchart,
       // Provenance: cache hit + original source (ai/fallback) + reason if exists
       reason: cached.reason || `from_${cached.source}`,
     };

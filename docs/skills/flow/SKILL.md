@@ -149,6 +149,7 @@ Use when user reports "too many background processes" or before starting fresh a
 |----------|---------|---------|
 | `FLOW_ZELLIJ_SESSION` | auto | Session name (default: unique short) |
 | `FLOW_ZELLIJ_REUSE` | `0` | Set `1` to reuse existing session |
+| `FLOW_ZELLIJ_AUTOCLEANUP` | `1` | Set `0` to keep zellij session alive on script exit |
 | `ZELLIJ_SOCKET_DIR` | `/tmp/zellij` | Socket path (macOS TMPDIR fix) |
 
 ### UX Variables

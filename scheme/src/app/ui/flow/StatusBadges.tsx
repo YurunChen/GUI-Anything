@@ -54,17 +54,17 @@ function formatSource(source: SummaryItem['source'], reason?: string): { text: s
     case 'cache': {
       // Parse original source from reason, e.g. "from_ai" -> "CACHE[ai]".
       const origin = reason?.startsWith('from_') ? reason.slice(5) : '';
-      const text = origin ? `CACHE[${origin}]` : 'CACHE';
+      const text = origin ? `cache:${origin}` : 'cache';
       return { text, fg: colors.status.info };
     }
     case 'wiki':
-      return { text: 'WIKI', fg: colors.status.success };
+      return { text: 'wiki', fg: colors.status.success };
     case 'ai':
-      return { text: 'AI', fg: colors.accent.primary };
+      return { text: 'generated', fg: colors.accent.primary };
     case 'fallback': {
       // Show compact failure hint.
       const hint = reason ? `[${truncate(reason, 10)}]` : '';
-      return { text: `FALLBACK${hint}`, fg: colors.status.warning };
+      return { text: `fallback${hint}`, fg: colors.status.warning };
     }
   }
 }
@@ -75,16 +75,16 @@ function formatPersist(
 ): { text: string; fg: string } {
   switch (status) {
     case 'saved':
-      return { text: 'Wiki SAVED', fg: colors.status.success };
+      return { text: 'saved', fg: colors.status.success };
     case 'skipped': {
       // Map internal reason to a short UI label.
       const shortReason = formatSkipReason(reason);
-      return { text: `Wiki SKIP[${shortReason}]`, fg: colors.fg.muted };
+      return { text: `skipped[${shortReason}]`, fg: colors.fg.muted };
     }
     case 'failed':
-      return { text: 'Wiki FAIL', fg: colors.status.error };
+      return { text: 'failed', fg: colors.status.error };
     case 'pending':
-      return { text: 'Wiki ...', fg: colors.status.info };
+      return { text: 'pending', fg: colors.status.info };
   }
 }
 
@@ -94,13 +94,13 @@ function formatCache(
 ): { text: string; fg: string } {
   switch (status) {
     case 'hit':
-      return { text: 'cache hit', fg: colors.status.success };
+      return { text: 'cache:hit', fg: colors.status.success };
     case 'miss':
-      return { text: 'cache miss', fg: colors.fg.muted };
+      return { text: 'cache:miss', fg: colors.fg.muted };
     case 'expired':
-      return { text: 'cache expired', fg: colors.status.warning };
+      return { text: 'cache:expired', fg: colors.status.warning };
     case 'corrupted':
-      return { text: 'cache bad', fg: colors.status.error };
+      return { text: 'cache:bad', fg: colors.status.error };
   }
 }
 

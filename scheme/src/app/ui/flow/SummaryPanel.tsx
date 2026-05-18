@@ -16,6 +16,8 @@ interface SummaryPanelProps {
   isGenerating: boolean;
   /** Available width for textarea height calculation */
   availableWidth: number;
+  /** Compact single-line mode for stream layouts */
+  compact?: boolean;
 }
 
 export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps): ReactNode {
@@ -23,28 +25,39 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
     summary,
     isGenerating,
     availableWidth,
+    compact = false,
   } = props;
 
   const summaryText = summary?.trim() || (isGenerating ? 'Generating...' : 'No summary');
   const displayText = formatSummaryForTui(summaryText);
-  const textColor = isGenerating || !summary ? colors.fg.muted : colors.fg.secondary;
+  const textColor = isGenerating || !summary ? colors.fg.muted : colors.fg.primary;
+
+  if (compact) {
+    return (
+      <text fg={textColor}>
+        <span>{'summary: '}</span>
+        <span>{truncate(displayText, Math.max(20, availableWidth - 16))}</span>
+      </text>
+    );
+  }
 
   return (
     <box
       style={{
+        width: '100%',
         flexDirection: 'column',
-        marginTop: 1,
-        paddingLeft: 2,
+        marginTop: 0,
+        paddingLeft: 0,
         paddingRight: 1,
         paddingTop: 0,
         paddingBottom: 0,
         border: ['left'],
-        borderColor: colors.status.success,
+        borderColor: colors.accent.secondary,
         borderStyle: 'single',
         backgroundColor: colors.bg.tertiary,
       }}
     >
-      <text fg={colors.status.success}>{'✦ Summary'}</text>
+      <text fg={colors.accent.secondary}>{'summary'}</text>
 
       {/* Summary text */}
       <textarea
@@ -68,4 +81,9 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
 function calculateTextareaHeight(value: string, availableWidth: number): number {
   const columns = Math.max(20, availableWidth - 8);
   return wrapDisplayLines(value, columns).length;
+}
+
+function truncate(value: string, maxLen: number): string {
+  if (value.length <= maxLen) return value;
+  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
 }

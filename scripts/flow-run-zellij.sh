@@ -67,6 +67,7 @@ while [[ $# -gt 0 ]]; do
       echo "  FLOW_ZELLIJ_SESSION         Session name (default: unique short f-mmdd-HHMMSS-xxxx)"
       echo "  FLOW_ZELLIJ_REUSE           Set 1 to reuse existing session (default: 0)"
       echo "  FLOW_ZELLIJ_OBSERVER_WIDTH  Right pane width percentage (default: auto by terminal width)"
+      echo "  FLOW_ZELLIJ_AUTOCLEANUP     Auto-kill current zellij session on script exit (default: 1)"
       echo "  ZELLIJ_SOCKET_DIR           Socket dir (default: /tmp/zellij)"
       echo "  FLOW_PROJECT_DIR            Project root override"
       exit 0
@@ -259,11 +260,21 @@ fi
 printf -v CLAUDE_CMD '%q ' claude "${claude_args[@]}"
 CLAUDE_CMD="${CLAUDE_CMD% }"
 
-# Observer command: always pass FLOW_SESSION_ID for consistent summary binding
-if [[ -n "$SESSION_ID" ]]; then
-  OBSERVER_CMD="FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\" bun run src/main.ts --live"
+# Observer command: pass normalized binding intent, keep display logic inside observer.
+OBSERVER_RESUME_MODE="auto_latest"
+if [[ -n "$RESUME_ID" || ( "$CONTINUE" == "1" && -n "$SESSION_ID" ) ]]; then
+  OBSERVER_RESUME_MODE="resume_specific"
+elif [[ "$RESUME" == "1" ]]; then
+  OBSERVER_RESUME_MODE="resume_picker"
+elif [[ "$CONTINUE" != "1" ]]; then
+  # Default new-session mode: bind observer to explicit session id without resume hide-gate.
+  OBSERVER_RESUME_MODE="bind_specific"
+fi
+
+if [[ ( "$OBSERVER_RESUME_MODE" == "resume_specific" || "$OBSERVER_RESUME_MODE" == "bind_specific" ) && -n "$SESSION_ID" ]]; then
+  OBSERVER_CMD="FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_RESUME_MODE=\"$OBSERVER_RESUME_MODE\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\" bun run src/main.ts --live"
 else
-  OBSERVER_CMD="FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\" bun run src/main.ts --live"
+  OBSERVER_CMD="FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_RESUME_MODE=\"$OBSERVER_RESUME_MODE\" FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\" bun run src/main.ts --live"
 fi
 
 cat > "$LAYOUT_FILE" <<EOF
@@ -307,9 +318,13 @@ echo "  - Right: Live observer"
 echo ""
 
 cleanup_session() {
-  # Optional auto-cleanup when explicitly enabled.
-  if [[ "${FLOW_ZELLIJ_AUTOCLEANUP:-0}" == "1" ]]; then
+  # Auto-cleanup is enabled by default; set FLOW_ZELLIJ_AUTOCLEANUP=0 to keep session alive.
+  if [[ "${FLOW_ZELLIJ_AUTOCLEANUP:-1}" == "1" ]]; then
     zellij kill-session "$SESSION_NAME" >/dev/null 2>&1 || true
+    zellij delete-session "$SESSION_NAME" >/dev/null 2>&1 || true
+    # Some terminal/PTY shutdown paths can leave client/server processes behind.
+    pkill -f "zellij --layout .* attach --create $SESSION_NAME" >/dev/null 2>&1 || true
+    pkill -f "zellij --server .*/$SESSION_NAME" >/dev/null 2>&1 || true
   fi
 }
 

@@ -1,23 +1,36 @@
 /**
- * LiveObserverFlowBody - three-section flow panel.
+ * LiveObserverFlowBody - chronological single-rail flow panel.
  *
  * Layout:
- *   Now      - exploration list (status, tool stats)
- *   Learned  - summary + provenance (embedded per exploration)
- *   Next     - suggestions + wiki match (bottom/side)
+ *   Timeline - exploration list in strict time order
+ *   Next     - lightweight suggestions section
  */
 
 import type { ReactNode } from 'react';
-import { memo } from 'react';
-import type { Exploration, CacheLoadStatus, PersistResult, SummaryItem } from '../../data/protocol/observer-protocol';
+import { memo, useEffect, useMemo, useState } from 'react';
+import type {
+  Exploration,
+  CacheLoadStatus,
+  PersistResult,
+  FlowchartHint,
+  FlowGraphSnapshot,
+} from '../../data/protocol/observer-protocol';
 import type { PotentialDirection } from '../../services/ai/flow-summaries';
-import { colors } from './theme';
-import { ExplorationCard } from './flow/ExplorationCard';
+import { colors, pulseFrames } from './theme';
 import { CacheBadge } from './flow/StatusBadges';
+import { ExplorationCard } from './flow/ExplorationCard';
+import { FlowGraphView } from './flow/graph/FlowGraphView';
+import { createCachedBuilder } from './flow/graph/snapshot-cache';
+
+/** Ref-stable cached snapshot builder — only rebuilds when ID-level state actually changes. */
+const snapshotCache = createCachedBuilder();
 
 export type LiveObserverFlowBodyProps = {
+  sessionId?: string;
   explorations: Exploration[];
   summaries: Record<string, string>;
+  flowchartHints?: Record<string, FlowchartHint>;
+  graphSnapshot?: FlowGraphSnapshot;
   wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
@@ -29,68 +42,111 @@ export type LiveObserverFlowBodyProps = {
   cacheStatus?: CacheLoadStatus | null;
   /** Cache reason/description */
   cacheReason?: string;
-  summarySources?: Record<string, SummaryItem['source']>;
-  summaryReasons?: Record<string, string>;
+  /** Strict replay mode hint when regeneration is intentionally disabled. */
+  replayOnlyHint?: string;
   persistResults?: Record<string, PersistResult>;
+  mode?: 'exploration' | 'flowchart';
 };
+
+export interface TimelineEntry {
+  exploration: Exploration;
+  originalIndex: number;
+}
+
+export function sortTimelineEntries(explorations: Exploration[]): TimelineEntry[] {
+  return explorations
+    .map((exploration, originalIndex) => ({ exploration, originalIndex }))
+    .sort((a, b) => {
+      const startDiff = a.exploration.startedAt - b.exploration.startedAt;
+      if (startDiff !== 0) return startDiff;
+      const endA = a.exploration.endedAt ?? Number.MAX_SAFE_INTEGER;
+      const endB = b.exploration.endedAt ?? Number.MAX_SAFE_INTEGER;
+      const endDiff = endA - endB;
+      if (endDiff !== 0) return endDiff;
+      return a.originalIndex - b.originalIndex;
+    });
+}
 
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   props: LiveObserverFlowBodyProps
 ): ReactNode {
   const {
     explorations,
+    sessionId = 'current',
     summaries,
-    pendingSummaryCount,
+    flowchartHints,
+    graphSnapshot: externalGraphSnapshot,
     directionsStatus,
     directionsMessage,
     potentialDirections,
     availableWidth = 80,
     cacheStatus,
     cacheReason,
+    replayOnlyHint,
+    persistResults,
+    wikiPersistStatus,
+    pendingSummaryCount,
+    mode = 'exploration',
   } = props;
+  const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
+  const hasRunning = explorations.some((item) => item.status === 'running');
+  const showCacheBadge = Boolean(cacheStatus && cacheStatus !== 'miss');
+  const graphSnapshot = useMemo(() => {
+    if (externalGraphSnapshot) return externalGraphSnapshot;
+    return snapshotCache({
+      sessionId,
+      explorations,
+      summaries,
+      flowchartHints,
+      wikiPersistStatus,
+    });
+  }, [externalGraphSnapshot, sessionId, explorations, summaries, flowchartHints, wikiPersistStatus]);
+
+  useEffect(() => {
+    if (!hasRunning) return;
+    const timer = setInterval(() => {
+      setSpinnerFrameIndex((prev) => (prev + 1) % pulseFrames.length);
+    }, 160);
+    return () => clearInterval(timer);
+  }, [hasRunning]);
 
   if (explorations.length === 0) {
     return <text fg={colors.fg.muted}>Waiting for explorations...</text>;
   }
 
-  // Find the latest running exploration (for highlight).
-  let latestRunningIdx = -1;
-  for (let i = explorations.length - 1; i >= 0; i--) {
-    if (explorations[i].status === 'running') {
-      latestRunningIdx = i;
-      break;
-    }
-  }
-
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
-      {/* NOW: exploration list */}
+      {/* Single-rail chronological stream */}
       <box style={{ width: '100%', flexDirection: 'column' }}>
-        {cacheStatus && (
+        {showCacheBadge && (
           <text fg={colors.fg.dim}>
             <span>{'['}</span>
             <CacheBadge status={cacheStatus} reason={cacheReason} />
             <span>{']'}</span>
           </text>
         )}
-        
-        {explorations.map((exploration, index) => {
-          const isGenerating = !summaries[exploration.id] 
-            && exploration.status === 'complete' 
-            && pendingSummaryCount > 0;
-
-          return (
-            <ExplorationCard
-              key={exploration.id}
-              exploration={exploration}
-              index={index}
-              isActive={index === latestRunningIdx}
-              summary={summaries[exploration.id]}
-              isGenerating={isGenerating}
+        {replayOnlyHint && (
+          <text fg={colors.fg.dim}>{`[replay-only] ${replayOnlyHint}`}</text>
+        )}
+        {mode === 'flowchart' ? (
+          <box style={{ width: '100%', flexDirection: 'column' }}>
+            <text fg={colors.accent.secondary}>{'flowchart view'}</text>
+            <FlowGraphView
+              snapshot={graphSnapshot}
               availableWidth={availableWidth}
             />
-          );
-        })}
+          </box>
+        ) : (
+          <ExplorationTimeline
+            explorations={explorations}
+            summaries={summaries}
+            persistResults={persistResults}
+            wikiPersistStatus={wikiPersistStatus}
+            pendingSummaryCount={pendingSummaryCount}
+            availableWidth={availableWidth}
+            spinnerFrame={pulseFrames[spinnerFrameIndex]}
+          />
+        )}
       </box>
 
       {/* NEXT: lightweight suggestions */}
@@ -102,6 +158,65 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     </box>
   );
 });
+
+interface ExplorationTimelineProps {
+  explorations: Exploration[];
+  summaries: Record<string, string>;
+  persistResults?: Record<string, PersistResult>;
+  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  pendingSummaryCount: number;
+  availableWidth: number;
+  spinnerFrame: string;
+}
+
+function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
+  const {
+    explorations,
+    summaries,
+    persistResults,
+    wikiPersistStatus,
+    pendingSummaryCount,
+    availableWidth,
+    spinnerFrame,
+  } = props;
+  const timelineEntries = sortTimelineEntries(explorations);
+  let latestRunningOriginalIdx = -1;
+  for (let i = timelineEntries.length - 1; i >= 0; i--) {
+    if (timelineEntries[i].exploration.status === 'running') {
+      latestRunningOriginalIdx = timelineEntries[i].originalIndex;
+      break;
+    }
+  }
+  const focusOriginalIdx = latestRunningOriginalIdx >= 0
+    ? latestRunningOriginalIdx
+    : timelineEntries[timelineEntries.length - 1]?.originalIndex ?? -1;
+
+  return (
+    <box style={{ width: '100%', flexDirection: 'column' }}>
+      {timelineEntries.map(({ exploration, originalIndex }, timelineIndex) => {
+        const isGenerating = !summaries[exploration.id]
+          && exploration.status === 'complete'
+          && pendingSummaryCount > 0;
+        const isActive = originalIndex === focusOriginalIdx;
+
+        return (
+          <ExplorationCard
+            key={exploration.id}
+            exploration={exploration}
+            showRailConnector={timelineIndex < timelineEntries.length - 1}
+            isActive={isActive}
+            spinnerFrame={spinnerFrame}
+            summary={summaries[exploration.id]}
+            persistStatus={wikiPersistStatus?.[exploration.id]}
+            persistResult={persistResults?.[exploration.id]}
+            isGenerating={isGenerating}
+            availableWidth={availableWidth}
+          />
+        );
+      })}
+    </box>
+  );
+}
 
 // -------- Next section component --------
 
