@@ -14,6 +14,7 @@ import { WIKI_SEARCH_THRESHOLD } from '../../constants/flow-constants';
 import { useSessionPolling } from './hooks/useSessionPolling';
 import { useExplorationSummaries } from './hooks/useExplorationSummaries';
 import { useWikiPersistence } from './hooks/useWikiPersistence';
+import { useNotification } from './hooks/useNotification';
 
 export function LiveObserverContainer(): ReactNode {
   const cwd = process.env.FLOW_PROJECT_DIR || process.cwd();
@@ -46,6 +47,12 @@ export function LiveObserverContainer(): ReactNode {
     recentInspirations,
     saveInspiration,
   } = useWikiPersistence(explorations, explorationSummaries, explorationPersistMeta, sessionId);
+
+  // Notification service integration
+  const {
+    sendManualSnapshot,
+    lastNotifyStatus,
+  } = useNotification(sessionId, tree ?? undefined, Object.values(explorationSummaries));
 
   // Derive provenance maps for UI badges
   const summarySources = useMemo(() => {
@@ -150,6 +157,9 @@ export function LiveObserverContainer(): ReactNode {
       persistResults={explorationPersistResults}
       cacheStatus={cacheStatus}
       cacheReason={cacheReason}
+      // Notification integration
+      onSendSnapshot={sendManualSnapshot}
+      notifyStatus={lastNotifyStatus}
     />
   );
 }

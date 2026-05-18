@@ -22,6 +22,19 @@ Three core principles guide every design decision:
 | `docs/` | **Documentation** — Protocol specs and design docs |
 | `protocol/` | **Normative protocols** — cli-event and ui-surface protocol definitions |
 
+## 🔔 Flow Notification Harness (New!)
+
+Push critical Flow events to **WeChat / Feishu / DingTalk** — stay informed anywhere:
+
+| Feature | What you get |
+|---------|-------------|
+| 🚨 **Error Alerts** | Instant notification when errors detected |
+| ✅ **Completion Notices** | Know when long-running tasks finish |
+| 💡 **Knowledge Extraction** | Auto-push important discoveries |
+| 📊 **Progress Reports** | Periodic updates or manual snapshots (press `s`) |
+
+**Quick start**: Set `FLOW_NOTIFY_WECHAT_URL` and run `./scripts/flow-run.sh`. See [Notification Guide](docs/NOTIFICATION.md) for full setup.
+
 ## Mental Model: Run / Capture / Guide
 
 Flow Observer organizes work into three layers:

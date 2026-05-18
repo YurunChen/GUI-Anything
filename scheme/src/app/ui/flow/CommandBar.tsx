@@ -10,17 +10,22 @@ import { COMPACT_LAYOUT_WIDTH } from '../../../constants/flow-constants';
 export interface CommandBarProps {
   terminalWidth: number;
   inspirationInputFocused: boolean;
+  notificationEnabled?: boolean;
 }
 
 export function CommandBar({
   terminalWidth,
   inspirationInputFocused: _inspirationInputFocused,
+  notificationEnabled = false,
 }: CommandBarProps): ReactNode {
   const isCompact = terminalWidth > 0 ? terminalWidth < COMPACT_LAYOUT_WIDTH : false;
 
   const hotkeys: string[] = [];
   hotkeys.push(isCompact ? 't:view' : '[t] toggle view');
   hotkeys.push(isCompact ? 'i:notes' : '[i] open/close notes');
+  if (notificationEnabled) {
+    hotkeys.push(isCompact ? 's:notify' : '[s] send snapshot');
+  }
   hotkeys.push(isCompact ? 'q:quit' : '[q] quit');
   const hotkeyText = hotkeys.join(isCompact ? ' | ' : '  ');
 

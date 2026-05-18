@@ -59,6 +59,10 @@ interface FlowObserverShellProps {
   // Inspiration layer
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
+
+  // Notification layer
+  onSendSnapshot?: (note?: string) => void;
+  notifyStatus?: string;
 }
 
 export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
@@ -125,7 +129,11 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
 
     if (key.name === 'q') safeExit();
     if (key.name === 't') toggleViewMode();
-  }, [activeTab, inspirationInputFocused, toggleViewMode]));
+    if (key.name === 's' && props.onSendSnapshot) {
+      props.onSendSnapshot();
+      return;
+    }
+  }, [activeTab, inspirationInputFocused, toggleViewMode, props]));
   
   // Derived UI values
   const viewLabel = viewMode === 'flow' ? 'Flow' : 'Tree';
@@ -181,6 +189,12 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
           {props.sessionPath ? props.sessionPath.split('/').slice(-1)[0].slice(0, 52) : 'Waiting for session...'}
         </text>
         <text>
+          {props.notifyStatus && (
+            <>
+              <span fg={colors.status.success}>{props.notifyStatus}</span>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+            </>
+          )}
           {props.wikiMatch && (
             <span fg={colors.status.warning}>{`Similar wiki: ${wikiLinkText} ${Math.round(props.wikiMatch.score * 100)}%`}</span>
           )}
@@ -269,6 +283,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       <CommandBar
         terminalWidth={terminalWidth}
         inspirationInputFocused={inspirationInputFocused}
+        notificationEnabled={!!props.onSendSnapshot}
       />
     </box>
   );
