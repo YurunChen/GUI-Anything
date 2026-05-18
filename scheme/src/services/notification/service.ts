@@ -27,11 +27,11 @@ export class NotificationService {
    * 初始化平台适配器
    */
   private initializeAdapters(): void {
-    // 微信适配器
-    const wechatUrl = process.env.FLOW_NOTIFY_WECHAT_URL;
-    const wechatToken = process.env.FLOW_NOTIFY_WECHAT_TOKEN;
-    if (wechatUrl) {
-      this.adapters.set('wechat', new WechatAdapter(wechatUrl, wechatToken));
+    // 微信适配器 (iLink Bot via Python service)
+    // FLOW_NOTIFY_WECHAT_USER_ID: 接收消息的微信用户ID
+    const wechatUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID;
+    if (wechatUserId) {
+      this.adapters.set('wechat', new WechatAdapter(wechatUserId));
     }
 
     // 飞书适配器

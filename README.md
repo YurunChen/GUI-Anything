@@ -33,7 +33,12 @@ Push critical Flow events to **WeChat / Feishu / DingTalk** — stay informed an
 | 💡 **Knowledge Extraction** | Auto-push important discoveries |
 | 📊 **Progress Reports** | Periodic updates or manual snapshots (press `s`) |
 
-**Quick start**: Set `FLOW_NOTIFY_WECHAT_URL` and run `./scripts/flow-run.sh`. See [Notification Guide](docs/NOTIFICATION.md) for full setup.
+**Quick start**: 
+1. Start WeChat service: `./scripts/start-weixin-service.sh`
+2. Login: `./scripts/weixin-login.sh` 
+3. Set `FLOW_NOTIFY_WECHAT_USER_ID` and run `./scripts/flow-run.sh`
+
+See [Notification Guide](docs/NOTIFICATION.md) | [WeChat Setup](docs/NOTIFICATION_WECHAT.md) for full setup.
 
 ## Mental Model: Run / Capture / Guide
 

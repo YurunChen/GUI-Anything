@@ -31,16 +31,26 @@
 
 选择你常用的平台之一进行配置：
 
-#### 方式 A: 微信 (Server酱 - 推荐个人使用)
+#### 方式 A: 微信 (iLink Bot - 扫码登录)
 
-1. 访问 [Server酱官网](https://sct.ftqq.com/)
-2. 使用微信扫码登录
-3. 获取 **SendKey**
-4. 设置环境变量：
+**基于 Hermes-agent 实现，直接推送到微信个人号**
 
+1. 启动微信服务：
 ```bash
-export FLOW_NOTIFY_WECHAT_URL=https://sctapi.ftqq.com/YOUR_SENDKEY.send
+./scripts/start-weixin-service.sh
 ```
+
+2. 扫码登录：
+```bash
+./scripts/weixin-login.sh
+```
+
+3. 设置环境变量：
+```bash
+export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
+```
+
+**详细文档**：[微信推送完整指南](NOTIFICATION_WECHAT.md)
 
 #### 方式 B: 飞书机器人
 

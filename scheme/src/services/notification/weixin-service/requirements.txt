@@ -1,0 +1,7 @@
+aiohttp>=3.9.0
+cryptography>=41.0.0
+fastapi>=0.104.0
+uvicorn>=0.24.0
+pydantic>=2.5.0
+qrcode>=7.4.2
+certifi>=2023.11.17
