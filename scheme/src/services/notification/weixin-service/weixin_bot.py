@@ -159,8 +159,14 @@ class WeixinBotClient:
         if account_id:
             path = self.data_dir / f"{account_id}.json"
         else:
-            # Try default account
+            # Auto-discover: try default account first, then scan for any .json file
             path = self.data_dir / "default_account.json"
+            if not path.exists():
+                # Scan data directory for any credential file
+                json_files = list(self.data_dir.glob("*.json"))
+                if json_files:
+                    path = json_files[0]  # Use the first one found
+                    logger.info(f"Auto-discovered credential file: {path.name}")
 
         if not path.exists():
             return False
