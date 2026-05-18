@@ -46,6 +46,13 @@ export function useWikiPersistence(
     wikiPersistenceServiceRef.current = new DefaultWikiPersistenceService();
   }
   const lastSessionRef = useRef<string>('');
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     const sid = (sessionId || '').trim();
@@ -99,7 +106,7 @@ export function useWikiPersistence(
     }
     if (pendingIds.length === 0) return;
 
-    let cancelled = false;
+    const runSessionId = sessionId;
     setState((prev) => {
       const nextStatus = { ...prev.persistStatus };
       for (const id of pendingIds) nextStatus[id] = 'pending';
@@ -112,7 +119,10 @@ export function useWikiPersistence(
         summaries: summaryItems,
       })
       .then((results) => {
-        if (cancelled) return;
+        // explorations/status updates can re-run this effect frequently.
+        // Keep successful writes as long as the component is alive and session is unchanged.
+        if (!mountedRef.current) return;
+        if (runSessionId !== lastSessionRef.current) return;
         const savedCount = Object.values(results).filter((result) => result.status === 'saved').length;
         setState((prev) => ({
           ...prev,
@@ -128,11 +138,10 @@ export function useWikiPersistence(
         }));
       })
       .catch((error) => {
+        if (!mountedRef.current) return;
+        if (runSessionId !== lastSessionRef.current) return;
         console.error('[useWikiPersistence] Persist error:', error);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [explorations, summaries, persistMeta, sessionId, state.persistStatus]);
 
   const refreshInspirations = useCallback(() => {

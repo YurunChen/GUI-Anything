@@ -10,9 +10,11 @@ import { typeIcons } from '../../app/ui/theme';
 import {
   validateStructuredSummaryOutput,
   toWikiPersistMeta,
+  toFlowchartHint,
   generateFallbackSummary,
   extractJsonFromText,
 } from './structured-output';
+import type { FlowchartHint } from '../../data/protocol/observer-protocol';
 
 // Local type definition (replaces FlowNodeRow from sqlite-store)
 interface FlowNodeRow {
@@ -255,7 +257,7 @@ const EXPLORATION_SUMMARY_PROMPT = `你是"心流记录者"。请阅读本次 Ex
 
 【JSON 字段契约】
 {
-  "summary": "一句话心流：你问了什么 → Claude Code 的结论。与问题同语言；≤160 字；纯文本不含换行",
+  "summary": "一句话结论：直接回答“针对用户问题得到什么结论/建议”。与问题同语言；中文≤200字或英文≤300词；纯文本不含换行；禁止写工具调用次数/无关过程噪音",
   "solution_detail": "用于写入 Wiki“解决方案”的详细过程。建议 3-8 行，按步骤描述关键动作、观察和结论，必须基于日志事实。",
   "persist": {
     "should_persist": boolean,
@@ -264,13 +266,28 @@ const EXPLORATION_SUMMARY_PROMPT = `你是"心流记录者"。请阅读本次 Ex
     "reason": "简短说明为何值得/不值得写入个人 Wiki（同语言）"
   },
   "tags": ["可选", "最多 6 个短标签"],
-  "key_command": "若有值得固化的单条命令则填字符串，否则 null"
+  "key_command": "若有值得固化的单条命令则填字符串，否则 null",
+  "flowchart": {
+    "node_id": "当前意图节点稳定id（snake_case，如 analyze_project_structure）",
+    "node_title": "节点标题，仅表达用户意图（中文建议 8-18 字；英文建议 2-6 词）",
+    "parent_id": "父节点id；根节点填 null",
+    "branch_type": "trunk | parallel | repair | merge",
+    "importance": "high | medium | low",
+    "drop_from_chart": "是否忽略该节点（寒暄/重复/噪音建议 true）",
+    "intent_key": "主题归一键（用于跨轮聚合，snake_case）"
+  }
 }
 
 【persist 规则】
 - 闲聊、问候 → should_persist=false, type=none
 - 可复用的错误与修复、命令片段、架构/流程决策、重要上下文 → should_persist=true 并选对 type
-- 只用日志中的事实，不编造`;
+- 只用日志中的事实，不编造
+
+【flowchart 规则】
+- 必须显式表达 parent-child 关系，允许并行分支（同 parent 不同 child）
+- 低价值节点（无产出/重复/寒暄）设为 drop_from_chart=true
+- node_title 必须是高概括意图，不要写实现细节
+- node_title 必须是“名词短语风格”，不要用“围绕/针对/关于...”开头，不要带引号，不要句号`;
 
 
 function formatNodesForClaude(prompt: string, nodes: FlowNodeRow[]): string {
@@ -449,6 +466,7 @@ function fallbackExplorationSummary(question: string, nodes: ExplorationSummaryN
 export interface ExplorationSummaryAIResult {
   displaySummary: string;
   persist: WikiPersistMeta | null;
+  flowchart?: FlowchartHint;
 }
 
 function normalizeWikiPersistType(value: unknown): WikiPersistType {
@@ -492,6 +510,7 @@ export function parseExplorationSummaryAIOutput(
     return {
       displaySummary: validation.data.summary,
       persist: toWikiPersistMeta(validation.data),
+      flowchart: toFlowchartHint(validation.data),
     };
   }
 
@@ -711,4 +730,29 @@ export async function generatePotentialDirectionsAI(
   }
 
   return normalizePotentialDirections(result.output, explorations);
+}
+
+export async function runClaudePrintPrompt(
+  promptText: string,
+  options?: {
+    model?: string;
+    timeoutMs?: number;
+    taskIdPrefix?: string;
+  },
+): Promise<{ ok: boolean; output: string; reason?: string }> {
+  const args = ['--print'];
+  if (options?.model) args.push('-m', options.model);
+  const result = await runClaudeSpawn({
+    args,
+    promptText,
+    timeoutMs: options?.timeoutMs ?? 45000,
+    taskId: `${options?.taskIdPrefix || 'flow'}_${Date.now()}`,
+  });
+  if (result.timedOut) {
+    return { ok: false, output: '', reason: 'timeout' };
+  }
+  if (result.exitCode !== 0 || !result.output.trim()) {
+    return { ok: false, output: '', reason: result.error || 'empty_output' };
+  }
+  return { ok: true, output: result.output };
 }

@@ -9,13 +9,20 @@
  */
 
 import type { WikiPersistMeta, WikiPersistType } from '../wiki/auto-extractor';
+import type {
+  FlowchartBranchType,
+  FlowchartHint,
+  FlowchartImportance,
+  GraphPatch,
+  GraphPatchOp,
+} from '../../data/protocol/observer-protocol';
 
 /**
  * 结构化 Summary 输出格式
  * 这是 AI 被要求输出的严格 JSON 结构
  */
 export interface StructuredSummaryOutput {
-  /** 一句话心流摘要（UI 显示用，≤160 字） */
+  /** 一句话心流摘要（UI 显示用，中文≤200字，英文≤300词） */
   summary: string;
   /** 用于写入 Wiki"解决方案"的详细过程 */
   solution_detail: string;
@@ -30,6 +37,16 @@ export interface StructuredSummaryOutput {
   tags?: string[];
   /** 若有值得固化的单条命令则填字符串，否则 null */
   key_command?: string | null;
+  /** Optional intent-tree hints used by flowchart view */
+  flowchart?: {
+    node_id: string;
+    node_title: string;
+    parent_id: string | null;
+    branch_type: FlowchartBranchType;
+    importance: FlowchartImportance;
+    drop_from_chart: boolean;
+    intent_key: string;
+  };
 }
 
 /**
@@ -125,11 +142,12 @@ export function validateStructuredSummaryOutput(
     };
   }
 
-  // summary 长度限制（UI 可读性）
-  if (summary.length > 220) {
+  // summary 长度限制（中文≤200字，英文≤300词）
+  const summaryLengthError = getSummaryLengthError(summary);
+  if (summaryLengthError) {
     return {
       success: false,
-      error: `Summary too long (${summary.length} chars, max 220)`,
+      error: summaryLengthError,
       fallbackReason: 'summary_too_long',
     };
   }
@@ -197,6 +215,11 @@ export function validateStructuredSummaryOutput(
     keyCommand = parsed.key_command === null ? null : parsed.key_command.trim() || null;
   }
 
+  const flowchart = validateFlowchartHint(parsed.flowchart);
+  if (!flowchart.success) {
+    return flowchart.error;
+  }
+
   // 构建有效的输出对象
   const validated: StructuredSummaryOutput = {
     summary: summary.trim().replace(/\s+/g, ' '),
@@ -211,9 +234,100 @@ export function validateStructuredSummaryOutput(
     },
     tags,
     key_command: keyCommand,
+    flowchart: flowchart.data,
   };
 
   return { success: true, data: validated };
+}
+
+function validateFlowchartHint(flowchartRaw: unknown):
+  | { success: true; data: StructuredSummaryOutput['flowchart'] | undefined }
+  | { success: false; error: ValidationResult<StructuredSummaryOutput> } {
+  if (flowchartRaw === undefined) {
+    return { success: true, data: undefined };
+  }
+  if (!isObject(flowchartRaw)) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'flowchart must be an object',
+        fallbackReason: 'invalid_flowchart',
+      },
+    };
+  }
+
+  const nodeId = isNonEmptyString(flowchartRaw.node_id) ? flowchartRaw.node_id.trim() : '';
+  const nodeTitle = isNonEmptyString(flowchartRaw.node_title) ? flowchartRaw.node_title.trim() : '';
+  const parentId = flowchartRaw.parent_id === null
+    ? null
+    : (isNonEmptyString(flowchartRaw.parent_id) ? flowchartRaw.parent_id.trim() : null);
+  const intentKey = isNonEmptyString(flowchartRaw.intent_key) ? flowchartRaw.intent_key.trim() : '';
+  const branchType = normalizeBranchType(flowchartRaw.branch_type);
+  const importance = normalizeImportance(flowchartRaw.importance);
+  const dropFromChart = typeof flowchartRaw.drop_from_chart === 'boolean'
+    ? flowchartRaw.drop_from_chart
+    : false;
+
+  if (!nodeId || !nodeTitle || !intentKey) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'flowchart requires non-empty node_id, node_title, intent_key',
+        fallbackReason: 'missing_flowchart_fields',
+      },
+    };
+  }
+  if (nodeTitle.length > 48) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'flowchart.node_title too long (max 48)',
+        fallbackReason: 'flowchart_title_too_long',
+      },
+    };
+  }
+  return {
+    success: true,
+    data: {
+      node_id: nodeId,
+      node_title: nodeTitle,
+      parent_id: parentId,
+      branch_type: branchType,
+      importance,
+      drop_from_chart: dropFromChart,
+      intent_key: intentKey,
+    },
+  };
+}
+
+export function toFlowchartHint(output: StructuredSummaryOutput): FlowchartHint | undefined {
+  if (!output.flowchart) return undefined;
+  return {
+    nodeId: output.flowchart.node_id,
+    nodeTitle: output.flowchart.node_title,
+    parentId: output.flowchart.parent_id,
+    branchType: output.flowchart.branch_type,
+    importance: output.flowchart.importance,
+    dropFromChart: output.flowchart.drop_from_chart,
+    intentKey: output.flowchart.intent_key,
+  };
+}
+
+function normalizeBranchType(value: unknown): FlowchartBranchType {
+  if (value === 'trunk' || value === 'parallel' || value === 'repair' || value === 'merge') {
+    return value;
+  }
+  return 'trunk';
+}
+
+function normalizeImportance(value: unknown): FlowchartImportance {
+  if (value === 'high' || value === 'medium' || value === 'low') {
+    return value;
+  }
+  return 'medium';
 }
 
 /**
@@ -246,18 +360,21 @@ export function generateFallbackSummary(
   validationError?: string
 ): string {
   const { toolCount, errorCount, hasOutput, outputPreview } = context;
-
   let base: string;
-  if (toolCount === 0 && !hasOutput) {
-    base = `探索"${truncate(question, 30)}"信息不足，需查看节点详情`;
+  if (!hasOutput) {
+    base = `针对"${question}"，当前证据不足，建议继续补充关键信息后再给出结论。`;
   } else if (outputPreview) {
-    base = `围绕"${truncate(question, 30)}"，进行了${toolCount}次工具调用${errorCount > 0 ? `（出现${errorCount}次错误）` : ''}，形成输出：${outputPreview}`;
+    base = `针对"${question}"，当前可得结论为：${outputPreview}`;
+  } else if (errorCount > 0) {
+    base = `针对"${question}"，执行中出现错误，建议先修复关键问题再收敛结论。`;
+  } else if (toolCount > 0) {
+    base = `针对"${question}"，已形成初步结论，建议继续验证后确认最终方案。`;
   } else {
-    base = `围绕"${truncate(question, 30)}"完成探索，包含${toolCount}次工具调用`;
+    base = `针对"${question}"，已形成初步结论。`;
   }
 
   if (validationError) {
-    return `${base} [AI输出格式错误: ${truncate(validationError, 20)}]`;
+    return `${base}（AI输出格式异常：${validationError}）`;
   }
 
   return base;
@@ -276,4 +393,177 @@ function isNonEmptyString(value: unknown): value is string {
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 1)}…`;
+}
+
+function getSummaryLengthError(summary: string): string | null {
+  if (!summary.trim()) return null;
+  const hasCjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(summary);
+  if (hasCjk && summary.length > 200) {
+    return `Summary too long (${summary.length} chars, max 200 for CJK text)`;
+  }
+  if (!hasCjk) {
+    const words = summary.trim().split(/\s+/).filter(Boolean).length;
+    if (words > 300) {
+      return `Summary too long (${words} words, max 300 for non-CJK text)`;
+    }
+  }
+  return null;
+}
+
+export interface GraphConsolidationOutput {
+  action: 'keep_incremental' | 'patch';
+  graph_patch: GraphPatch[];
+}
+
+export function validateGraphConsolidationOutput(raw: string): ValidationResult<GraphConsolidationOutput> {
+  const jsonText = extractJsonFromText(raw);
+  if (!jsonText) {
+    return {
+      success: false,
+      error: 'No JSON object found in response',
+      fallbackReason: 'json_not_found',
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch (e) {
+    return {
+      success: false,
+      error: `JSON parse error: ${e instanceof Error ? e.message : 'unknown'}`,
+      fallbackReason: 'json_parse_error',
+    };
+  }
+  if (!isObject(parsed)) {
+    return {
+      success: false,
+      error: 'Response is not an object',
+      fallbackReason: 'not_an_object',
+    };
+  }
+  const actionRaw = parsed.action;
+  const action = actionRaw === 'patch' ? 'patch' : actionRaw === 'keep_incremental' ? 'keep_incremental' : null;
+  if (!action) {
+    return {
+      success: false,
+      error: 'Invalid action field',
+      fallbackReason: 'invalid_action',
+    };
+  }
+  const rawPatches = parsed.graph_patch;
+  if (!Array.isArray(rawPatches)) {
+    return {
+      success: false,
+      error: 'graph_patch must be an array',
+      fallbackReason: 'invalid_graph_patch',
+    };
+  }
+  const graphPatch: GraphPatch[] = [];
+  for (const item of rawPatches) {
+    const parsedPatch = parseGraphPatch(item);
+    if (!parsedPatch.success) {
+      return parsedPatch.error;
+    }
+    graphPatch.push(parsedPatch.data);
+  }
+  return {
+    success: true,
+    data: {
+      action,
+      graph_patch: graphPatch,
+    },
+  };
+}
+
+function parseGraphPatch(value: unknown):
+  | { success: true; data: GraphPatch }
+  | { success: false; error: ValidationResult<GraphConsolidationOutput> } {
+  if (!isObject(value)) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'graph patch item must be object',
+        fallbackReason: 'invalid_patch_item',
+      },
+    };
+  }
+  const op = normalizeGraphPatchOp(value.op);
+  if (!op) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: `invalid graph patch op: ${String(value.op)}`,
+        fallbackReason: 'invalid_patch_op',
+      },
+    };
+  }
+  const reason = isNonEmptyString(value.reason) ? value.reason.trim() : '';
+  if (!reason) {
+    return {
+      success: false,
+      error: {
+        success: false,
+        error: 'graph patch reason is required',
+        fallbackReason: 'missing_patch_reason',
+      },
+    };
+  }
+  const confidence = typeof value.confidence === 'number'
+    ? Math.min(1, Math.max(0, value.confidence))
+    : 0.5;
+  const patch: GraphPatch = {
+    op,
+    reason,
+    confidence,
+  };
+  const targetIntentKeyValue = isNonEmptyString(value.target_intent_key)
+    ? value.target_intent_key
+    : isNonEmptyString(value.targetIntentKey)
+      ? value.targetIntentKey
+      : undefined;
+  if (targetIntentKeyValue) {
+    patch.targetIntentKey = targetIntentKeyValue.trim();
+  }
+  const sourceIntentKeysValue = Array.isArray(value.source_intent_keys)
+    ? value.source_intent_keys
+    : Array.isArray(value.sourceIntentKeys)
+      ? value.sourceIntentKeys
+      : [];
+  if (sourceIntentKeysValue.length > 0) {
+    patch.sourceIntentKeys = sourceIntentKeysValue
+      .filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      .map((item) => item.trim());
+  }
+  if (typeof value.new_parent_intent_key === 'string') {
+    patch.newParentIntentKey = value.new_parent_intent_key.trim();
+  } else if (value.new_parent_intent_key === null) {
+    patch.newParentIntentKey = null;
+  } else if (typeof value.newParentIntentKey === 'string') {
+    patch.newParentIntentKey = value.newParentIntentKey.trim();
+  } else if (value.newParentIntentKey === null) {
+    patch.newParentIntentKey = null;
+  }
+  const newTitleValue = typeof value.new_title === 'string'
+    ? value.new_title
+    : typeof value.newTitle === 'string'
+      ? value.newTitle
+      : '';
+  if (newTitleValue.trim()) {
+    patch.newTitle = newTitleValue.trim();
+  }
+  return { success: true, data: patch };
+}
+
+function normalizeGraphPatchOp(value: unknown): GraphPatchOp | null {
+  if (
+    value === 'merge_intents'
+    || value === 'rename_intent'
+    || value === 'reparent_intent'
+    || value === 'drop_intent'
+  ) {
+    return value;
+  }
+  return null;
 }

@@ -20,6 +20,7 @@ export type { WikiExtractionResult, WikiMatch, WikiPersistMeta };
 export interface ObserverSessionSnapshot {
   sessionId: SessionId;
   sessionPath: string;
+  sourceMtimeMs: number;
   runtimeModel: string;
   tokenDisplay: string;
   tree: ActivityTree | null;
@@ -58,6 +59,21 @@ export interface SummaryItem {
    * For 'cache': indicates cache state ('hit', 'expired', 'miss').
    */
   reason?: string;
+  /** Optional LLM-provided hints for intent-centric flowchart rendering */
+  flowchart?: FlowchartHint;
+}
+
+export type FlowchartBranchType = 'trunk' | 'parallel' | 'repair' | 'merge';
+export type FlowchartImportance = 'high' | 'medium' | 'low';
+
+export interface FlowchartHint {
+  nodeId: string;
+  nodeTitle: string;
+  parentId: string | null;
+  branchType: FlowchartBranchType;
+  importance: FlowchartImportance;
+  dropFromChart: boolean;
+  intentKey: string;
 }
 
 export type PersistResultStatus = 'saved' | 'skipped' | 'failed';
@@ -79,6 +95,51 @@ export interface FlowEnv {
   flowRootDir?: string;
   flowSessionId?: string;
   claudeModel?: string;
+}
+
+export type FlowGraphNodeStatus = 'running' | 'complete' | 'interrupted' | 'error';
+export type FlowGraphEdgeKind = 'trunk' | 'fork_repair' | 'fork_alternative' | 'merge' | 'dead_end';
+
+export interface FlowGraphMetaBadges {
+  tools: number;
+  errors: number;
+  wiki: 'saved' | 'skipped' | 'failed' | 'pending' | 'none';
+}
+
+export interface FlowGraphNode {
+  id: SessionScopedId;
+  explorationId: ExplorationId;
+  label: string;
+  status: FlowGraphNodeStatus;
+  startedAt: number;
+  endedAt?: number;
+  summaryPreview: string;
+  metaBadges: FlowGraphMetaBadges;
+}
+
+export interface FlowGraphEdge {
+  from: SessionScopedId;
+  to: SessionScopedId;
+  kind: FlowGraphEdgeKind;
+}
+
+export interface FlowGraphSnapshot {
+  nodes: FlowGraphNode[];
+  edges: FlowGraphEdge[];
+  focusNodeId?: SessionScopedId;
+  updatedAt: number;
+}
+
+export type GraphPatchOp = 'merge_intents' | 'rename_intent' | 'reparent_intent' | 'drop_intent';
+
+export interface GraphPatch {
+  op: GraphPatchOp;
+  targetIntentKey?: string;
+  sourceIntentKeys?: string[];
+  newTitle?: string;
+  newParentIntentKey?: string | null;
+  reason: string;
+  confidence: number;
 }
 
 export function makeSessionScopedId(

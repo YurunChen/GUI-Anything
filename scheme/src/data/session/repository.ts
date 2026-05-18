@@ -84,6 +84,7 @@ export class FileSessionRepository implements SessionRepository {
       snapshot: {
         sessionPath: input.sessionPath,
         sessionId: sessionIdFromPath(input.sessionPath),
+        sourceMtimeMs: mtimeMs,
         explorations,
         tree,
         stats,
