@@ -1,0 +1,103 @@
+/**
+ * Wiki Match Service - Knowledge matching and search
+ *
+ * Matches user queries against the knowledge repository
+ */
+
+import type { WikiMatch } from '../../data/services/wiki/search';
+import { DefaultKnowledgeRepository, type KnowledgeEntry } from '../../data/wiki/knowledge-repository';
+
+export interface WikiMatchService {
+  match(query: string): Promise<string[]>;
+  searchByQuery(query: string, threshold?: number): Promise<WikiMatch | null>;
+}
+
+export class DefaultWikiMatchService implements WikiMatchService {
+  private repository: DefaultKnowledgeRepository;
+
+  constructor() {
+    this.repository = new DefaultKnowledgeRepository();
+  }
+
+  async match(query: string): Promise<string[]> {
+    const results = await this.repository.search(query);
+    return results.map(entry => entry.id);
+  }
+
+  async searchByQuery(query: string, threshold: number = 0.3): Promise<WikiMatch | null> {
+    if (!query || query.trim() === '') {
+      return null;
+    }
+
+    const results = await this.repository.search(query);
+
+    if (results.length === 0) {
+      return null;
+    }
+
+    // Calculate simple relevance score based on keyword matches
+    const scoredResults = results.map(entry => ({
+      entry,
+      score: this.calculateRelevanceScore(query, entry),
+    }));
+
+    // Filter by threshold
+    const filtered = scoredResults.filter(result => result.score >= threshold);
+
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    // Sort by score (descending) and return best match
+    filtered.sort((a, b) => b.score - a.score);
+
+    const best = filtered[0];
+    return {
+      entry: {
+        id: best.entry.id,
+        title: best.entry.title,
+        content: best.entry.content,
+        tags: best.entry.tags,
+      },
+      score: best.score,
+      matchedQuery: query,
+    };
+  }
+
+  /**
+   * Calculate relevance score (0.0 - 1.0)
+   * Simple algorithm: count keyword matches in title/content/tags
+   */
+  private calculateRelevanceScore(query: string, entry: KnowledgeEntry): number {
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+    if (queryWords.length === 0) {
+      return 0;
+    }
+
+    const titleLower = entry.title.toLowerCase();
+    const contentLower = entry.content.toLowerCase();
+    const tagsLower = (entry.tags || []).map(t => t.toLowerCase()).join(' ');
+
+    let matches = 0;
+    let titleMatches = 0;
+
+    for (const word of queryWords) {
+      // Title matches count more
+      if (titleLower.includes(word)) {
+        titleMatches++;
+        matches++;
+      } else if (contentLower.includes(word)) {
+        matches++;
+      } else if (tagsLower.includes(word)) {
+        matches++;
+      }
+    }
+
+    // Score = (matches / total words) with title boost
+    const baseScore = matches / queryWords.length;
+    const titleBoost = titleMatches > 0 ? 0.2 : 0;
+
+    return Math.min(1.0, baseScore + titleBoost);
+  }
+}
