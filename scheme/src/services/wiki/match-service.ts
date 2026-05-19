@@ -29,14 +29,15 @@ export class DefaultWikiMatchService implements WikiMatchService {
       return null;
     }
 
-    const results = await this.repository.search(query);
+    // Get all entries (don't use repository.search which requires exact phrase match)
+    const allEntries = await this.repository.list();
 
-    if (results.length === 0) {
+    if (allEntries.length === 0) {
       return null;
     }
 
     // Calculate simple relevance score based on keyword matches
-    const scoredResults = results.map(entry => ({
+    const scoredResults = allEntries.map(entry => ({
       entry,
       score: this.calculateRelevanceScore(query, entry),
     }));

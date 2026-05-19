@@ -104,15 +104,32 @@ fi
 # Snapshot file (only used for new/resume modes)
 SNAPSHOT_FILE="$SNAPSHOT_DIR/status-${SESSION_ID:-continue}.json"
 
-# Enable mouse scrolling
-tmux set -g mouse on
-tmux set -g history-limit "$TMUX_HISTORY_LIMIT"
+# Set environment variables for Claude Code API
+export ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-sk-D5k3NuXukzyBgdDdkBG9vi584zPMuFdKVZCz5Ao3VWT7jzB9}"
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-https://api.openai-proxy.org/anthropic}"
 
-# Create session
+# Add Bun to PATH if installed
+if [[ -d "$HOME/.bun/bin" ]]; then
+  export PATH="$HOME/.bun/bin:$PATH"
+fi
+
+# Create session first
 tmux new-session -d -s "$SESSION_NAME" -c "$ROOT_DIR"
 
+# Then configure it
+tmux set -g mouse on
+tmux set -g history-limit "$TMUX_HISTORY_LIMIT"
+tmux set-environment -t "$SESSION_NAME" ANTHROPIC_API_KEY "$ANTHROPIC_API_KEY"
+tmux set-environment -t "$SESSION_NAME" ANTHROPIC_BASE_URL "$ANTHROPIC_BASE_URL"
+
+# Get the actual window number (might be 0 or 1 depending on tmux config)
+WINDOW_ID=$(tmux list-windows -t "$SESSION_NAME" -F '#{window_index}' | head -1)
+
+# Wait for window to be ready
+sleep 0.1
+
 if [[ "$CLEAR_PANES" == "1" ]]; then
-  tmux send-keys -t "$SESSION_NAME:0.0" "clear" Enter
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_ID" "clear" Enter
 fi
 
 # Left pane: Claude Code (interactive TUI)
@@ -121,46 +138,49 @@ if [[ -n "$MODEL" ]]; then
   MODEL_FLAG="--model $MODEL"
 fi
 
+# Build Claude command with environment variables
+CLAUDE_ENV="ANTHROPIC_API_KEY='$ANTHROPIC_API_KEY' ANTHROPIC_BASE_URL='$ANTHROPIC_BASE_URL'"
+
 # Build Claude command based on session mode
 if [[ -n "$RESUME_ID" ]]; then
   # Resume specific session
-  tmux send-keys -t "$SESSION_NAME:0" "claude $MODEL_FLAG --resume $SESSION_ID ${PROMPT:+"\"$PROMPT\""}" Enter
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_ID" "$CLAUDE_ENV claude $MODEL_FLAG --resume $SESSION_ID ${PROMPT:+"\"$PROMPT\""}" Enter
 elif [[ "$CONTINUE" == "1" ]]; then
   # Continue last session
-  tmux send-keys -t "$SESSION_NAME:0" "claude $MODEL_FLAG --continue ${PROMPT:+"\"$PROMPT\""}" Enter
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_ID" "$CLAUDE_ENV claude $MODEL_FLAG --continue ${PROMPT:+"\"$PROMPT\""}" Enter
 else
   # New session
-  tmux send-keys -t "$SESSION_NAME:0" "claude $MODEL_FLAG --session-id $SESSION_ID ${PROMPT:+"\"$PROMPT\""}" Enter
+  tmux send-keys -t "$SESSION_NAME:$WINDOW_ID" "$CLAUDE_ENV claude $MODEL_FLAG --session-id $SESSION_ID ${PROMPT:+"\"$PROMPT\""}" Enter
 fi
 
 # Right pane: live observer (polls session JSONL)
 # For continue mode: don't set FLOW_SESSION_ID (observer auto-discovers by mtime)
 # For new/resume mode: set exact SESSION_ID to avoid stale session
 if [[ "$CONTINUE" == "1" ]]; then
-  FLOW_SESSION_ID="" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+  FLOW_SESSION_ID="" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:$WINDOW_ID" -c "$SCHEME_DIR"
 else
-  FLOW_SESSION_ID="$SESSION_ID" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:0" -c "$SCHEME_DIR"
+  FLOW_SESSION_ID="$SESSION_ID" FLOW_PROJECT_DIR="$ROOT_DIR" tmux split-window -h -t "$SESSION_NAME:$WINDOW_ID" -c "$SCHEME_DIR"
 fi
 
 if [[ "$CLEAR_PANES" == "1" ]]; then
-  tmux send-keys -t "$SESSION_NAME:0.1" "clear" Enter
+  tmux send-keys -t "$SESSION_NAME:${WINDOW_ID}.2" "clear" Enter
 fi
-tmux send-keys -t "$SESSION_NAME:0.1" "mkdir -p \"$SNAPSHOT_DIR\"" Enter
+tmux send-keys -t "$SESSION_NAME:${WINDOW_ID}.2" "mkdir -p \"$SNAPSHOT_DIR\"" Enter
 
 # Observer command based on mode
 if [[ "$CONTINUE" == "1" ]]; then
   # Continue mode: only PROJECT_DIR, no SESSION_ID (auto-discovery)
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+  tmux send-keys -t "$SESSION_NAME:${WINDOW_ID}.2" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 else
   # New/resume mode: explicit SESSION_ID
-  tmux send-keys -t "$SESSION_NAME:0.1" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
+  tmux send-keys -t "$SESSION_NAME:${WINDOW_ID}.2" "FLOW_PROJECT_DIR=\"$ROOT_DIR\" FLOW_SESSION_ID=\"$SESSION_ID\" FLOW_STDIN_SNAPSHOT=\"$SNAPSHOT_FILE\" bun run src/main.ts --live" Enter
 fi
 
 # Label panes
-tmux select-pane -t "$SESSION_NAME:0.0" -T "claude"
-tmux select-pane -t "$SESSION_NAME:0.1" -T "observer"
-tmux select-pane -t "$SESSION_NAME:0.0"
-tmux select-layout -t "$SESSION_NAME:0" even-horizontal
+tmux select-pane -t "$SESSION_NAME:${WINDOW_ID}.1" -T "claude"
+tmux select-pane -t "$SESSION_NAME:${WINDOW_ID}.2" -T "observer"
+tmux select-pane -t "$SESSION_NAME:${WINDOW_ID}.1"
+tmux select-layout -t "$SESSION_NAME:$WINDOW_ID" even-horizontal
 
 # If in detach mode, output session info and exit
 if [[ "$DETACH" == "1" ]]; then
@@ -195,8 +215,8 @@ tmux attach-session -t "$SESSION_NAME"
 # When user exits/detaches, clean session by default to prevent orphan processes.
 if [[ "$KEEP_SESSION" != "1" ]]; then
   if [[ "$CLEAR_HISTORY" == "1" ]]; then
-    tmux clear-history -t "$SESSION_NAME:0.0" 2>/dev/null || true
-    tmux clear-history -t "$SESSION_NAME:0.1" 2>/dev/null || true
+    tmux clear-history -t "$SESSION_NAME:${WINDOW_ID}.1" 2>/dev/null || true
+    tmux clear-history -t "$SESSION_NAME:${WINDOW_ID}.2" 2>/dev/null || true
   fi
   tmux kill-session -t "$SESSION_NAME" 2>/dev/null || true
   rm -f "$SNAPSHOT_FILE" "$SNAPSHOT_FILE.tmp" 2>/dev/null || true

@@ -7,7 +7,8 @@
 export const OBSERVER_POLL_MS = 500;
 
 // Wiki search similarity threshold (0-1)
-export const WIKI_SEARCH_THRESHOLD = 0.90; // 90% similarity threshold
+// Lowered to 0.5 to allow more flexible keyword matching
+export const WIKI_SEARCH_THRESHOLD = 0.5; // 50% similarity threshold
 
 // Layout thresholds
 export const COMPACT_LAYOUT_WIDTH = 110; // Terminal columns below this = compact mode
