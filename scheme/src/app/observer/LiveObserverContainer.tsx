@@ -106,11 +106,17 @@ export function LiveObserverContainer(): ReactNode {
 
     if (!query || query.length < 5 || query === lastUserQuery) return;
     setLastUserQuery(query);
+
+    // Debug logging
     let cancelled = false;
     wikiMatchServiceRef.current
       .searchByQuery(query, WIKI_SEARCH_THRESHOLD)
       .then((match) => {
         if (!cancelled) setWikiMatch(match);
+      })
+      .catch((error) => {
+        // Silently ignore errors
+        if (!cancelled) setWikiMatch(null);
       });
     return () => {
       cancelled = true;
