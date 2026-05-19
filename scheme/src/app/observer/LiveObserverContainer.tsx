@@ -86,7 +86,24 @@ export function LiveObserverContainer(): ReactNode {
       setWikiMatch(null);
       return;
     }
-    const query = latest.question;
+
+    // Extract query from question field or from any text in nodes
+    let query = latest.question;
+
+    // If question is empty, try to extract from nodes (user messages, responses)
+    if (!query || query.trim() === '') {
+      // Look for meaningful text in nodes
+      const textNodes = latest.nodes?.filter(n =>
+        n.rawText && n.rawText.length > 10 &&
+        (n.type === 'response' || !n.type)
+      ) || [];
+
+      if (textNodes.length > 0) {
+        // Use first meaningful text as query
+        query = textNodes[0].rawText || '';
+      }
+    }
+
     if (!query || query.length < 5 || query === lastUserQuery) return;
     setLastUserQuery(query);
     let cancelled = false;
