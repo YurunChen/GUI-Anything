@@ -9,15 +9,16 @@
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import type { Exploration, CacheLoadStatus } from '../../data/protocol/observer-protocol';
+import type { Exploration, CacheLoadStatus, SummaryItem, PersistResult, WikiMatch } from '../../data/protocol/observer-protocol';
 import type { PotentialDirection } from '../../services/ai/flow-summaries';
-import { colors } from './theme';
+import { colors, useThemeVersion } from './theme';
 import { ExplorationCard } from './flow/ExplorationCard';
 import { CacheBadge } from './flow/StatusBadges';
 
 export type LiveObserverFlowBodyProps = {
   explorations: Exploration[];
   summaries: Record<string, string>;
+  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
   directionsMessage: string;
@@ -28,11 +29,20 @@ export type LiveObserverFlowBodyProps = {
   cacheStatus?: CacheLoadStatus | null;
   /** Cache reason/description */
   cacheReason?: string;
+  /** Wiki match for current query */
+  wikiMatch?: WikiMatch | null;
+  /** Provenance for UI badges */
+  summarySources?: Record<string, SummaryItem['source']>;
+  summaryReasons?: Record<string, string>;
+  persistResults?: Record<string, PersistResult>;
 };
 
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   props: LiveObserverFlowBodyProps
 ): ReactNode {
+  // 让 memo 子树跟随主题热切换（colors 是 mutate 而非替换，必须靠 version 触发重渲染）
+  useThemeVersion();
+
   const {
     explorations,
     summaries,
@@ -43,6 +53,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     availableWidth = 80,
     cacheStatus,
     cacheReason,
+    wikiMatch,
   } = props;
 
   if (explorations.length === 0) {
@@ -69,11 +80,15 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
             <span>{']'}</span>
           </text>
         )}
-        
+
         {explorations.map((exploration, index) => {
-          const isGenerating = !summaries[exploration.id] 
-            && exploration.status === 'complete' 
+          const isGenerating = !summaries[exploration.id]
+            && exploration.status === 'complete'
             && pendingSummaryCount > 0;
+
+          // Only show wiki match for the latest exploration
+          const isLatest = index === explorations.length - 1;
+          const showWikiMatch = isLatest && wikiMatch;
 
           return (
             <ExplorationCard
@@ -84,6 +99,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
               summary={summaries[exploration.id]}
               isGenerating={isGenerating}
               availableWidth={availableWidth}
+              wikiMatch={showWikiMatch ? wikiMatch : undefined}
             />
           );
         })}

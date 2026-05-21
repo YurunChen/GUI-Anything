@@ -77,14 +77,16 @@ export function LiveObserverContainer(): ReactNode {
     return reasons;
   }, [summaryItems]);
 
-  const [lastUserQuery, setLastUserQuery] = useState('');
-  const [wikiMatch, setWikiMatch] = useState<WikiMatch | null>(null);
   const wikiMatchServiceRef = useRef(new DefaultWikiMatchService());
-  useEffect(() => {
+
+  // Use useMemo for synchronous wiki matching
+  const { wikiMatch, wikiDebugInfo } = useMemo(() => {
     const latest = explorations[explorations.length - 1];
     if (!latest) {
-      setWikiMatch(null);
-      return;
+      return {
+        wikiMatch: null,
+        wikiDebugInfo: `no_exploration (count=${explorations.length})`
+      };
     }
 
     // Extract query from question field or from any text in nodes
@@ -104,24 +106,29 @@ export function LiveObserverContainer(): ReactNode {
       }
     }
 
-    if (!query || query.length < 5 || query === lastUserQuery) return;
-    setLastUserQuery(query);
+    if (!query || query.length < 5) {
+      return {
+        wikiMatch: null,
+        wikiDebugInfo: `query_too_short (len=${query?.length || 0}, q="${query?.slice(0, 20)}")`
+      };
+    }
 
-    // Debug logging
-    let cancelled = false;
-    wikiMatchServiceRef.current
-      .searchByQuery(query, WIKI_SEARCH_THRESHOLD)
-      .then((match) => {
-        if (!cancelled) setWikiMatch(match);
-      })
-      .catch((error) => {
-        // Silently ignore errors
-        if (!cancelled) setWikiMatch(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [explorations, lastUserQuery]);
+    try {
+      // Synchronous search
+      const match = wikiMatchServiceRef.current.searchByQuerySync(query, WIKI_SEARCH_THRESHOLD);
+      return {
+        wikiMatch: match,
+        wikiDebugInfo: match
+          ? `found: ${match.entry.title.slice(0, 30)} (${Math.round(match.score * 100)}%)`
+          : `no_match (q="${query.slice(0, 30)}" th=${WIKI_SEARCH_THRESHOLD})`
+      };
+    } catch (error) {
+      return {
+        wikiMatch: null,
+        wikiDebugInfo: `error: ${error?.message || String(error)}`
+      };
+    }
+  }, [explorations]);
 
   const [potentialDirections, setPotentialDirections] = useState<PotentialDirection[]>([]);
   const [directionsStatus, setDirectionsStatus] = useState<'idle' | 'generating' | 'ready' | 'insufficient' | 'error'>('idle');
@@ -165,6 +172,7 @@ export function LiveObserverContainer(): ReactNode {
       runtimeModel={runtimeModel}
       wikiExtractedCount={wikiExtractedCount}
       wikiMatch={wikiMatch}
+      wikiDebugInfo={wikiDebugInfo}
       explorationSummaries={explorationSummaries}
       explorationPersistStatus={explorationPersistStatus}
       pendingSummaryCount={pendingSummaryCount}

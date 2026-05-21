@@ -188,7 +188,11 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
 }
 
 export async function renderTUI(prompt: string, enableFlow?: boolean): Promise<void> {
-  const renderer = await createCliRenderer({ exitOnCtrlC: true });
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+    useMouse: true,
+    enableMouseMovement: false,
+  });
   const root = createRoot(renderer);
   root.render(<ActivityPanel prompt={prompt} enableFlow={enableFlow} />);
 }

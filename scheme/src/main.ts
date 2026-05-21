@@ -7,7 +7,35 @@ async function main() {
   const isFlowMode = args.includes('--flow');
   const isLiveMode = args.includes('--live');
   const isPostHoc = args.includes('--posthoc');
-  const prompt = args.filter(a => !a.startsWith('--')).join(' ').trim();
+  const isExportHtml = args.includes('--export-html');
+  const isThemePlayground = args.includes('--theme-playground');
+  const isKnowledgeGraph = args.includes('--knowledge-graph');
+  const prompt = args.filter(a => !a.startsWith('--') && !a.startsWith('-o')).join(' ').trim();
+
+  // ─── HTML Export Modes ───
+  if (isExportHtml) {
+    const { exportSessionToHtml } = await import('./export/html-replay/export-html');
+    const outputIdx = args.indexOf('-o');
+    const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
+    const sessionIdIdx = args.indexOf('--session-id');
+    const sessionId = sessionIdIdx >= 0 ? args[sessionIdIdx + 1] : undefined;
+
+    await exportSessionToHtml({
+      outputPath,
+      sessionId,
+      stripThinking: args.includes('--strip-thinking'),
+      maxDetailLength: (() => {
+        const idx = args.indexOf('--max-detail-length');
+        return idx >= 0 ? parseInt(args[idx + 1], 10) : undefined;
+      })(),
+      withSummaries: args.includes('--with-summaries'),
+      theme: (() => {
+        const idx = args.indexOf('--theme');
+        return idx >= 0 ? args[idx + 1] : undefined;
+      })(),
+    });
+    return;
+  }
 
   if (isLiveMode || isPostHoc) {
     const { renderLiveObserver } = await import('./app/ui/live-observer');
@@ -32,6 +60,11 @@ async function main() {
     console.log('  bun run src/main.ts --posthoc [path]   # Post-hoc analysis of latest session');
     console.log('  bun run src/main.ts --observer "<p>"   # Observer mode (for dual-pane)');
     console.log('  bun run src/main.ts --web              # Web API mode');
+    console.log('');
+    console.log('  # HTML Export:');
+    console.log('  bun run src/main.ts --export-html -o replay.html');
+    console.log('  bun run src/main.ts --export-html --session-id <id> --strip-thinking');
+    console.log('  bun run src/main.ts --export-html --max-detail-length 500 --theme catppuccin');
     process.exit(1);
   }
 }

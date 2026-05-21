@@ -23,6 +23,7 @@ export function CommandBar({
   const hotkeys: string[] = [];
   hotkeys.push(isCompact ? 't:view' : '[t] toggle view');
   hotkeys.push(isCompact ? 'i:notes' : '[i] open/close notes');
+  hotkeys.push(isCompact ? 'j/k:theme🎨 l:☀/🌙' : '[j/k] theme  [J] morandi  [l] light↔dark');
   if (notificationEnabled) {
     hotkeys.push(isCompact ? 's:notify' : '[s] send snapshot');
   }

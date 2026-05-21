@@ -5,7 +5,7 @@
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { colors } from '../theme';
+import { colors, useThemeVersion } from '../theme';
 import { formatSummaryForTui } from '../../../utils/summary-text';
 import { wrapDisplayLines } from './summary-layout';
 
@@ -19,6 +19,9 @@ interface SummaryPanelProps {
 }
 
 export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps): ReactNode {
+  // memo 子树需显式订阅主题版本号, 否则 colors mutate 后这里不会重渲染
+  useThemeVersion();
+
   const {
     summary,
     isGenerating,

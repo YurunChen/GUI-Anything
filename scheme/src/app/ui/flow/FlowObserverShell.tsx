@@ -15,13 +15,14 @@ import type { PotentialDirection, ExplorationHistoryContext } from '../../../ser
 import type { Exploration, WikiPersistMeta, WikiMatch, SummaryItem, PersistResult, CacheLoadStatus } from '../../../data/protocol/observer-protocol';
 import type { InspirationRecord } from '../../../services/wiki/auto-extractor';
 
-import { colors, phaseIcons, phaseColors } from '../theme';
+import { colors, phaseIcons, phaseColors, themeManager, applyTheme, useThemeVersion } from '../theme';
 import { useViewMode } from '../hooks';
 import { LiveObserverFlowBody } from '../live-observer-flow-body';
 import { treeNodes, TreeNode } from '../tree-node';
 
 import { ContextPanel } from './ContextPanel';
 import { CommandBar } from './CommandBar';
+import { WikiMatchCard } from './WikiMatchCard';
 import { OBSERVER_POLL_MS, COMPACT_LAYOUT_WIDTH, getContextPanelLayout } from '../../../constants/flow-constants';
 import { extractCommandsFromNodes, extractPathsFromNodes, formatCompactTokens, getContextWindowTokens } from './flow-utils';
 import type { ContextTab } from './flow-observer-state';
@@ -37,7 +38,8 @@ interface FlowObserverShellProps {
   runtimeModel: string;
   wikiExtractedCount: number;
   wikiMatch: WikiMatch | null;
-  
+  wikiDebugInfo?: string;
+
   // Summary layer
   explorationSummaries: Record<string, string>;
   explorationPersistStatus: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
@@ -68,11 +70,16 @@ interface FlowObserverShellProps {
 export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const { width: terminalWidth } = useTerminalDimensions();
   const { viewMode, toggleViewMode } = useViewMode('flow');
-  
+  // Subscribe to theme changes so hot-swap re-renders the whole tree
+  useThemeVersion();
+
   // Local UI state
   const [activeTab, setActiveTab] = useState<ContextTab>(null);
   const [saveStatus, setSaveStatus] = useState<'draft' | 'saved'>('draft');
   const [inspirationInputFocused, setInspirationInputFocused] = useState(false);
+  const [currentThemeName, setCurrentThemeName] = useState(themeManager.getCurrentTheme());
+  const [showThemeNotification, setShowThemeNotification] = useState(false);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
   const isCompact = terminalWidth > 0 ? terminalWidth < COMPACT_LAYOUT_WIDTH : false;
   const blurInspirationInput = useCallback(() => {
@@ -99,7 +106,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   }, [props]);
   
   // Keyboard handling
-  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; preventDefault: () => void }) => {
+  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; shift?: boolean; preventDefault: () => void }) => {
     // Global hard exit (works even when textarea is focused).
     if (key.ctrl && key.name === 'q') {
       safeExit();
@@ -133,6 +140,34 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       props.onSendSnapshot();
       return;
     }
+
+    // Theme switching shortcuts (热切换：不退出，原地刷新)
+    // [j] 下一个主题（全部 30 种）   [k] 上一个   [J] 仅在莫兰迪 16 主题里循环
+    // [l] 切换当前 morandi 主题的 light/dark 变体（保持色调）
+    // 注意 opentui 的 ParsedKey 里 name 是小写，shift 单独标记；同时容错保留大写字面量
+    const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);
+    if (isMorandiKey || key.name === 'j' || key.name === 'k' || key.name === 'l') {
+      try {
+        let peek;
+        if (isMorandiKey) {
+          peek = themeManager.nextMorandiTheme();
+        } else if (key.name === 'k') {
+          peek = themeManager.previousTheme();
+        } else if (key.name === 'l') {
+          peek = themeManager.toggleLightDark();
+        } else {
+          peek = themeManager.nextTheme();
+        }
+        // themeManager 已把 currentTheme 改了并保存了，但 React 树没更新。
+        // 用 applyTheme 来 mutate `colors` + 通知订阅者重渲染。
+        applyTheme(peek);
+        setShowThemeNotification(true);
+        setTimeout(() => setShowThemeNotification(false), 1500);
+      } catch (err) {
+        try { process.stderr.write(`Theme switch failed: ${String(err)}\n`); } catch { /* ignore */ }
+      }
+      return;
+    }
   }, [activeTab, inspirationInputFocused, toggleViewMode, props]));
   
   // Derived UI values
@@ -148,7 +183,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   
   const items = props.tree ? treeNodes(props.tree) : [];
   const fa = props.tree?.fileAccess ?? new Map();
-  const wikiLinkText = props.wikiMatch ? props.wikiMatch.entry.id : '';
 
   // Calculate available width for flow body content
   // This ensures accurate textarea height calculations
@@ -180,6 +214,10 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
           <span fg={interruptionErrorCount > 0 ? colors.status.error : colors.fg.secondary}>
             {`Err:${interruptionErrorCount}`}
           </span>
+          <span fg={colors.fg.dim}>  </span>
+          {showThemeNotification && (
+            <span fg={colors.accent.secondary}>{`🎨 ${themeManager.getThemeDisplayName()}`}</span>
+          )}
         </text>
       </box>
       
@@ -195,34 +233,40 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
               <span fg={colors.fg.dim}>{'  │  '}</span>
             </>
           )}
-          {props.wikiMatch && (
-            <span fg={colors.status.warning}>{`Similar wiki: ${wikiLinkText} ${Math.round(props.wikiMatch.score * 100)}%`}</span>
-          )}
-          {props.wikiMatch && props.wikiExtractedCount > 0 && <span fg={colors.fg.dim}>{'  │  '}</span>}
           {props.wikiExtractedCount > 0 && (
-            <span fg={colors.status.info}>{`Wiki: ${props.wikiExtractedCount} extracted`}</span>
+            <>
+              <span fg={colors.status.info}>{`📚 知识库: ${props.wikiExtractedCount} 条`}</span>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+            </>
+          )}
+          {props.wikiMatch && (
+            <span fg={colors.accent.secondary}>{'💡 已匹配相关知识'}</span>
           )}
         </text>
       </box>
       
       {/* Main content area */}
-      <box style={{ flexGrow: 1, flexDirection: 'row' }} onMouseDown={blurInspirationInput}>
+      <box style={{ flexGrow: 1, flexDirection: 'row' }}>
         {/* Flow/Tree view */}
-        <box style={{ 
-          flexGrow: 1, 
-          flexDirection: 'column', 
-          border: !activeTab, // Border only when no panel
-          borderColor: colors.border.normal 
-        }}
-        onMouseDown={blurInspirationInput}>
-          <scrollbox style={{ 
-            flexGrow: 1, 
-            padding: 1, 
-            stickyScroll: true, 
-            stickyStart: 'bottom', 
-            viewportCulling: false 
+        <box
+          style={{
+            flexGrow: 1,
+            flexDirection: 'column',
+            border: !activeTab, // Border only when no panel
+            borderColor: colors.border.normal
           }}
-          onMouseDown={blurInspirationInput}>
+          onMouseDown={blurInspirationInput}
+        >
+          <scrollbox
+            style={{
+              flexGrow: 1,
+              padding: 1,
+              stickyScroll: true,
+              stickyStart: 'bottom',
+              viewportCulling: false
+            }}
+            onMouseDown={blurInspirationInput}
+          >
             {viewMode === 'flow' ? (
               <LiveObserverFlowBody
                 explorations={props.explorations}
@@ -233,6 +277,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
                 directionsMessage={props.directionsMessage}
                 potentialDirections={props.potentialDirections}
                 availableWidth={flowBodyWidth}
+                wikiMatch={props.wikiMatch}
                 // Provenance for UI badges
                 summarySources={props.summarySources}
                 summaryReasons={props.summaryReasons}

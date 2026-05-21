@@ -10,6 +10,7 @@ import { DefaultKnowledgeRepository, type KnowledgeEntry } from '../../data/wiki
 export interface WikiMatchService {
   match(query: string): Promise<string[]>;
   searchByQuery(query: string, threshold?: number): Promise<WikiMatch | null>;
+  searchByQuerySync(query: string, threshold?: number): WikiMatch | null;
 }
 
 export class DefaultWikiMatchService implements WikiMatchService {
@@ -65,14 +66,69 @@ export class DefaultWikiMatchService implements WikiMatchService {
     };
   }
 
+  searchByQuerySync(query: string, threshold: number = 0.3): WikiMatch | null {
+    if (!query || query.trim() === '') {
+      return null;
+    }
+
+    // Get all entries synchronously
+    const allEntries = this.repository.listSync();
+
+    if (allEntries.length === 0) {
+      return null;
+    }
+
+    // Calculate simple relevance score based on keyword matches
+    const scoredResults = allEntries.map(entry => ({
+      entry,
+      score: this.calculateRelevanceScore(query, entry),
+    }));
+
+    // Filter by threshold
+    const filtered = scoredResults.filter(result => result.score >= threshold);
+
+    if (filtered.length === 0) {
+      return null;
+    }
+
+    // Sort by score (descending) and return best match
+    filtered.sort((a, b) => b.score - a.score);
+
+    const best = filtered[0];
+    return {
+      entry: {
+        id: best.entry.id,
+        title: best.entry.title,
+        content: best.entry.content,
+        tags: best.entry.tags,
+      },
+      score: best.score,
+      matchedQuery: query,
+    };
+  }
+
   /**
    * Calculate relevance score (0.0 - 1.0)
    * Simple algorithm: count keyword matches in title/content/tags
+   * Supports both English (space-separated) and Chinese/mixed queries
    */
   private calculateRelevanceScore(query: string, entry: KnowledgeEntry): number {
-    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    // Extract meaningful words from query
+    // For English: split by space and filter short words
+    // For Chinese/mixed: also extract sequences of 2+ chars
+    const queryLower = query.toLowerCase();
 
-    if (queryWords.length === 0) {
+    // Split by space
+    const spaceWords = queryLower.split(/\s+/).filter(w => w.length > 2);
+
+    // Also extract all sequences of 2+ alphanumeric chars (for Chinese/English mix)
+    const allWords = [...new Set([
+      ...spaceWords,
+      ...queryLower.match(/[a-z]{3,}/g) || [],  // English words
+      ...queryLower.match(/[\u4e00-\u9fa5]{2,}/g) || [],  // Chinese phrases
+    ])];
+
+    if (allWords.length === 0) {
       return 0;
     }
 
@@ -83,7 +139,7 @@ export class DefaultWikiMatchService implements WikiMatchService {
     let matches = 0;
     let titleMatches = 0;
 
-    for (const word of queryWords) {
+    for (const word of allWords) {
       // Title matches count more
       if (titleLower.includes(word)) {
         titleMatches++;
@@ -96,7 +152,7 @@ export class DefaultWikiMatchService implements WikiMatchService {
     }
 
     // Score = (matches / total words) with title boost
-    const baseScore = matches / queryWords.length;
+    const baseScore = matches / allWords.length;
     const titleBoost = titleMatches > 0 ? 0.2 : 0;
 
     return Math.min(1.0, baseScore + titleBoost);

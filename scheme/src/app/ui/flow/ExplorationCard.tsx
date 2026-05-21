@@ -5,9 +5,10 @@
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { colors } from '../theme';
-import type { Exploration, ExplorationNode } from '../../../data/protocol/observer-protocol';
+import { colors, useThemeVersion } from '../theme';
+import type { Exploration, ExplorationNode, WikiMatch } from '../../../data/protocol/observer-protocol';
 import { SummaryPanel } from './SummaryPanel';
+import { WikiMatchCard } from './WikiMatchCard';
 
 interface ExplorationCardProps {
   exploration: Exploration;
@@ -18,9 +19,14 @@ interface ExplorationCardProps {
   isGenerating: boolean;
   /** Layout */
   availableWidth: number;
+  /** Wiki match */
+  wikiMatch?: WikiMatch;
 }
 
 export const ExplorationCard = memo(function ExplorationCard(props: ExplorationCardProps): ReactNode {
+  // memo 默认按 props 浅比较 → 主题热切换时 props 没变, 必须显式订阅版本号触发重渲染
+  useThemeVersion();
+
   const {
     exploration,
     index,
@@ -28,6 +34,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     summary,
     isGenerating,
     availableWidth,
+    wikiMatch,
   } = props;
 
   // 统计信息
@@ -95,6 +102,13 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
           <span fg={colors.fg.muted}>{toolSummary || 'none yet'}</span>
         </text>
       </box>
+
+      {/* Wiki Match (show right after question) */}
+      {wikiMatch && (
+        <box style={{ paddingLeft: 2, paddingTop: 1 }}>
+          <WikiMatchCard match={wikiMatch} availableWidth={availableWidth} />
+        </box>
+      )}
 
       {/* Summary panel (completed only) */}
       {exploration.status === 'complete' && (

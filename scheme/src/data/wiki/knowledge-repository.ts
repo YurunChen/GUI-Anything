@@ -23,6 +23,7 @@ export interface KnowledgeRepository {
   get(id: string): Promise<KnowledgeEntry | null>;
   search(query: string): Promise<KnowledgeEntry[]>;
   list(): Promise<KnowledgeEntry[]>;
+  listSync(): KnowledgeEntry[];
   delete(id: string): Promise<void>;
 }
 
@@ -83,6 +84,32 @@ export class DefaultKnowledgeRepository implements KnowledgeRepository {
 
       return titleMatch || contentMatch || tagMatch;
     });
+  }
+
+  listSync(): KnowledgeEntry[] {
+    try {
+      const files = fs.readdirSync(this.wikiDir);
+      const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+      const entries: KnowledgeEntry[] = [];
+
+      for (const file of jsonFiles) {
+        const filePath = path.join(this.wikiDir, file);
+        try {
+          const data = fs.readFileSync(filePath, 'utf-8');
+          const entry = JSON.parse(data) as KnowledgeEntry;
+          entries.push(entry);
+        } catch (error) {
+          // Skip invalid files
+        }
+      }
+
+      // Sort by timestamp (newest first)
+      return entries.sort((a, b) => b.timestamp - a.timestamp);
+    } catch (error) {
+      // Directory doesn't exist or read error
+      return [];
+    }
   }
 
   async list(): Promise<KnowledgeEntry[]> {
