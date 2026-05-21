@@ -445,6 +445,37 @@ export function getPlayerScript(): string {
   }
 
   // ═══════════════════════════════════════
+  // Theme Switcher
+  // ═══════════════════════════════════════
+
+  const $themeSelect = document.getElementById('theme-select');
+  const themeDataEl = document.getElementById('theme-data');
+  let themeMap = {};
+
+  if (themeDataEl) {
+    try { themeMap = JSON.parse(themeDataEl.textContent); } catch(e) {}
+  }
+
+  function applyTheme(name) {
+    const vars = themeMap[name];
+    if (!vars) return;
+    // Parse CSS variable declarations and apply to :root
+    const lines = vars.split(';').filter(l => l.trim());
+    lines.forEach(line => {
+      const match = line.match(/--([\w-]+)\s*:\s*(.+)/);
+      if (match) {
+        document.documentElement.style.setProperty('--' + match[1], match[2].trim());
+      }
+    });
+  }
+
+  if ($themeSelect) {
+    $themeSelect.addEventListener('change', (e) => {
+      applyTheme(e.target.value);
+    });
+  }
+
+  // ═══════════════════════════════════════
   // Init
   // ═══════════════════════════════════════
 

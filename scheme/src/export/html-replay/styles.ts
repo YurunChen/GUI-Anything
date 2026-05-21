@@ -526,5 +526,32 @@ html, body {
   font-size: 10px;
   color: var(--fg-secondary);
 }
+
+/* ─── Theme Selector ─── */
+
+.theme-selector {
+  position: fixed;
+  top: 12px;
+  right: 20px;
+  z-index: 200;
+}
+
+.theme-selector select {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-normal);
+  color: var(--fg-secondary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.theme-selector select:hover,
+.theme-selector select:focus {
+  border-color: var(--accent-primary);
+}
 `;
 }

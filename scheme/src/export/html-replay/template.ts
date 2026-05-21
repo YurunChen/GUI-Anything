@@ -6,6 +6,8 @@
 import { getReplayStyles } from './styles';
 import { getPlayerScript } from './player';
 import { escapeHtml, formatTimestamp, formatDuration } from '../shared/html-utils';
+import { themesToEmbeddableJson } from '../shared/theme-to-css';
+import { themes } from '../../app/ui/themes/index';
 import type { ReplaySessionData } from './types';
 
 /** 生成完整的自包含 Replay HTML */
@@ -13,6 +15,7 @@ export function generateReplayHtml(data: ReplaySessionData): string {
   const css = getReplayStyles();
   const js = getPlayerScript();
   const jsonData = JSON.stringify(data);
+  const themeData = themesToEmbeddableJson(themes);
   const titleText = data.title || 'Session Replay';
   const exportTime = formatTimestamp(data.exportedAt);
   const duration = formatDuration(data.stats.duration);
@@ -110,8 +113,18 @@ export function generateReplayHtml(data: ReplaySessionData): string {
     </table>
   </div>
 
+  <!-- Theme Selector (top-right) -->
+  <div class="theme-selector" id="theme-selector">
+    <select id="theme-select" title="Switch theme">
+      ${Object.keys(themes).map(name => 
+        `<option value="${name}"${name === (data.theme || 'tokyo-night') ? ' selected' : ''}>${name}</option>`
+      ).join('\n      ')}
+    </select>
+  </div>
+
   <!-- Embedded Data (self-contained) -->
   <script type="application/json" id="replay-data">${jsonData}</script>
+  <script type="application/json" id="theme-data">${themeData}</script>
 
   <!-- Player Script -->
   <script>${js}</script>
