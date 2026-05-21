@@ -12,6 +12,17 @@ async function main() {
   const isKnowledgeGraph = args.includes('--knowledge-graph');
   const prompt = args.filter(a => !a.startsWith('--') && !a.startsWith('-o')).join(' ').trim();
 
+  // ─── Web Mirror Mode ───
+  const isWebMirror = args.includes('--web-mirror');
+  if (isWebMirror) {
+    const { startWebMirror } = await import('./export/web-mirror/ws-server');
+    const portIdx = args.indexOf('--port');
+    const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) : undefined;
+    startWebMirror({ port });
+    await new Promise(() => {}); // Keep alive
+    return;
+  }
+
   // ─── HTML Export Modes ───
   if (isExportHtml) {
     const { exportSessionToHtml } = await import('./export/html-replay/export-html');
