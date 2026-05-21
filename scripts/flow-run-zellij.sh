@@ -329,4 +329,7 @@ cleanup_session() {
 }
 
 trap cleanup_session EXIT INT TERM HUP
-zellij --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME"
+# Ensure terminal/window force-close quits the session instead of detaching it.
+# Default can be overridden with FLOW_ZELLIJ_ON_FORCE_CLOSE=detach.
+ZELLIJ_ON_FORCE_CLOSE="${FLOW_ZELLIJ_ON_FORCE_CLOSE:-quit}"
+zellij options --on-force-close "$ZELLIJ_ON_FORCE_CLOSE" --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME"

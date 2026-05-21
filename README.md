@@ -275,6 +275,13 @@ Flow supports three session modes (tmux and zellij):
 
 **Known limitation**: `continue` mode uses mtime to find latest session — may follow wrong file if multiple sessions write concurrently. Use `resume <id>` for production workflows.
 
+Summary generation policy by mode:
+
+| Mode | Observer behavior |
+|------|-------------------|
+| **new** / **continue** | Hydrate from cache/wiki, then generate missing summaries when needed |
+| **resume** (`--resume <id>` or picker) | Strict replay: hydrate from cache/wiki only, do not regenerate missing summaries |
+
 ## Quick Start
 
 ### Start Flow Mode (Recommended)

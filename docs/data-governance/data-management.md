@@ -33,7 +33,7 @@
 
 | 数据类型 | 存储位置 | TTL | 重建成本 | 清理策略 |
 |---------|---------|-----|---------|---------|
-| AI Summary 缓存 | `wiki/runtime/{session}-summaries.json` | JSONL mtime 变化 | 低（重新调用AI） | 过期自动重建 |
+| AI Summary 缓存 | `wiki/runtime/{session}-summaries.json` | JSONL mtime 变化 | 低（重新调用AI） | 默认过期自动重建；`resume` 模式仅回放不重建 |
 | Evidence 数据 | `wiki/evidence/{session}.json` | 无/长期 | 中（需重新解析） | 孤儿检测后清理 |
 
 ### 2.3 Knowledge Layer (长期)
@@ -96,7 +96,7 @@ interface NoteRepository {
 
 ### 4.1 一致性保证
 ```
-JSONL (mtime) → 触发缓存失效 → 重新解析 → 重新生成AI摘要
+JSONL (mtime) → 触发缓存失效 → 重新解析 → （new/continue）重新生成AI摘要
                 ↓
            Evidence 更新（增量追加）
                 ↓
@@ -183,5 +183,5 @@ data/ (数据层)
 1. **单一真相源**: JSONL 是唯一的派生数据来源
 2. **分层隔离**: UI 层不直接访问文件系统
 3. **写时治理**: 保存知识时进行去重和审核
-4. **懒加载**: 缓存按需加载，过期自动重建
+4. **懒加载**: 缓存按需加载；new/continue 可自动重建，resume 仅回放
 5. **可重建性**: 所有派生数据都可从 JSONL 重建

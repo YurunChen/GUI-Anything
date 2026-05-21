@@ -7,7 +7,7 @@ import { memo } from 'react';
 import { colors } from '../theme';
 import type { Exploration, ExplorationNode, PersistResult } from '../../../data/protocol/observer-protocol';
 import { PersistBadge } from './StatusBadges';
-import { charDisplayWidth, lineDisplayWidth, wrapDisplayLines } from './summary-layout';
+import { lineDisplayWidth, wrapDisplayLines } from './summary-layout';
 
 const TIMELINE_CONTINUE_PREFIX = '│ ';
 const TIMELINE_END_PREFIX = '│ ';
@@ -61,16 +61,20 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
 
   // Status style
   const statusInfo = getStatusInfo(exploration.status, spinnerFrame);
-  const questionMaxColumns = Math.max(24, Math.min(42, availableWidth - 42));
-  const questionText = truncateByDisplayWidth(
-    exploration.question.replace(/\s+/g, ' ').trim(),
-    questionMaxColumns,
-  ) || 'N/A';
+  const timelinePrefix = getTimelinePrefix(showRailConnector);
+  const questionPrefix = `${nodeMarkerFor(isActive)}${statusInfo.badge}  `;
+  const questionLines = buildQuestionLines(
+    exploration.question,
+    availableWidth,
+    timelinePrefix,
+    questionPrefix,
+  );
+  const firstQuestionLine = questionLines[0] ?? 'N/A';
+  const questionContinuationPrefix = ' '.repeat(lineDisplayWidth(questionPrefix));
   const showInlineSummary = true;
   const summarySnippet = buildInlineSummary(summary, isGenerating);
-  const timelinePrefix = getTimelinePrefix(showRailConnector);
   const inlineSummaryLines = buildInlineSummaryLines(summarySnippet, availableWidth, timelinePrefix);
-  const nodeMarker = isActive ? '◆ ' : '• ';
+  const nodeMarker = nodeMarkerFor(isActive);
   const questionColor = isActive ? colors.accent.tertiary : colors.fg.primary;
   const railColor = isActive ? colors.accent.primary : colors.border.normal;
 
@@ -94,9 +98,18 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
           <span fg={isActive ? colors.accent.primary : colors.fg.dim}>{nodeMarker}</span>
           <span fg={statusInfo.color}>{statusInfo.badge}</span>
           <span fg={colors.fg.dim}>{'  '}</span>
-          <span fg={questionColor}>{questionText}</span>
+          <span fg={questionColor}>{firstQuestionLine}</span>
         </text>
       </box>
+      {questionLines.slice(1).map((line, index) => (
+        <box key={`question_cont_${index}`} style={{ width: '100%', flexDirection: 'row' }}>
+          <text fg={railColor}>{timelinePrefix}</text>
+          <text>
+            <span fg={colors.fg.dim}>{questionContinuationPrefix}</span>
+            <span fg={questionColor}>{line}</span>
+          </text>
+        </box>
+      ))}
 
       <box style={{ width: '100%', flexDirection: 'row' }}>
         <text fg={railColor}>{timelinePrefix}</text>
@@ -162,6 +175,23 @@ function getTimelinePrefix(showRailConnector: boolean): string {
   return showRailConnector ? TIMELINE_CONTINUE_PREFIX : TIMELINE_END_PREFIX;
 }
 
+function nodeMarkerFor(isActive: boolean): string {
+  return isActive ? '◆ ' : '• ';
+}
+
+function buildQuestionLines(
+  question: string,
+  availableWidth: number,
+  timelinePrefix: string,
+  questionPrefix: string,
+): string[] {
+  const normalized = question.replace(/\s+/g, ' ').trim() || 'N/A';
+  const railColumns = lineDisplayWidth(timelinePrefix);
+  const prefixColumns = lineDisplayWidth(questionPrefix);
+  const contentColumns = Math.max(12, availableWidth - railColumns - prefixColumns - 6);
+  return wrapDisplayLines(normalized, contentColumns);
+}
+
 function buildInlineSummary(summary: string | undefined, isGenerating: boolean): string {
   if (!summary || !summary.trim()) {
     return isGenerating ? 'generating summary' : 'no summary';
@@ -184,21 +214,4 @@ export function buildInlineSummaryLines(
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 1)}…`;
-}
-
-function truncateByDisplayWidth(str: string, maxColumns: number): string {
-  const safeColumns = Math.max(4, maxColumns);
-  if (lineDisplayWidth(str) <= safeColumns) return str;
-
-  const ellipsis = '…';
-  const ellipsisWidth = lineDisplayWidth(ellipsis);
-  let output = '';
-  let usedColumns = 0;
-  for (const ch of str) {
-    const width = charDisplayWidth(ch);
-    if (usedColumns + width + ellipsisWidth > safeColumns) break;
-    output += ch;
-    usedColumns += width;
-  }
-  return output ? `${output}${ellipsis}` : ellipsis;
 }

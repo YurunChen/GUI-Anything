@@ -12,7 +12,7 @@
 │  │   ├── hydrateFromCache() → wiki/runtime/{session}-summaries.json        │
 │  │   └── hydrateFromWiki() → KnowledgeRepository.listAll()                 │
 │  │                                                          ↓              │
-│  └── 调用: generateMissing() → saveSummary()                               │
+│  └── 调用: generateMissing()（仅 allowRegen=true）→ saveSummary()          │
 │                                    ↓                                        │
 │                             wiki/runtime/{session}-summaries.json          │
 │                                                                             │
