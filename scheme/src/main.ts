@@ -23,6 +23,17 @@ async function main() {
     return;
   }
 
+  // ─── Knowledge Graph ───
+  if (isKnowledgeGraph) {
+    const { exportKnowledgeGraph } = await import('./export/knowledge-graph/generate-graph');
+    const outputIdx = args.indexOf('-o');
+    const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
+    const sinceIdx = args.indexOf('--since');
+    const since = sinceIdx >= 0 ? args[sinceIdx + 1] : undefined;
+    await exportKnowledgeGraph({ outputPath, since });
+    return;
+  }
+
   // ─── HTML Export Modes ───
   if (isExportHtml) {
     const { exportSessionToHtml } = await import('./export/html-replay/export-html');
@@ -76,6 +87,10 @@ async function main() {
     console.log('  bun run src/main.ts --export-html -o replay.html');
     console.log('  bun run src/main.ts --export-html --session-id <id> --strip-thinking');
     console.log('  bun run src/main.ts --export-html --max-detail-length 500 --theme catppuccin');
+    console.log('');
+    console.log('  # Web Mirror (real-time browser viewer):');
+    console.log('  bun run src/main.ts --web-mirror');
+    console.log('  bun run src/main.ts --web-mirror --port 8080');
     process.exit(1);
   }
 }
