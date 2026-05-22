@@ -15,6 +15,7 @@ import {
   type KnowledgeEntry,
 } from '../../data/wiki/knowledge-repository';
 import { EvidenceRepository } from '../../data/wiki/evidence-repository';
+import { deduplicateKnowledge } from '../../data/management/data-governance';
 
 export interface WikiPersistenceService {
   persistCompleted(input: {
@@ -106,16 +107,7 @@ export class DefaultWikiPersistenceService implements WikiPersistenceService {
         continue;
       }
 
-      // 检查是否已存在相同 source 的知识
-      const existing = await this.knowledgeRepo.findBySource(input.sessionId, exploration.id);
-      if (existing) {
-        this.persisted.add(id);
-        results[id] = { id, status: 'skipped', reason: 'already_persisted' };
-        continue;
-      }
-
       try {
-        // 保存 evidence
         if (entry.evidenceContent) {
           this.evidenceRepo.saveEvidence(
             input.sessionId,
@@ -124,7 +116,6 @@ export class DefaultWikiPersistenceService implements WikiPersistenceService {
           );
         }
 
-        // 构建 KnowledgeEntry
         const knowledgeEntry: KnowledgeEntry = {
           id: entry.id,
           slug: entry.slug,
@@ -134,13 +125,30 @@ export class DefaultWikiPersistenceService implements WikiPersistenceService {
           request: entry.request,
           content: entry.content,
           confidence: entry.confidence,
-          tags: [], // 可从 persistMeta 提取
+          tags: [],
           createdAt: Date.now(),
         };
 
-        // 保存知识条目
-        const saved = await this.knowledgeRepo.save(knowledgeEntry);
-        
+        const dedup = await deduplicateKnowledge(knowledgeEntry, this.knowledgeRepo);
+        if (dedup.action === 'skip') {
+          this.persisted.add(id);
+          results[id] = {
+            id,
+            status: 'skipped',
+            reason: dedup.reason || 'dedup_skip',
+          };
+          continue;
+        }
+
+        if (dedup.action === 'update' && dedup.targetId) {
+          knowledgeEntry.id = dedup.targetId;
+        }
+
+        const saved = await this.knowledgeRepo.save(
+          knowledgeEntry,
+          { overwrite: dedup.action === 'update' },
+        );
+
         if (saved.success) {
           this.persisted.add(id);
           results[id] = { id, status: 'saved', path: saved.path };
@@ -171,7 +179,7 @@ function toExplorationSummary(
     summary: item.text,
     commands: extractCommandsFromNodes(exploration.nodes),
     files: extractPathsFromNodes(exploration.nodes),
-    nodes: exploration.nodes.map((node) => ({
+    nodes: exploration.nodes.map((node: ExplorationNode) => ({
       timestamp: node.timestamp,
       type: node.type,
       label: node.rawText || node.label,

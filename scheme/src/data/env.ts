@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import type { FlowEnv } from './observer-protocol';
+import type { FlowEnv } from './protocol/observer-protocol';
 
 export interface FlowEnvRepository {
   read(): FlowEnv;
@@ -17,7 +17,7 @@ export function resolveFlowDataDir(): string {
   return path.join(rootDir, '.flow-runtime');
 }
 
-// Note: SQLite removed - using JSON file cache instead (see services/ai/summary-cache.ts)
+// Note: SQLite removed — summary cache: data/wiki/summary-repository.ts
 
 /**
  * Resolve Wiki root directory.

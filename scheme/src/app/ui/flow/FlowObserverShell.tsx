@@ -18,7 +18,7 @@ import type {
   FlowchartHint,
   FlowGraphSnapshot,
 } from '../../../data/protocol/observer-protocol';
-import type { InspirationRecord } from '../../../services/wiki/auto-extractor';
+import type { InspirationRecord } from '../../../data/protocol/observer-protocol';
 
 import { colors, pulseFrames } from '../theme';
 import { LiveObserverFlowBody } from '../live-observer-flow-body';

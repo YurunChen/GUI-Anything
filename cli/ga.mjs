@@ -34,7 +34,6 @@ function printFlowHelp() {
   console.log('  -c, --continue         Continue the latest session');
   console.log('  -r, --resume [id]      Resume with picker or explicit session id');
   console.log('  -m, --model <model>    Claude model name');
-  console.log('  --backend <name>       auto|zellij|tmux (default: auto)');
   console.log('  --skip-doctor          Skip startup guardrails (not recommended)');
 }
 

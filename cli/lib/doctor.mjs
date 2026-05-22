@@ -54,8 +54,6 @@ export function runDoctor({ rootDir } = {}) {
   const flowRuntimeDir = path.join(projectRoot, '.flow-runtime');
   const wikiDir = path.join(projectRoot, 'wiki');
 
-  const hasZellij = commandExists('zellij');
-  const hasTmux = commandExists('tmux');
   const auth = claudeAuthHint();
 
   const checks = [
@@ -84,12 +82,12 @@ export function runDoctor({ rootDir } = {}) {
       fix: 'Install Bun from https://bun.sh and ensure `bun` is in PATH.',
     },
     {
-      id: 'terminal-backend',
-      label: 'Terminal backend',
+      id: 'zellij',
+      label: 'Zellij terminal multiplexer',
       required: true,
-      ok: hasZellij || hasTmux,
-      detail: hasZellij ? 'zellij available (preferred)' : hasTmux ? 'tmux available' : 'none available',
-      fix: 'Install zellij (preferred) or tmux.',
+      ok: commandExists('zellij'),
+      detail: commandExists('zellij') ? 'available in PATH' : 'not found in PATH',
+      fix: 'Install zellij (e.g. brew install zellij).',
     },
     {
       id: 'wiki-dir',

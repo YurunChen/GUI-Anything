@@ -43,6 +43,12 @@
 │  ai/summary-cache.ts                                                        │
 │  └── 直接文件操作 → wiki/runtime/{session}-summaries.json                  │
 │                                                                             │
+│  session/graph-cache-service.ts                                             │
+│  └── graph-cache-repository.ts → wiki/runtime/{session}-graph.json         │
+│                                                                             │
+│  session/session-binding-policy.ts                                          │
+│  └── resume 可见性 / summary allowRegen（launcher 设 FLOW_RESUME_MODE）       │
+│                                                                             │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
@@ -73,8 +79,9 @@ wiki/
 │   └── contexts/                   ← C001-xxx.md
 ├── evidence/                       ← 原始数据（聚合）
 │   └── {sessionId}.json            ← { exp_1: {...}, exp_2: {...} }
-├── runtime/                        ← AI 摘要缓存（临时）
-│   └── {sessionId}-summaries.json  ← { summaries: { exp_1: {...} } }
+├── runtime/                        ← 派生缓存（临时）
+│   ├── {sessionId}-summaries.json  ← AI 摘要 + flowchart hints
+│   └── {sessionId}-graph.json      ← Flow 图快照（graph-cache-repository）
 └── daily-notes/                    ← 灵感笔记
     └── 2025-04-27.md
 ```

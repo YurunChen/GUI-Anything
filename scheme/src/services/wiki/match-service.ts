@@ -1,4 +1,4 @@
-import type { WikiMatch as ProtocolWikiMatch } from '../../data/protocol/observer-protocol';
+import type { WikiMatch as ProtocolWikiMatch } from '../../data/protocol/wiki-types';
 import {
   KnowledgeRepository,
   type KnowledgeEntry,
@@ -51,18 +51,7 @@ export class DefaultWikiMatchService implements WikiMatchService {
     
     if (bestMatch && bestMatch.score >= threshold) {
       return {
-        entry: {
-          id: bestMatch.entry.id,
-          slug: bestMatch.entry.slug,
-          request: bestMatch.entry.request,
-          type: bestMatch.entry.type,
-          category: bestMatch.entry.type + 's',
-          tags: bestMatch.entry.tags,
-          aliases: [],
-          content: bestMatch.entry.content,
-          filePath: '',
-          score: bestMatch.score,
-        },
+        entry: bestMatch.entry,
         score: bestMatch.score,
         matchedKeywords: [query],
       };

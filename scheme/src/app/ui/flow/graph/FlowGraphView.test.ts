@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { FlowGraphSnapshot } from '../../../../../data/protocol/observer-protocol';
+import type { FlowGraphSnapshot } from '../../../../data/protocol/observer-protocol';
 import { buildFlowTreeData } from './FlowGraphView';
 import { buildTreeRows } from './TreeView';
 

@@ -13,7 +13,6 @@ export function parseFlowArgs(args) {
     resumeId: '',
     model: '',
     promptArgs: [],
-    backend: 'auto',
     skipDoctor: false,
   };
 
@@ -41,15 +40,6 @@ export function parseFlowArgs(args) {
       i += 1;
       continue;
     }
-    if (arg === '--backend') {
-      const backend = args[i + 1];
-      if (!backend || !['auto', 'zellij', 'tmux'].includes(backend)) {
-        throw new Error('Invalid value for --backend, expected auto|zellij|tmux');
-      }
-      options.backend = backend;
-      i += 1;
-      continue;
-    }
     if (arg === '--skip-doctor') {
       options.skipDoctor = true;
       continue;
@@ -66,31 +56,6 @@ export function parseFlowArgs(args) {
   }
 
   return options;
-}
-
-export function resolveBackend(preferred = 'auto') {
-  const hasZellij = commandExists('zellij');
-  const hasTmux = commandExists('tmux');
-
-  if (preferred === 'zellij') {
-    if (!hasZellij) throw new Error('Requested backend `zellij` is not available.');
-    return 'zellij';
-  }
-
-  if (preferred === 'tmux') {
-    if (!hasTmux) throw new Error('Requested backend `tmux` is not available.');
-    return 'tmux';
-  }
-
-  if (hasZellij) return 'zellij';
-  if (hasTmux) return 'tmux';
-  throw new Error('No terminal backend available. Install zellij (preferred) or tmux.');
-}
-
-function backendScriptPath(rootDir, backend) {
-  return backend === 'zellij'
-    ? path.join(rootDir, 'scripts', 'flow-run-zellij.sh')
-    : path.join(rootDir, 'scripts', 'flow-run.sh');
 }
 
 export function buildFlowScriptArgs(options) {
@@ -114,6 +79,10 @@ export function buildFlowScriptArgs(options) {
 }
 
 export function runFlowCommand({ rootDir, options }) {
+  if (!commandExists('zellij')) {
+    throw new Error('Zellij is required. Install with: brew install zellij');
+  }
+
   if (!options.skipDoctor) {
     const doctor = runDoctor({ rootDir });
     if (!doctor.ok) {
@@ -121,8 +90,7 @@ export function runFlowCommand({ rootDir, options }) {
     }
   }
 
-  const backend = resolveBackend(options.backend);
-  const scriptPath = backendScriptPath(rootDir, backend);
+  const scriptPath = path.join(rootDir, 'scripts', 'flow-run.sh');
   const scriptArgs = buildFlowScriptArgs(options);
   const result = spawnSync(scriptPath, scriptArgs, {
     cwd: rootDir,

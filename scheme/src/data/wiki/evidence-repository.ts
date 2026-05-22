@@ -6,6 +6,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { SessionId, ExplorationId } from '../protocol/observer-protocol';
+import { resolveWikiRoot } from '../env';
 
 export interface EvidenceEntry {
   explorationId: string;
@@ -30,23 +31,11 @@ export interface EvidenceData {
 
 const EVIDENCE_DIR = 'evidence';
 
-function getWikiRoot(): string {
-  const projectRoot = process.env.FLOW_PROJECT_DIR || process.env.FLOW_ROOT_DIR;
-  if (projectRoot) {
-    return path.join(projectRoot, 'wiki');
-  }
-  const cwdWiki = path.join(process.cwd(), 'wiki');
-  if (fs.existsSync(cwdWiki)) return cwdWiki;
-  const parentWiki = path.join(process.cwd(), '..', 'wiki');
-  if (fs.existsSync(parentWiki)) return parentWiki;
-  return cwdWiki;
-}
-
 export class EvidenceRepository {
   private wikiRoot: string;
 
   constructor(wikiRoot?: string) {
-    this.wikiRoot = wikiRoot || getWikiRoot();
+    this.wikiRoot = wikiRoot || resolveWikiRoot();
   }
 
   private getEvidenceDir(): string {

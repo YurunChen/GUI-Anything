@@ -41,7 +41,7 @@
 | 数据类型 | 存储位置 | TTL | 更新策略 | 去重策略 |
 |---------|---------|-----|---------|---------|
 | 知识条目 | `wiki/knowledge-base/{type}/{id}-{slug}.md` | 永久 | 置信度更高时覆盖 | 相似度>0.8时合并 |
-| 每日笔记 | `wiki/daily-notes/{date}.md` | 永久 | 追加 | 不重复 |
+| 灵感笔记 | `wiki/daily-notes/{date}.md` | 永久 | `FileNoteRepository` CRUD | 同日多条不合并 |
 
 ## 3. 分层数据访问接口
 
@@ -55,18 +55,10 @@ interface SessionRepository {
   // 注意: 不写操作，JSONL 是只读的
 }
 
-// 2. CacheRepository - 管理派生缓存
-interface CacheRepository {
-  // 读写 AI summaries
-  loadSummaries(sessionId: string, jsonlMtime: number): SummaryCache | null;
-  saveSummaries(sessionId: string, data: SummaryCache): void;
-  invalidate(sessionId: string): void;
-  
-  // 读写 evidence
-  loadEvidence(sessionId: string): EvidenceData | null;
-  saveEvidence(sessionId: string, explorationId: string, data: Evidence): void;
-  deleteEvidence(sessionId: string, explorationId?: string): void;
-}
+// 2. 派生缓存（实现分散，按职责拆分）
+// data/wiki/summary-repository.ts — SummaryRepository CRUD → wiki/runtime/{id}-summaries.json
+// data/session/graph-cache-repository.ts — GraphCacheRepository → wiki/runtime/{id}-graph.json
+// data/wiki/evidence-repository.ts — EvidenceRepository → wiki/evidence/{id}.json
 
 // 3. KnowledgeRepository - 管理知识库
 interface KnowledgeRepository {
@@ -85,11 +77,11 @@ interface KnowledgeRepository {
   stats(): KnowledgeStats;
 }
 
-// 4. NoteRepository - 管理笔记
-interface NoteRepository {
-  appendNote(date: string, note: NoteEntry): void;
-  listRecent(limit: number): NoteEntry[];
-}
+// 4. NoteRepository - 灵感笔记 CRUD
+// data/wiki/note-repository.ts — FileNoteRepository
+//   create / findById / listRecent / listByDate / update / delete
+// services/wiki/inspiration-note-service.ts — DefaultInspirationNoteService
+// app/observer/hooks/useWikiPersistence.ts — 只调用 service
 ```
 
 ## 4. 数据治理机制
@@ -150,30 +142,39 @@ async function cleanupOrphanEvidence(): Promise<CleanupReport> {
 
 ```
 app/ (应用层)
-  └── useExplorationSummaries.ts
-      └── 调用: SessionService (读JSONL) + CacheService (读/写缓存)
+  ├── useSessionPolling.ts → PollingObserverSessionService
+  ├── useExplorationSummaries.ts → DefaultExplorationSummaryService
+  ├── useGraphSnapshot.ts → graph-cache-service
+  └── useWikiPersistence.ts → WikiPersistenceService + InspirationNoteService
 
 services/ (服务层)
   ├── session/
-  │   └── observer-session-service.ts
-  │       └── 注入: SessionRepository (JSONL)
+  │   ├── observer-session-service.ts → data/session/repository.ts (JSONL)
+  │   ├── session-binding-policy.ts
+  │   └── graph-cache-service.ts → graph-cache-repository.ts
   ├── ai/
-  │   └── exploration-summary-service.ts
-  │       └── 注入: CacheRepository (runtime) + KnowledgeRepository (去重)
+  │   ├── exploration-summary-service.ts
+  │   └── summary-cache.ts → wiki/runtime/{id}-summaries.json
   └── wiki/
-      └── persistence-service.ts
-          └── 注入: KnowledgeRepository (knowledge-base)
+      ├── persistence-service.ts → knowledge + evidence repositories
+      ├── inspiration-note-service.ts → note-repository
+      └── match-service.ts → knowledge-repository
 
 data/ (数据层)
   ├── protocol/
   │   └── observer-protocol.ts (类型定义)
   ├── session/
-  │   ├── repository.ts (JSONL 读取)
-  │   └── cache-store.ts (runtime/evidence 读写)
+  │   ├── claude-project.ts (会话路径发现)
+  │   ├── jsonl-session.ts (JSONL 解析 / exploration)
+  │   ├── session-types.ts
+  │   ├── repository.ts (FileSessionRepository)
+  │   ├── graph-cache-repository.ts (runtime 图快照)
+  │   └── graph-patch-repository.ts (图合并补丁)
   ├── wiki/
   │   ├── knowledge-repository.ts (知识库 CRUD)
-  │   ├── cache-repository.ts (摘要缓存)
-  │   └── evidence-repository.ts (evidence 管理)
+  │   ├── evidence-repository.ts (evidence 聚合)
+  │   ├── note-repository.ts (daily-notes 灵感笔记)
+  │   └── summary-repository.ts (runtime 摘要缓存)
   └── management/
       └── data-governance.ts (去重、清理、一致性检查)
 ```

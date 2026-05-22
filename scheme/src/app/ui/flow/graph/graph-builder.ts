@@ -1,6 +1,7 @@
 import {
   makeSessionScopedId,
   type Exploration,
+  type ExplorationNode,
   type FlowchartHint,
   type FlowGraphEdge,
   type FlowGraphEdgeKind,
@@ -49,7 +50,7 @@ export function buildFlowGraphSnapshot(input: BuildFlowGraphInput): FlowGraphSna
     bucket.startedAt = Math.min(bucket.startedAt, exploration.startedAt);
     bucket.endedAt = exploration.endedAt ?? bucket.endedAt;
     bucket.status = mergeStatus(bucket.status, toExplorationStatus(exploration));
-    bucket.toolCount += exploration.nodes.filter((node) => node.type === 'tool').length;
+    bucket.toolCount += exploration.nodes.filter((node: ExplorationNode) => node.type === 'tool').length;
     bucket.errorCount += exploration.errorCounts.tool + exploration.errorCounts.system + exploration.errorCounts.result;
     bucket.wikiState = input.wikiPersistStatus?.[exploration.id] ?? bucket.wikiState;
     bucket.representativeExplorationId = exploration.id;
@@ -79,7 +80,7 @@ export function buildFlowGraphSnapshot(input: BuildFlowGraphInput): FlowGraphSna
     bucket.startedAt = fallback.startedAt;
     bucket.endedAt = fallback.endedAt;
     bucket.status = toExplorationStatus(fallback);
-    bucket.toolCount = fallback.nodes.filter((node) => node.type === 'tool').length;
+    bucket.toolCount = fallback.nodes.filter((node: ExplorationNode) => node.type === 'tool').length;
     bucket.errorCount = fallback.errorCounts.tool + fallback.errorCounts.system + fallback.errorCounts.result;
     bucket.wikiState = input.wikiPersistStatus?.[fallback.id] ?? 'none';
     bucket.representativeExplorationId = fallback.id;

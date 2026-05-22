@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { Exploration } from '../../services/session/posthoc';
+import type { Exploration } from '../../data/protocol/observer-protocol';
 import {
   lineDisplayWidth,
   summaryTextColumns,

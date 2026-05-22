@@ -1,13 +1,9 @@
 import { generateExplorationSummaryAI } from './flow-summaries';
 import {
-  loadSummaries,
-  loadSummariesWithStatus,
-  saveSummary,
-  saveSummaries,
-  cachedToSummaryItems,
-  type SummaryCacheData,
+  FileSummaryRepository,
+  type SummaryRepository,
   type CacheLoadResult,
-} from './summary-cache';
+} from '../../data/wiki/summary-repository';
 import {
   makeSessionScopedId,
   type Exploration,
@@ -63,7 +59,7 @@ interface SummaryServiceOptions {
   maxConcurrency?: number;
   maxAttempts?: number;
   generateSummary?: SummaryGenerator;
-  saveSummary?: typeof saveSummary;
+  summaryRepository?: SummaryRepository;
 }
 
 export class DefaultExplorationSummaryService implements ExplorationSummaryService {
@@ -73,7 +69,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   private readonly maxConcurrency: number;
   private readonly maxAttempts: number;
   private readonly generateSummary: SummaryGenerator;
-  private readonly saveSummaryFn: typeof saveSummary;
+  private readonly summaryRepo: SummaryRepository;
   private stats: SummaryRuntimeStats = {
     queued: 0,
     active: 0,
@@ -86,10 +82,10 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
 
   constructor(knowledgeRepo?: KnowledgeRepository, options?: SummaryServiceOptions) {
     this.knowledgeRepo = knowledgeRepo || new KnowledgeRepository();
+    this.summaryRepo = options?.summaryRepository ?? new FileSummaryRepository();
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 3);
     this.maxAttempts = Math.max(1, options?.maxAttempts ?? 2);
     this.generateSummary = options?.generateSummary ?? generateExplorationSummaryAI;
-    this.saveSummaryFn = options?.saveSummary ?? saveSummary;
   }
 
   resetSession(sessionId: string): void {
@@ -146,9 +142,9 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
    */
   hydrateFromCache(sessionId: string, jsonlPath: string): CacheHydrateResult {
     this.resetSession(sessionId);
-    const result = loadSummariesWithStatus(sessionId, jsonlPath);
+    const result = this.summaryRepo.loadWithStatus(sessionId, jsonlPath);
     return {
-      items: result.data ? cachedToSummaryItems(sessionId, result.data) : {},
+      items: result.data ? this.summaryRepo.toSummaryItems(sessionId, result.data) : {},
       cacheStatus: result.status,
       cacheReason: result.reason,
     };
@@ -199,7 +195,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
           };
           generated[id] = item;
           this.stats.completed += 1;
-          this.saveSummaryFn(input.sessionId, input.jsonlPath, exploration.id, item);
+          this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
         } catch (error) {
           const errorReason = error instanceof Error ? error.message : 'ai_generation_failed';
           const item: SummaryItem = {
@@ -215,7 +211,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
           };
           generated[id] = item;
           this.stats.failed += 1;
-          this.saveSummaryFn(input.sessionId, input.jsonlPath, exploration.id, item);
+          this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
         } finally {
           const durationMs = Date.now() - startedAt;
           const totalRuns = this.stats.completed + this.stats.failed;
@@ -266,8 +262,8 @@ function buildHistoryContext(
     .map((item) => ({
       question: item.question,
       summary: Object.values(summaries).find((summary) => summary.explorationId === item.id)?.text,
-      toolCount: item.nodes.filter((n) => n.type === 'tool').length,
-      errorCount: item.nodes.filter((n) => n.type === 'error' || n.status === 'error').length,
+      toolCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'tool').length,
+      errorCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'error' || n.status === 'error').length,
       status: item.status === 'interrupted' ? 'interrupted' : ('complete' as const),
     }));
 }

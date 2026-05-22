@@ -26,8 +26,8 @@ export async function createSession(
   startClaudeStdoutStream({
     prompt,
     onStdoutLine: (line: string) => {
-      const events = parseClaudeJsonLine(line, ctx);
-      for (const event of events) {
+      const event = parseClaudeJsonLine(line, ctx);
+      if (event) {
         builder.addEvent(event);
       }
     },

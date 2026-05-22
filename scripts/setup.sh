@@ -35,7 +35,7 @@ command_exists() {
 }
 
 setup_zellij_env() {
-  log_info "Checking Zellij installation (optional, current-terminal split layout)..."
+  log_info "Checking Zellij installation (required for flow)..."
   if command_exists zellij; then
     local zellij_version
     zellij_version="$(zellij --version 2>/dev/null || true)"
@@ -49,67 +49,6 @@ setup_zellij_env() {
     log_info "  brew install zellij"
   else
     log_info "Install Zellij: https://zellij.dev/documentation/installation.html"
-  fi
-}
-
-# Install tmux
-install_tmux() {
-  log_info "Checking tmux installation..."
-
-  if command_exists tmux; then
-    TMUX_VERSION=$(tmux -V | grep -oE '[0-9]+\.[0-9]+' | head -1)
-    log_success "tmux found: version $TMUX_VERSION"
-    return 0
-  fi
-
-  log_warn "tmux not found. Attempting to install..."
-
-  # Detect OS
-  if [[ "$OSTYPE" == "darwin"* ]]; then
-    # macOS
-    if command_exists brew; then
-      log_info "Installing tmux via Homebrew..."
-      brew install tmux
-    elif command_exists port; then
-      log_info "Installing tmux via MacPorts..."
-      sudo port install tmux
-    else
-      log_error "Neither Homebrew nor MacPorts found."
-      log_info "Please install tmux manually: https://github.com/tmux/tmux/wiki/Installing"
-      exit 1
-    fi
-  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    # Linux
-    if command_exists apt-get; then
-      log_info "Installing tmux via apt..."
-      sudo apt-get update && sudo apt-get install -y tmux
-    elif command_exists dnf; then
-      log_info "Installing tmux via dnf..."
-      sudo dnf install -y tmux
-    elif command_exists yum; then
-      log_info "Installing tmux via yum..."
-      sudo yum install -y tmux
-    elif command_exists pacman; then
-      log_info "Installing tmux via pacman..."
-      sudo pacman -S tmux
-    else
-      log_error "No supported package manager found."
-      log_info "Please install tmux manually: https://github.com/tmux/tmux/wiki/Installing"
-      exit 1
-    fi
-  else
-    log_error "Unsupported OS: $OSTYPE"
-    log_info "Please install tmux manually: https://github.com/tmux/tmux/wiki/Installing"
-    exit 1
-  fi
-
-  # Verify installation
-  if command_exists tmux; then
-    TMUX_VERSION=$(tmux -V | grep -oE '[0-9]+\.[0-9]+' | head -1)
-    log_success "tmux installed: version $TMUX_VERSION"
-  else
-    log_error "tmux installation failed"
-    exit 1
   fi
 }
 
@@ -207,10 +146,6 @@ set_permissions() {
     chmod +x "$ROOT_DIR/scripts/setup.sh"
   fi
 
-  if [[ -f "$ROOT_DIR/scripts/flow-run-zellij.sh" ]]; then
-    chmod +x "$ROOT_DIR/scripts/flow-run-zellij.sh"
-    log_success "flow-run-zellij.sh is executable"
-  fi
 }
 
 # Verify installation
@@ -258,23 +193,14 @@ print_summary() {
   echo ""
   echo "Design Principles: 心流 / 按需知识 / 无感使用"
   echo ""
-  echo "Run Flow Observer (tmux - best for long sessions):"
-  echo "  ./scripts/flow-run.sh                    # New session"
-  echo "  ./scripts/flow-run.sh --continue         # Continue last session"
-  echo "  ./scripts/flow-run.sh --resume <id>      # Specific session"
+  echo "Run Flow Observer (recommended: ga flow):"
+  echo "  ga flow"
+  echo "  ga flow --continue"
+  echo "  ga flow --resume <id>"
   echo ""
-  echo "With options:"
-  echo "  ./scripts/flow-run.sh \"Your prompt\"    # With initial prompt"
-  echo "  ./scripts/flow-run.sh -m sonnet          # Specific model"
-  echo "  FLOW_QUIET=1 ./scripts/flow-run.sh       # Minimal UI"
-  echo ""
-  echo "Run with Zellij (current terminal, quick tasks):"
-  echo "  ./scripts/flow-run-zellij.sh"
-  echo "  ./scripts/flow-run-zellij.sh -m sonnet"
-  echo ""
-  echo "Key Differences:"
-  echo "  tmux:  Fixed session name, supports inject-to-Claude, detach/reattach"
-  echo "  zellij: Unique session names, clipboard-only, native terminal feel"
+  echo "Or:"
+  echo "  ./scripts/flow-run.sh"
+  echo "  ./scripts/flow-run.sh -m sonnet \"Your prompt\""
   echo ""
   if [[ -f "${HOME}/.claude/skills/flow/SKILL.md" ]]; then
     echo "Claude Code skill installed to ~/.claude/skills/flow/"
@@ -288,7 +214,7 @@ print_summary() {
     echo ""
   fi
   echo "Architecture: Run / Capture / Guide layers"
-  echo "Contracts: wiki/00-meta/schema.md, flow-summaries.ts, this README"
+  echo "See docs/development.md for architecture and extension guide."
   echo ""
   echo "See README.md for full documentation."
   echo ""
@@ -308,8 +234,6 @@ main() {
     exit 1
   fi
 
-  install_tmux
-  echo ""
   install_bun
   echo ""
   install_project_deps

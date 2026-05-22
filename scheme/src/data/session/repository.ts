@@ -1,11 +1,11 @@
 import * as fs from 'node:fs';
+import { findLatestSession } from './claude-project';
 import {
   buildTreeFromEvents,
   extractExplorationsFromSession,
   extractSessionStats,
-  findLatestSession,
   parseJsonlFile,
-} from '../../services/session/posthoc';
+} from './jsonl-session';
 import type { ObserverSessionSnapshot } from '../protocol/observer-protocol';
 import type { ActivityTree } from '../../domain/types';
 

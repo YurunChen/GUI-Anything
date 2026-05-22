@@ -37,8 +37,8 @@ export function startWebServer(port: number, flowMode = false): void {
         startClaudeStdoutStream({
           prompt,
           onStdoutLine: (line: string) => {
-            const events = parseClaudeJsonLine(line, ctx);
-            for (const event of events) {
+            const event = parseClaudeJsonLine(line, ctx);
+            if (event) {
               activeBuilder?.addEvent(event);
             }
           },

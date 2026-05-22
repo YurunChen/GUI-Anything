@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { projectDir } from '../session/posthoc';
+import { projectDir } from '../../data/session/claude-project';
 
 type Snapshot = {
   model?: {

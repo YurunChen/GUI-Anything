@@ -3,7 +3,7 @@
  * 增量式提取 explorations，避免每次全量重建
  */
 
-import type { Exploration, ExplorationNode } from './posthoc';
+import type { Exploration, ExplorationNode } from '../../data/session/session-types';
 import type { CliEventEnvelope } from '../../domain/protocol';
 import { toPreview, truncate, normalizeWhitespace } from '../../utils/string';
 

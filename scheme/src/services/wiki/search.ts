@@ -4,12 +4,9 @@
  */
 
 import { KnowledgeRepository, getKnowledgeRepository, type KnowledgeEntry } from '../../data/wiki/knowledge-repository';
+import type { WikiMatch } from '../../data/protocol/wiki-types';
 
-export interface WikiMatch {
-  entry: KnowledgeEntry;
-  score: number;
-  matchedKeywords: string[];
-}
+export type { WikiMatch } from '../../data/protocol/wiki-types';
 
 // 提取关键词 (简单的中文/英文分词)
 function extractKeywords(text: string): string[] {

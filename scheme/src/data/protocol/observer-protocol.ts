@@ -1,14 +1,15 @@
-import type { ActivityTree } from '../domain/types';
+import type { ActivityTree } from '../../domain/types';
 import type {
   Exploration,
   ExplorationNode,
   SessionStats,
-} from '../services/session/posthoc';
-import type { WikiMatch } from '../services/wiki/search';
+} from '../session/session-types';
 import type {
   WikiExtractionResult,
+  WikiMatch,
   WikiPersistMeta,
-} from '../services/wiki/auto-extractor';
+} from './wiki-types';
+import type { DailyNoteRecord } from '../wiki/note-repository';
 
 export type SessionId = string;
 export type ExplorationId = string;
@@ -16,6 +17,8 @@ export type SessionScopedId = `${SessionId}:${ExplorationId}`;
 
 export type { ActivityTree, Exploration, ExplorationNode, SessionStats };
 export type { WikiExtractionResult, WikiMatch, WikiPersistMeta };
+/** User inspiration notes stored under wiki/daily-notes/ */
+export type InspirationRecord = DailyNoteRecord;
 
 export interface ObserverSessionSnapshot {
   sessionId: SessionId;

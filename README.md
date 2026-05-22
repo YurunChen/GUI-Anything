@@ -18,7 +18,7 @@ Three core principles guide every design decision:
 |-----------|---------|
 | `cli/` | **Public CLI entrypoint** — `ga flow` and `ga doctor` |
 | `scheme/` | **Flow observer implementation** — OpenTUI-based real-time observer for Claude Code sessions |
-| `scripts/` | **Runtime scripts** — tmux/zellij launchers and helper tooling |
+| `scripts/` | **Runtime scripts** — Zellij flow launcher (`flow-run.sh`) and setup |
 | `reference/` | **Reference implementations** — OpenTUI, tail-claude, and other UI patterns |
 | `docs/` | **Documentation** — protocol specs, design docs, release checklist |
 | `wiki/` | **Local runtime knowledge data** — knowledge base, evidence, runtime cache, notes (gitignored) |
@@ -86,16 +86,16 @@ Supported external commands:
 ```
 
 This automatically:
-1. Checks and installs **tmux** (if not found)
-2. Checks and installs **Bun** (if not found)
-3. Checks **Zellij** (optional, for current-terminal split layout)
-4. Installs project dependencies (`bun install`)
-5. Sets executable permissions
-6. Installs Claude Code skill to `~/.claude/skills/`
+1. Checks and installs **Bun** (if not found)
+2. Checks **Zellij** (required for `ga flow`)
+3. Installs project dependencies (`bun install`)
+4. Sets executable permissions
+5. Installs Claude Code skill to `~/.claude/skills/`
 
 After setup, run:
 ```bash
-./scripts/flow-run.sh
+ga doctor
+ga flow
 ```
 
 ## Using Claude Code Skill
@@ -110,32 +110,7 @@ ls ~/.claude/skills/flow/SKILL.md
 
 ### How to Use
 
-The skill supports **both interactive and non-interactive workflows**:
-
-#### 1. Start Flow from Claude Code (Non-interactive)
-
-Claude Code can now **create** the flow session for you, then you attach manually:
-
-```
-You: start flow mode
-Claude: I'll create the flow session for you...
-
-[runs: ./scripts/flow-run.sh --detach]
-
-Output:
-  ========================================
-    Flow Session Created
-  ========================================
-  
-  Session: flow-main
-  
-  To attach to the session, run:
-    tmux attach -t flow-main
-
-You: [runs tmux attach -t flow-main in your terminal]
-```
-
-Or ask Claude Code to start with specific options:
+Flow needs an **interactive terminal** (Zellij attaches in your shell). From Claude Code, ask it to run `ga flow` in a terminal you control, or start flow yourself:
 
 | What you want | Say this in Claude Code |
 |---------------|------------------------|
@@ -143,7 +118,7 @@ Or ask Claude Code to start with specific options:
 | With model | "start flow with sonnet" |
 | With prompt | "start flow with prompt 'analyze codebase'" |
 
-#### 2. Cleanup and Fixes (Run inside Claude Code)
+#### Cleanup and Fixes
 
 These operations work fully inside Claude Code:
 
@@ -153,60 +128,23 @@ These operations work fully inside Claude Code:
 | Fix display | "fix scrollback duplication in flow" |
 | Check status | "what flow sessions are running?" |
 
-#### 3. Direct Terminal Use (Interactive)
-
-If you're already in your terminal, just run directly (no `--detach` needed):
+#### Direct terminal use
 
 ```bash
-./scripts/flow-run.sh                    # Start interactively
-./scripts/flow-run.sh -m sonnet         # With model
-./scripts/flow-run.sh "Your prompt"     # With prompt
+ga flow
+ga flow --model sonnet "Your prompt"
+# or: ./scripts/flow-run.sh -m sonnet "Your prompt"
 ```
-
-### The `--detach` Flag
-
-The script auto-detects when it's running in a non-interactive shell (like Claude Code) and automatically uses detach mode. You can also force it:
-
-```bash
-./scripts/flow-run.sh --detach              # Auto-detected in Claude Code
-./scripts/flow-run.sh -m opus --detach    # With model
-```
-
-In detach mode:
-- Session is created and starts running
-- Script outputs the attach command
-- You run the attach command in your terminal
-- Session persists after you detach
 
 ### Manual Setup
 
 If you prefer manual installation:
 
-#### 1. Install tmux (3.0+)
+#### Zellij (required)
 
-**macOS:**
 ```bash
-# Via Homebrew
-brew install tmux
-
-# Or via MacPorts
-sudo port install tmux
-```
-
-**Linux (Ubuntu/Debian):**
-```bash
-sudo apt-get update
-sudo apt-get install tmux
-```
-
-**Linux (Fedora/RHEL):**
-```bash
-sudo dnf install tmux
-```
-
-**Verify installation:**
-```bash
-tmux -V  # Should show 3.0 or higher
+brew install zellij   # macOS
+zellij --version
 ```
 
 #### Bun Runtime
@@ -251,29 +189,26 @@ ga doctor
 
 If checks pass (or only non-blocking warnings appear), installation is successful.
 
-## Launch Matrix: tmux vs Zellij
+## Flow launcher (Zellij)
 
-Choose your terminal multiplexer based on your workflow:
+All flow sessions use **`scripts/flow-run.sh`** (invoked by `ga flow`): dual-pane Zellij in the current terminal.
 
-| Feature | `flow-run.sh` (tmux) | `flow-run-zellij.sh` (zellij) |
-|---------|----------------------|-------------------------------|
-| **Session naming** | Fixed (`flow-main` default, kills existing) | Unique short names (`f-mmdd-HHMMSS-xxxx`) |
-| **Window behavior** | New tmux session | Current terminal split |
-| **Inject to Claude** | Yes (`injectToClaudeInput` via tmux) | No (clipboard only) |
-| **Best for** | Long-running sessions, detach/reattach | Quick tasks, native terminal feel |
-| **Socket path** | N/A | `ZELLIJ_SOCKET_DIR=/tmp/zellij` (short path for macOS) |
+| Aspect | Behavior |
+|--------|----------|
+| Session name | Unique (`f-mmdd-HHMMSS-xxxx`) unless `FLOW_ZELLIJ_SESSION` is set |
+| Layout | `.flow-runtime/layouts/zellij-layout-{sessionId}.kdl` (generated per launch) |
+| Inject to Claude | Clipboard (`pbcopy` on macOS); see `FLOW_INJECT_BACKEND` |
+| Cleanup | `./scripts/flow-run.sh --cleanup` or exit trap + watchdog |
 
-### Session Lifecycle Modes
+### Session lifecycle modes
 
-Flow supports three session modes (tmux and zellij):
+| Mode | Flag | Left pane (Claude) | Observer binding | Summary policy |
+|------|------|-------------------|------------------|----------------|
+| **new** | (none) | `claude --session-id <uuid>` | `bind_specific` + same UUID | Hydrate + regen missing |
+| **continue** | `-c` / `--continue` | `claude --resume <id>` if ID recovered from layout, else `claude -c` | `bind_specific` if ID known, else `auto_latest` | Hydrate + regen missing |
+| **resume** | `-r` / `--resume [id]` | `claude --resume` / picker | `resume_specific` / `resume_picker` | Strict replay only |
 
-| Mode | Script Flag | Left Pane (Claude) | Observer `FLOW_SESSION_ID` | Use When |
-|------|-------------|-------------------|---------------------------|----------|
-| **new** (default) | (none) | `claude --session-id <new-uuid>` | Same UUID | Starting fresh work |
-| **continue** | `--continue` | `claude -c` (continue last) | Not set (uses mtime latest) | Resuming recent work |
-| **resume** | `--resume <id>` | `claude --resume <id>` | Set to `<id>` | Specific session |
-
-**Known limitation**: `continue` mode uses mtime to find latest session — may follow wrong file if multiple sessions write concurrently. Use `resume <id>` for production workflows.
+Binding and summary policy are implemented in `scheme/src/services/session/session-binding-policy.ts` — do not duplicate this logic in shell or UI.
 
 Summary generation policy by mode:
 
@@ -281,6 +216,8 @@ Summary generation policy by mode:
 |------|-------------------|
 | **new** / **continue** | Hydrate from cache/wiki, then generate missing summaries when needed |
 | **resume** (`--resume <id>` or picker) | Strict replay: hydrate from cache/wiki only, do not regenerate missing summaries |
+
+**Resume UI**: until `wiki/runtime/{id}-graph.json` exists or flowchart hints are ready, the flow body may stay hidden (`bindingState.visibility === 'hide'`). Missing summaries show a replay-only hint instead of regenerating.
 
 ## Quick Start
 
@@ -324,25 +261,22 @@ ga flow --model sonnet
 ga flow --model opus "Analyze codebase structure"
 ```
 
-### Legacy Script Entrypoints (Maintainers)
-
-The following script-based launchers remain available for maintainers and internal debugging:
+### Script entrypoint (maintainers)
 
 ```bash
-./scripts/flow-run.sh
-./scripts/flow-run-zellij.sh
+./scripts/flow-run.sh [--cleanup] [-c|-r] [-m MODEL] [prompt...]
 ```
 
 ### Controls
 
-#### Tmux Session
+#### Zellij
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+B D` | Detach from tmux session (flow continues in background) |
-| `tmux attach -t flow-main` | Reattach to existing session |
+| `Ctrl+O` then `d` | Detach (session keeps running if configured) |
+| `zellij attach <name>` | Reattach to a named session |
 
-#### Observer (Right Pane)
+#### Observer (right pane)
 
 | Key | Action | Context |
 |-----|--------|---------|
@@ -375,9 +309,9 @@ ga flow --model opus "Analyze codebase structure"
 ga flow --model qwen3.6-plus "Summarize this project"
 ```
 
-**Debug mode (preserve session after exit):**
+**Debug (skip auto-cleanup on exit):**
 ```bash
-FLOW_KEEP_SESSION=1 ./scripts/flow-run.sh
+FLOW_ZELLIJ_AUTOCLEANUP=0 ./scripts/flow-run.sh
 ```
 
 ## Claude Code Skill Installation
@@ -413,17 +347,18 @@ Claude Code will apply the skill automatically.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `FLOW_TMUX_SESSION` | `flow-main` | Tmux session name |
-| `FLOW_KEEP_SESSION` | `0` | Set `1` to preserve session after exit |
-| `FLOW_CLEAR_PANES` | `1` | Set `0` to skip initial clear |
-| `FLOW_CLEAR_HISTORY` | `1` | Set `0` to skip history clear on exit |
-| `FLOW_TMUX_HISTORY_LIMIT` | `5000` | Scrollback buffer size |
-| `FLOW_PROJECT_DIR` | auto | Project directory override |
-| `FLOW_SESSION_ID` | auto | Pin observer to specific session |
-| `FLOW_ZELLIJ_SESSION` | auto-generated | Zellij session name for `flow-run-zellij.sh` |
+| `FLOW_PROJECT_DIR` | auto | Project directory (Claude JSONL discovery) |
+| `FLOW_ROOT_DIR` | repo root | Wiki and runtime data root |
+| `FLOW_DATA_DIR` | `.flow-runtime` | Layouts and local runtime artifacts |
+| `FLOW_WIKI_DIR` | `{FLOW_ROOT_DIR}/wiki` | Override wiki root (see `data/env.ts`) |
+| `FLOW_LAYOUT_DIR` | `{FLOW_DATA_DIR}/layouts` | Override Zellij layout directory |
+| `FLOW_RESUME_MODE` | set by launcher | `bind_specific` / `auto_latest` / `resume_*` |
+| `FLOW_SESSION_ID` | auto | Pin observer to Claude session UUID |
+| `FLOW_ZELLIJ_SESSION` | auto-generated | Zellij session name |
 | `FLOW_ZELLIJ_REUSE` | `0` | Set `1` to reuse existing Zellij session |
-| `FLOW_ZELLIJ_OBSERVER_WIDTH` | auto | Right pane width (%) for `flow-run-zellij.sh` |
-| `FLOW_ZELLIJ_AUTOCLEANUP` | `1` | Set `0` to keep zellij session alive after script exits |
+| `FLOW_ZELLIJ_OBSERVER_WIDTH` | auto | Right pane width (%) |
+| `FLOW_ZELLIJ_AUTOCLEANUP` | `1` | Set `0` to skip cleanup on exit |
+| `FLOW_ZELLIJ_ON_FORCE_CLOSE` | `quit` | `quit` kills session on terminal close; `detach` leaves it |
 | `ZELLIJ_SOCKET_DIR` | `/tmp/zellij` | Short socket path (macOS TMPDIR fix) |
 
 ### UX Tuning Variables
@@ -431,17 +366,9 @@ Claude Code will apply the skill automatically.
 | Variable | Values | Purpose |
 |----------|--------|---------|
 | `FLOW_QUIET` | `0` (default), `1` | Quiet mode: suppress Wiki banners, minimal status |
-| `FLOW_INJECT_BACKEND` | `tmux`, `clipboard`, `none` | How to send text to Claude pane |
+| `FLOW_INJECT_BACKEND` | `clipboard`, `none` | How to send text to Claude pane (macOS: `pbcopy`) |
 
-### Inject Strategy by Backend
-
-| Backend | tmux | zellij | Command Bar Shows |
-|---------|------|--------|-------------------|
-| `tmux` | `injectToClaudeInput` available | N/A | "Press Enter to inject" |
-| `clipboard` | N/A | `pbcopy` + manual paste | "Copied to clipboard — paste with Cmd+V" |
-| `none` | No-op | No-op | "Manual input required" |
-
-Default is backend-aware: tmux sessions default to `tmux`, zellij to `clipboard`.
+Default: `clipboard` when `pbcopy` is available, otherwise `none`.
 
 ## Modes (scheme/)
 
@@ -460,8 +387,8 @@ Flow is organized into layers with strict dependency directions (single source o
 ┌────────────────────────────────────────────────────────────┐
 │  Shell Scripts (scripts/)                                    │
 │  ├── Process orchestration                                   │
-│  ├── Set FLOW_PROJECT_DIR / FLOW_SESSION_ID                  │
-│  └── DO NOT implement session selection logic                │
+│  ├── Set FLOW_PROJECT_DIR / FLOW_RESUME_MODE / FLOW_SESSION_ID │
+│  └── Map CLI flags → env only (binding rules in TypeScript)   │
 ├────────────────────────────────────────────────────────────┤
 │  scheme/src/                                                 │
 │  ├── app/        → UI and app composition                    │
@@ -474,7 +401,7 @@ Flow is organized into layers with strict dependency directions (single source o
 │  External Truth Sources                                      │
 │  ├── Claude session JSONL (Claude Code writes)               │
 │  ├── wiki/ file system                                       │
-│  └── tmux / zellij / clipboard binaries                      │
+│  └── zellij / clipboard binaries                             │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -494,7 +421,7 @@ Flow is organized into layers with strict dependency directions (single source o
 |----------|----------|-----------|
 | Summary JSON shape | `scheme/src/services/ai/flow-summaries.ts` | summary generation, UI rendering, wiki persistence |
 | Wiki storage structure | `docs/data-governance/data-flow.md` | `services/wiki/*`, `services/ai/summary-cache.ts`, observer hooks |
-| Environment vars | This README table | `flow-run.sh`, `flow-run-zellij.sh`, observer |
+| Environment vars | This README + `docs/development.md` | `flow-run.sh`, observer |
 
 Changes to contracts must update all consumers and this documentation.
 
@@ -527,22 +454,11 @@ rm -rf node_modules bun.lock
 bun install
 ```
 
-### "tmux: command not found"
-
-Install tmux for your platform (see Installation section above).
-
 ### "zellij: command not found"
 
-Install Zellij:
-
 ```bash
-brew install zellij
-```
-
-Then run:
-
-```bash
-./scripts/flow-run-zellij.sh
+brew install zellij   # macOS
+ga doctor
 ```
 
 ### `ga doctor` failure matrix
@@ -552,33 +468,21 @@ Then run:
 | Claude CLI | `claude` is missing from `PATH` | Install Claude Code CLI and confirm `claude --version` works |
 | Claude auth readiness | Login artifacts are missing | Run `claude` once and finish authentication |
 | Bun runtime | `bun` is missing from `PATH` | Install Bun from [bun.sh](https://bun.sh) |
-| Terminal backend | Neither zellij nor tmux is available | Install zellij (preferred) or tmux |
+| Zellij | `zellij` is missing from `PATH` | Install zellij (e.g. `brew install zellij`) |
 | Writable wiki directory | `wiki/` is not writable | Fix directory permissions |
 | Writable flow runtime directory | `.flow-runtime/` is not writable | Fix directory permissions |
 
-### Scrollback shows duplicated conversation
+### Stale Zellij / orphan processes
 
-This is tmux TUI redraw residue. Fix:
-- Inside the left pane, press `Ctrl+L` or run `clear`
-- Or detach and reattach: `Ctrl+B D`, then `tmux attach -t flow-main`
-- Or exit and relaunch `./scripts/flow-run.sh`
-
-### Stale sessions after crashes
-
-Clean up manually:
 ```bash
-# List sessions
-tmux ls
-
-# Kill all flow sessions
-tmux ls | awk -F: '/^flow/{print $1}' | xargs -I{} tmux kill-session -t {}
-
-# Check for orphan processes
-ps aux | awk '/claude --session-id|flow-run\.sh|flow-run-zellij\.sh/ && !/awk/'
-
-# Kill specific PID if needed
-kill <PID>
+./scripts/flow-run.sh --cleanup
+zellij list-sessions
+ps aux | awk '/claude --session-id|flow-run\.sh|zellij/ && !/awk/'
 ```
+
+### Scrollback glitches in the left pane
+
+Press `Ctrl+L` or run `clear`, then relaunch `ga flow`.
 
 ### Permission denied on scripts
 
@@ -587,6 +491,8 @@ chmod +x scripts/flow-run.sh
 ```
 
 ## Development
+
+Architecture, data layout, and how to extend the observer: **[docs/development.md](docs/development.md)**.
 
 ### Running Tests
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { Exploration } from '../../../../../services/session/posthoc';
-import type { FlowchartHint } from '../../../../../data/protocol/observer-protocol';
+import type { Exploration, FlowchartHint } from '../../../../data/protocol/observer-protocol';
 import { buildFlowGraphSnapshot } from './graph-builder';
 import { applyGraphPatch } from '../../../../services/session/graph-patch-service';
 

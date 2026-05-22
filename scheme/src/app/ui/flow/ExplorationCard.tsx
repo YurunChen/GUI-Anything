@@ -158,8 +158,10 @@ function getStatusInfo(
       return { badge: 'interrupted', color: colors.status.warning };
     case 'running':
       return { badge: `${spinnerFrame} running`, color: colors.status.info };
-    default:
-      return { badge: status.toUpperCase(), color: colors.fg.muted };
+    default: {
+      const _exhaustive: never = status;
+      return { badge: String(_exhaustive), color: colors.fg.muted };
+    }
   }
 }
 

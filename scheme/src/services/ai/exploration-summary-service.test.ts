@@ -77,7 +77,7 @@ describe('DefaultExplorationSummaryService', () => {
           active -= 1;
         }
       },
-      saveSummary: () => {},
+      summaryRepository: { saveOne: () => {} } as never,
     });
 
     const explorations = [
@@ -110,7 +110,7 @@ describe('DefaultExplorationSummaryService', () => {
       generateSummary: async () => {
         throw new Error('always-fail');
       },
-      saveSummary: () => {},
+      summaryRepository: { saveOne: () => {} } as never,
     });
 
     const generated = await service.generateMissing({

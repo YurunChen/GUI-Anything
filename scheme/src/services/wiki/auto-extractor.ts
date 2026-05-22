@@ -5,70 +5,24 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { resolveWikiRoot } from '../../data/env';
 import { KnowledgeRepository, type KnowledgeEntry } from '../../data/wiki/knowledge-repository';
 import { EvidenceRepository } from '../../data/wiki/evidence-repository';
+import type {
+  ExplorationSummary,
+  WikiExtractionResult,
+  WikiPersistMeta,
+  WikiPersistType,
+} from '../../data/protocol/wiki-types';
 
-/** Agent-side persist decision (from exploration summary JSON). */
-export type WikiPersistType = 'error' | 'snippet' | 'decision' | 'context' | 'none';
-
-export interface WikiPersistMeta {
-  should_persist: boolean;
-  type: WikiPersistType;
-  confidence: number;
-  reason?: string;
-  /** Detailed process for Wiki "解决方案" section. */
-  solution_detail?: string;
-  tags?: string[];
-  key_command?: string | null;
-}
-
-export interface ExplorationSummary {
-  id: string;
-  request?: string;
-  summary: string;
-  commands: string[];
-  files: string[];
-  nodes?: Array<{
-    timestamp: number;
-    type: string;
-    label: string;
-    status?: string;
-    phase?: string;
-    rawCommand?: string;
-  }>;
-  result: 'success' | 'failure' | 'abandoned';
-  duration: number;
-  tokens: number;
-  sessionId?: string;
-  /** When set, gates persist and can override type/confidence from heuristics. */
-  persistMeta?: WikiPersistMeta | null;
-}
-
-export interface WikiExtractionResult {
-  id: string;
-  slug: string;
-  request: string;
-  type: 'error' | 'snippet' | 'decision' | 'context';
-  problem?: string;
-  solution?: string;
-  command?: string;
-  confidence: number;
-  content: string;
-  sessionId?: string;
-  explorationId?: string;
-  evidenceContent?: string;
-}
-
-export interface InspirationRecord {
-  id: string;
-  title: string;
-  created: string;
-  path: string;
-  body?: string;
-}
+export type {
+  ExplorationSummary,
+  WikiExtractionResult,
+  WikiPersistMeta,
+  WikiPersistType,
+} from '../../data/protocol/wiki-types';
 
 const KNOWLEDGE_BASE_DIR = 'knowledge-base';
-const NOTE_BASE_DIR = 'daily-notes';  // renamed from note-base
 const EVIDENCE_DIR = 'evidence';
 
 // Type to subdirectory mapping
@@ -78,19 +32,6 @@ const TYPE_TO_SUBDIR: Record<WikiExtractionResult['type'], string> = {
   decision: 'decisions',
   context: 'contexts',
 };
-
-// Wiki 根目录
-function getWikiRoot(): string {
-  const projectRoot = process.env.FLOW_PROJECT_DIR || process.env.FLOW_ROOT_DIR;
-  if (projectRoot) {
-    return path.join(projectRoot, 'wiki');
-  }
-  const cwdWiki = path.join(process.cwd(), 'wiki');
-  if (fs.existsSync(cwdWiki)) return cwdWiki;
-  const parentWiki = path.join(process.cwd(), '..', 'wiki');
-  if (fs.existsSync(parentWiki)) return parentWiki;
-  return cwdWiki;
-}
 
 // 生成 ID
 function generateId(type: string, existingIds: string[]): string {
@@ -112,10 +53,10 @@ function generateId(type: string, existingIds: string[]): string {
 
 // 获取现有所有 Wiki ID
 function getExistingIds(): string[] {
-  const wikiRoot = getWikiRoot();
+  const wikiRoot = resolveWikiRoot();
   const ids: string[] = [];
   
-  const categories = [KNOWLEDGE_BASE_DIR, NOTE_BASE_DIR];
+  const categories = [KNOWLEDGE_BASE_DIR, 'daily-notes'];
   
   for (const category of categories) {
     const dir = path.join(wikiRoot, category);
@@ -470,7 +411,7 @@ export function loadWikiSummariesBySession(sessionId: string): Record<string, st
   const sid = (sessionId || '').trim();
   if (!sid) return {};
 
-  const wikiRoot = getWikiRoot();
+  const wikiRoot = resolveWikiRoot();
   const knowledgeDir = path.join(wikiRoot, KNOWLEDGE_BASE_DIR);
   if (!fs.existsSync(knowledgeDir)) return {};
 
@@ -519,130 +460,6 @@ export function loadWikiSummariesBySession(sessionId: string): Record<string, st
   }
 
   return out;
-}
-
-function getDailyNoteFilePath(): { noteDir: string; filePath: string; dateKey: string } {
-  const now = new Date();
-  const yyyy = String(now.getFullYear());
-  const mm = String(now.getMonth() + 1).padStart(2, '0');
-  const dd = String(now.getDate()).padStart(2, '0');
-  const dateKey = `${yyyy}-${mm}-${dd}`;
-  const wikiRoot = getWikiRoot();
-  const noteDir = path.join(wikiRoot, NOTE_BASE_DIR);
-  const filePath = path.join(noteDir, `${dateKey}.md`);
-  return { noteDir, filePath, dateKey };
-}
-
-function buildDailyNoteHeader(dateKey: string): string {
-  return `---
-date: "${dateKey}"
-type: "note-daily"
----
-
-# Notes ${dateKey}
-
-`;
-}
-
-function formatTimeHM(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
-}
-
-function buildDailyNoteEntry(id: string, title: string, content: string, created: Date): string {
-  const ts = created.toISOString();
-  const timeLabel = formatTimeHM(created);
-  return `## [${timeLabel}] ${title}
-id: ${id}
-created: ${ts}
-session_id: ${process.env.FLOW_SESSION_ID || 'unknown'}
-
-${content}
-
----
-
-`;
-}
-
-export function saveInspirationNote(rawText: string): { saved: boolean; path?: string; id?: string; title?: string } {
-  const text = rawText.trim();
-  if (!text) return { saved: false };
-
-  const firstLine = text.split('\n')[0].trim();
-  const title = (firstLine || text).slice(0, 80);
-  const existingIds = getExistingIds();
-  const id = generateId('context', existingIds);
-  const now = new Date();
-  const { noteDir, filePath, dateKey } = getDailyNoteFilePath();
-
-  if (!fs.existsSync(noteDir)) {
-    fs.mkdirSync(noteDir, { recursive: true });
-  }
-  const entryText = buildDailyNoteEntry(id, title, text, now);
-  try {
-    if (!fs.existsSync(filePath)) {
-      fs.writeFileSync(filePath, buildDailyNoteHeader(dateKey), 'utf-8');
-    }
-    fs.appendFileSync(filePath, entryText, 'utf-8');
-    return { saved: true, path: filePath, id, title };
-  } catch {
-    return { saved: false };
-  }
-}
-
-export function listRecentInspirationNotes(limit = 6): InspirationRecord[] {
-  const wikiRoot = getWikiRoot();
-  const noteDir = path.join(wikiRoot, NOTE_BASE_DIR);
-  if (!fs.existsSync(noteDir)) return [];
-
-  const dailyFiles = fs
-    .readdirSync(noteDir)
-    .filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))
-    .sort((a, b) => b.localeCompare(a));
-
-  const output: InspirationRecord[] = [];
-  for (const fileName of dailyFiles) {
-    if (output.length >= limit) break;
-    const fullPath = path.join(noteDir, fileName);
-    let text = '';
-    try {
-      text = fs.readFileSync(fullPath, 'utf-8');
-    } catch {
-      continue;
-    }
-
-    const lines = text.split('\n');
-    const dailyEntries: InspirationRecord[] = [];
-    for (let i = 0; i < lines.length; i++) {
-      const titleMatch = lines[i].match(/^## \[(\d{2}:\d{2})\]\s+(.+)$/);
-      if (!titleMatch) continue;
-
-      const title = (titleMatch[2] || '').trim() || 'Untitled';
-      const idLine = lines[i + 1] || '';
-      const createdLine = lines[i + 2] || '';
-      const idMatch = idLine.match(/^id:\s*(.+)$/);
-      const createdMatch = createdLine.match(/^created:\s*(.+)$/);
-      const id = (idMatch?.[1] || '').trim() || `N${Date.now()}`;
-      const created = (createdMatch?.[1] || '').trim() || new Date().toISOString();
-      const bodyLines: string[] = [];
-      for (let j = i + 4; j < lines.length; j++) {
-        if (lines[j].trim() === '---') break;
-        bodyLines.push(lines[j]);
-      }
-      const body = bodyLines.join('\n').trim();
-
-      dailyEntries.push({ id, title, created, path: fullPath, body });
-    }
-
-    // Newest first inside a daily file
-    dailyEntries.reverse();
-    for (const entry of dailyEntries) {
-      output.push(entry);
-      if (output.length >= limit) break;
-    }
-  }
-  return output;
 }
 
 // 批量提取 (会话结束时调用)

@@ -1,6 +1,6 @@
 /**
  * ABOUTME: Captures Claude Code statusline stdin JSON and writes to snapshot file.
- * Runs in tmux pane 0.2 (small/background), bridges Claude statusline → Flow observer.
+ * Background helper in the Claude pane layout; bridges Claude statusline → Flow observer.
  */
 
 import * as fs from 'node:fs';

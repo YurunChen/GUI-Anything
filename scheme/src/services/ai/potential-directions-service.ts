@@ -47,7 +47,7 @@ export class DefaultPotentialDirectionsService implements PotentialDirectionsSer
       };
     }
     const hasEvidence = completed.some((e) =>
-      e.nodes.some((n) => n.type === 'tool' || n.type === 'response' || n.type === 'result')
+      e.nodes.some((n: Exploration['nodes'][number]) => n.type === 'tool' || n.type === 'response' || n.type === 'result')
     );
     if (!hasEvidence) {
       return {
@@ -61,8 +61,8 @@ export class DefaultPotentialDirectionsService implements PotentialDirectionsSer
       id: e.id,
       question: e.question,
       summary: input.summaries[e.id],
-      toolCount: e.nodes.filter((n) => n.type === 'tool').length,
-      errorCount: e.nodes.filter((n) => n.type === 'error' || n.status === 'error').length,
+      toolCount: e.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'tool').length,
+      errorCount: e.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'error' || n.status === 'error').length,
     }));
 
     return this.suggest({

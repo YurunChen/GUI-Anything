@@ -28,9 +28,9 @@ export function PostHocView({ tree, prompt, sessionPath }: {
     <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: colors.bg.primary }}>
       {/* Title bar */}
       <box style={{ width: '100%', paddingLeft: 2, paddingRight: 2, flexDirection: 'row', backgroundColor: colors.bg.secondary }}>
-        <text fg={colors.status.success} bold={true}> {'✓ Complete'} </text>
+        <text fg={colors.status.success}> {'✓ Complete'} </text>
         <spacer />
-        <text fg={modeColor} bold={true}> [{viewLabel}]</text>
+        <text fg={modeColor}> [{viewLabel}]</text>
       </box>
 
       {/* Info bar */}
@@ -50,7 +50,7 @@ export function PostHocView({ tree, prompt, sessionPath }: {
 
       {/* Main panel */}
       <box style={{ flexGrow: 1, flexDirection: 'column', border: true, borderColor: colors.border.normal }}>
-        <scrollbox style={{ flexGrow: 1, paddingX: 1 }}>
+        <scrollbox style={{ flexGrow: 1, paddingLeft: 1, paddingRight: 1 }}>
           {items.length === 0 ? (
             <text fg={colors.fg.dim}>No activity found in this session</text>
           ) : viewMode === 'flow' ? (

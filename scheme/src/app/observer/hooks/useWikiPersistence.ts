@@ -3,22 +3,19 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  listRecentInspirationNotes,
-  saveInspirationNote,
-} from '../../../services/wiki/auto-extractor';
 import type {
   Exploration,
   WikiPersistMeta,
   PersistResult,
   SessionScopedId,
   SummaryItem,
+  InspirationRecord,
 } from '../../../data/protocol/observer-protocol';
-import type { InspirationRecord } from '../../../services/wiki/auto-extractor';
 import { makeSessionScopedId } from '../../../data/protocol/observer-protocol';
 import {
   DefaultWikiPersistenceService,
 } from '../../../services/wiki/persistence-service';
+import { DefaultInspirationNoteService } from '../../../services/wiki/inspiration-note-service';
 
 interface WikiState {
   extractedCount: number;
@@ -42,8 +39,12 @@ export function useWikiPersistence(
   });
 
   const wikiPersistenceServiceRef = useRef<DefaultWikiPersistenceService | null>(null);
+  const inspirationNoteServiceRef = useRef<DefaultInspirationNoteService | null>(null);
   if (!wikiPersistenceServiceRef.current) {
     wikiPersistenceServiceRef.current = new DefaultWikiPersistenceService();
+  }
+  if (!inspirationNoteServiceRef.current) {
+    inspirationNoteServiceRef.current = new DefaultInspirationNoteService();
   }
   const lastSessionRef = useRef<string>('');
   const mountedRef = useRef(true);
@@ -147,7 +148,7 @@ export function useWikiPersistence(
   const refreshInspirations = useCallback(() => {
     setState((prev) => ({
       ...prev,
-      recentInspirations: listRecentInspirationNotes(6),
+      recentInspirations: inspirationNoteServiceRef.current!.listRecentInspirations(6),
     }));
   }, []);
 
@@ -157,13 +158,13 @@ export function useWikiPersistence(
 
   const saveInspiration = useCallback(
     (text: string): { saved: boolean; id?: string } => {
-      const result = saveInspirationNote(text);
+      const result = inspirationNoteServiceRef.current!.saveInspiration(text, sessionId || undefined);
       if (result.saved) {
         refreshInspirations();
       }
       return result;
     },
-    [refreshInspirations],
+    [refreshInspirations, sessionId],
   );
 
   return {

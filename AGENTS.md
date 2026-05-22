@@ -1,39 +1,47 @@
 # GUI-Anything Agent Notes
 
-This file provides fast project context for coding agents working in this repository.
-
 ## Purpose
 
-`GUI-Anything` is a dual-pane Flow Observer for Claude Code:
+Dual-pane Flow Observer for Claude Code: left = Claude, right = live observer (`scheme/`).
 
-- Left pane: Claude Code interactive session
-- Right pane: live observer UI (`scheme/`) for explorations, summaries, and wiki persistence
-
-Public CLI entrypoint is `ga` (`ga flow`, `ga doctor`).
+Public entry: **`ga flow`**, **`ga doctor`**.
 
 ## Repo Map
 
-- `cli/`: public CLI command implementation
-- `scheme/`: observer app and services
-- `scripts/`: tmux/zellij launch scripts
-- `docs/`: protocol/design/governance docs
-- `wiki/`: local runtime knowledge data (root-only ignored by git)
+| Path | Role |
+|------|------|
+| `cli/` | `ga` CLI |
+| `scheme/` | Observer app + services + data adapters |
+| `docs/development.md` | Layering + extension guide |
+| `scripts/flow-run.sh` | **Only** flow launcher (Zellij) |
+| `docs/development.md` | Architecture & how to extend |
+| `wiki/` | Local runtime data (gitignored at repo root) |
+| `scripts/wiki/` | Wiki helper scripts (tracked) |
 
-## Session Binding Rules
+## Session Binding
 
-- `new` mode binds observer to the same newly generated session id.
-- `continue` mode may use latest-session discovery (`mtime`) when explicit id is unavailable.
-- `resume` mode is strict replay: hydrate from cache/wiki only, no missing-summary regeneration.
+| Mode | `FLOW_RESUME_MODE` | Summary regen |
+|------|-------------------|---------------|
+| new | `bind_specific` + `FLOW_SESSION_ID` | yes |
+| continue (pinned id) | `bind_specific` + `FLOW_SESSION_ID` | yes |
+| continue (no id) | `auto_latest` | yes |
+| resume id | `resume_specific` | no (strict replay) |
+| resume picker | `resume_picker` | no |
 
-## Data and Git Rules
+Policy: `scheme/src/services/session/session-binding-policy.ts`
 
-- `/wiki/` at repo root is intentionally gitignored for local runtime data.
-- `scripts/wiki/` is part of source code and must remain trackable.
-- `.flow-runtime/` is local runtime state and should stay out of git.
+## Data Rules
 
-## Verify After Changes
+- **No SQL DB** — JSONL + `wiki/` + `.flow-runtime/` files
+- Root `/wiki/` gitignored; `scripts/wiki/` tracked
+- File IO: `scheme/src/data/**` repositories only (summaries: `data/wiki/summary-repository.ts`)
+- Session JSONL: `data/session/claude-project.ts`, `jsonl-session.ts`, `repository.ts` (not `services/session/posthoc.ts` for new code)
+- Resume UI may hide flow body until graph cache or flowchart ready (`session-binding-policy.ts`)
 
-- Tests: `cd scheme && bun test`
-- Typecheck: `cd scheme && bunx tsc --noEmit`
-- CLI sanity: `ga doctor`, `ga flow --help`
+## Verify
 
+```bash
+cd scheme && bun test
+cd scheme && bunx tsc --noEmit
+ga doctor && ga flow --help
+```
