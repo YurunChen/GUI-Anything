@@ -14,9 +14,10 @@ import type {
   PersistResult,
   FlowchartHint,
   FlowGraphSnapshot,
+  WikiMatch,
 } from '../../data/protocol/observer-protocol';
 import type { PotentialDirection } from '../../services/ai/flow-summaries';
-import { colors, pulseFrames } from './theme';
+import { colors, pulseFrames, useThemeVersion } from './theme';
 import { CacheBadge } from './flow/StatusBadges';
 import { ExplorationCard } from './flow/ExplorationCard';
 import { FlowGraphView } from './flow/graph/FlowGraphView';
@@ -46,6 +47,7 @@ export type LiveObserverFlowBodyProps = {
   replayOnlyHint?: string;
   persistResults?: Record<string, PersistResult>;
   mode?: 'exploration' | 'flowchart';
+  wikiMatch?: WikiMatch | null;
 };
 
 export interface TimelineEntry {
@@ -70,6 +72,8 @@ export function sortTimelineEntries(explorations: Exploration[]): TimelineEntry[
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   props: LiveObserverFlowBodyProps
 ): ReactNode {
+  useThemeVersion();
+
   const {
     explorations,
     sessionId = 'current',
@@ -87,6 +91,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     wikiPersistStatus,
     pendingSummaryCount,
     mode = 'exploration',
+    wikiMatch,
   } = props;
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const hasRunning = explorations.some((item) => item.status === 'running');
@@ -114,9 +119,10 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     return <text fg={colors.fg.muted}>Waiting for explorations...</text>;
   }
 
+  const latestExplorationId = explorations[explorations.length - 1]?.id;
+
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
-      {/* Single-rail chronological stream */}
       <box style={{ width: '100%', flexDirection: 'column' }}>
         {showCacheBadge && (
           <text fg={colors.fg.dim}>
@@ -145,11 +151,12 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
             pendingSummaryCount={pendingSummaryCount}
             availableWidth={availableWidth}
             spinnerFrame={pulseFrames[spinnerFrameIndex]}
+            wikiMatch={wikiMatch}
+            latestExplorationId={latestExplorationId}
           />
         )}
       </box>
 
-      {/* NEXT: lightweight suggestions */}
       <NextPanel
         status={directionsStatus}
         message={directionsMessage}
@@ -167,6 +174,8 @@ interface ExplorationTimelineProps {
   pendingSummaryCount: number;
   availableWidth: number;
   spinnerFrame: string;
+  wikiMatch?: WikiMatch | null;
+  latestExplorationId?: string;
 }
 
 function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
@@ -178,6 +187,8 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
     pendingSummaryCount,
     availableWidth,
     spinnerFrame,
+    wikiMatch,
+    latestExplorationId,
   } = props;
   const timelineEntries = sortTimelineEntries(explorations);
   let latestRunningOriginalIdx = -1;
@@ -198,6 +209,7 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
           && exploration.status === 'complete'
           && pendingSummaryCount > 0;
         const isActive = originalIndex === focusOriginalIdx;
+        const showWikiMatch = wikiMatch && exploration.id === latestExplorationId;
 
         return (
           <ExplorationCard
@@ -211,14 +223,13 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
             persistResult={persistResults?.[exploration.id]}
             isGenerating={isGenerating}
             availableWidth={availableWidth}
+            wikiMatch={showWikiMatch ? wikiMatch : undefined}
           />
         );
       })}
     </box>
   );
 }
-
-// -------- Next section component --------
 
 interface NextPanelProps {
   status: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
@@ -229,7 +240,6 @@ interface NextPanelProps {
 function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'idle') return null;
 
-  // Lightweight style: small footprint, low interruption.
   const panelStyle = {
     width: '100%' as const,
     flexDirection: 'column' as const,
@@ -266,7 +276,6 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
     );
   }
 
-  // status === 'ready'
   return (
     <box style={panelStyle}>
       <text fg={colors.status.success}>Next: Potential Directions</text>
@@ -281,12 +290,9 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   );
 }
 
-// -------- Helpers --------
-
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 1)}…`;
 }
 
-// Keep exports for tests.
 export { lineDisplayWidth, wrapDisplayLines } from './flow/summary-layout';

@@ -8,7 +8,11 @@ export function LiveObserverView(): ReactNode {
 }
 
 export async function renderLiveObserver(_cwd?: string): Promise<void> {
-  const renderer = await createCliRenderer({ exitOnCtrlC: true });
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+    useMouse: true,
+    enableMouseMovement: false,
+  });
   const root = createRoot(renderer);
   root.render(<LiveObserverView />);
 }

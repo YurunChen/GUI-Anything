@@ -208,6 +208,16 @@ export class KnowledgeRepository {
     return entries;
   }
 
+  listAllSync(): KnowledgeEntry[] {
+    const files = listAllKnowledgeFiles();
+    const entries: KnowledgeEntry[] = [];
+    for (const file of files) {
+      const entry = parseKnowledgeFile(file);
+      if (entry) entries.push(entry);
+    }
+    return entries;
+  }
+
   // 搜索（简单关键词匹配）
   async search(query: string): Promise<KnowledgeEntry[]> {
     const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 1);

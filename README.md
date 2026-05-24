@@ -23,6 +23,63 @@ Three core principles guide every design decision:
 | `docs/` | **Documentation** — protocol specs, design docs, release checklist |
 | `wiki/` | **Local runtime knowledge data** — knowledge base, evidence, runtime cache, notes (gitignored) |
 
+## 🔔 Flow Notification Harness (New!)
+
+Push critical Flow events to **WeChat / Feishu / DingTalk** — stay informed anywhere:
+
+| Feature | What you get |
+|---------|-------------|
+| 🚨 **Error Alerts** | Instant notification when errors detected |
+| ✅ **Completion Notices** | Know when long-running tasks finish |
+| 💡 **Knowledge Extraction** | Auto-push important discoveries |
+| 📊 **Progress Reports** | Periodic updates or manual snapshots (press `s`) |
+
+**Quick start**: 
+1. Start WeChat service: `./scripts/start-weixin-service.sh`
+2. Login: `./scripts/weixin-login.sh` 
+3. Set `FLOW_NOTIFY_WECHAT_USER_ID` and run `./scripts/flow-run.sh`
+
+See [Notification Guide](docs/NOTIFICATION.md) | [WeChat Setup](docs/NOTIFICATION_WECHAT.md) for full setup.
+
+## 🎬 HTML Integration (New!)
+
+GUI-Anything now exports rich HTML artifacts from Flow sessions:
+
+| Feature | Command | Output |
+|---------|---------|--------|
+| 🎬 **Session Replay** | `--export-html -o replay.html` | Interactive timeline replay (single HTML, ~63KB) |
+| 🌐 **Web Mirror** | `--web-mirror` | Real-time browser viewer via WebSocket |
+| 📊 **Knowledge Graph** | `--knowledge-graph -o graph.html` | Force-directed graph of Wiki entries |
+| 🎨 **30 Theme Support** | `--theme catppuccin` | All 30 themes available in exported HTML |
+
+### Session Replay
+```bash
+# Export latest session as interactive HTML
+bun run src/main.ts --export-html -o replay.html
+
+# With options
+bun run src/main.ts --export-html --strip-thinking --max-detail-length 500 --theme nord
+```
+Features: Play/Pause/Speed control, timeline navigation, full-text search, keyboard shortcuts, theme switcher.
+
+### Web Mirror
+```bash
+# Start real-time mirror server
+bun run src/main.ts --web-mirror --port 3001
+
+# Open on phone: http://<your-ip>:3001
+```
+Features: WebSocket real-time updates, phase indicator, live stats, auto-reconnect, mobile-friendly.
+
+### Knowledge Graph
+```bash
+# Generate interactive graph from Wiki entries
+bun run src/main.ts --knowledge-graph -o graph.html --since 7d
+```
+Features: Canvas force-directed layout, type-based coloring, shared-tag edges, hover tooltips, search.
+
+See [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) and [Ideas](docs/IDEAS_HTML_INTEGRATION.md) for full roadmap.
+
 ## Mental Model: Run / Capture / Guide
 
 Flow Observer organizes work into three layers:

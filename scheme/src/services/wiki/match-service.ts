@@ -6,25 +6,63 @@ import {
 
 export interface WikiMatchService {
   searchByQuery(query: string, threshold: number): Promise<ProtocolWikiMatch | null>;
+  searchByQuerySync(query: string, threshold?: number): ProtocolWikiMatch | null;
 }
 
-// 简单关键词相似度计算
-function calculateScore(entry: KnowledgeEntry, query: string): number {
+function calculateRelevanceScore(query: string, entry: KnowledgeEntry): number {
   const queryLower = query.toLowerCase();
-  let score = 0;
-  
-  // 标题匹配
-  if (entry.request.toLowerCase().includes(queryLower)) score += 10;
-  
-  // 内容匹配
-  if (entry.content.toLowerCase().includes(queryLower)) score += 5;
-  
-  // 标签匹配
-  for (const tag of entry.tags) {
-    if (tag.toLowerCase().includes(queryLower)) score += 3;
+  const spaceWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+  const allWords = [...new Set([
+    ...spaceWords,
+    ...queryLower.match(/[a-z]{3,}/g) || [],
+    ...queryLower.match(/[\u4e00-\u9fa5]{2,}/g) || [],
+  ])];
+
+  if (allWords.length === 0) return 0;
+
+  const requestLower = entry.request.toLowerCase();
+  const contentLower = entry.content.toLowerCase();
+  const tagsLower = (entry.tags || []).map((t) => t.toLowerCase()).join(' ');
+
+  let matches = 0;
+  let titleMatches = 0;
+
+  for (const word of allWords) {
+    if (requestLower.includes(word)) {
+      titleMatches++;
+      matches++;
+    } else if (contentLower.includes(word)) {
+      matches++;
+    } else if (tagsLower.includes(word)) {
+      matches++;
+    }
   }
-  
-  return score / 20; // 归一化
+
+  const baseScore = matches / allWords.length;
+  const titleBoost = titleMatches > 0 ? 0.2 : 0;
+  return Math.min(1.0, baseScore + titleBoost);
+}
+
+function pickBestMatch(
+  entries: KnowledgeEntry[],
+  query: string,
+  threshold: number,
+): ProtocolWikiMatch | null {
+  if (entries.length === 0) return null;
+
+  const scored = entries
+    .map((entry) => ({ entry, score: calculateRelevanceScore(query, entry) }))
+    .filter((result) => result.score >= threshold)
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  if (!best) return null;
+
+  return {
+    entry: best.entry,
+    score: best.score,
+    matchedKeywords: [query],
+  };
 }
 
 export class DefaultWikiMatchService implements WikiMatchService {
@@ -36,27 +74,13 @@ export class DefaultWikiMatchService implements WikiMatchService {
 
   async searchByQuery(query: string, threshold: number): Promise<ProtocolWikiMatch | null> {
     if (!query || query.trim().length < 3) return null;
-    
     const entries = await this.knowledgeRepo.listAll();
-    if (entries.length === 0) return null;
-    
-    let bestMatch: { entry: KnowledgeEntry; score: number } | null = null;
-    
-    for (const entry of entries) {
-      const score = calculateScore(entry, query);
-      if (score > (bestMatch?.score ?? 0)) {
-        bestMatch = { entry, score };
-      }
-    }
-    
-    if (bestMatch && bestMatch.score >= threshold) {
-      return {
-        entry: bestMatch.entry,
-        score: bestMatch.score,
-        matchedKeywords: [query],
-      };
-    }
-    
-    return null;
+    return pickBestMatch(entries, query, threshold);
+  }
+
+  searchByQuerySync(query: string, threshold = 0.3): ProtocolWikiMatch | null {
+    if (!query || query.trim().length < 3) return null;
+    const entries = this.knowledgeRepo.listAllSync();
+    return pickBestMatch(entries, query, threshold);
   }
 }

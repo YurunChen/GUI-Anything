@@ -7,7 +7,57 @@ async function main() {
   const isFlowMode = args.includes('--flow');
   const isLiveMode = args.includes('--live');
   const isPostHoc = args.includes('--posthoc');
-  const prompt = args.filter(a => !a.startsWith('--')).join(' ').trim();
+  const isExportHtml = args.includes('--export-html');
+  const isThemePlayground = args.includes('--theme-playground');
+  const isKnowledgeGraph = args.includes('--knowledge-graph');
+  const prompt = args.filter(a => !a.startsWith('--') && !a.startsWith('-o')).join(' ').trim();
+
+  // ─── Web Mirror Mode ───
+  const isWebMirror = args.includes('--web-mirror');
+  if (isWebMirror) {
+    const { startWebMirror } = await import('./export/web-mirror/ws-server');
+    const portIdx = args.indexOf('--port');
+    const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) : undefined;
+    startWebMirror({ port });
+    await new Promise(() => {}); // Keep alive
+    return;
+  }
+
+  // ─── Knowledge Graph ───
+  if (isKnowledgeGraph) {
+    const { exportKnowledgeGraph } = await import('./export/knowledge-graph/generate-graph');
+    const outputIdx = args.indexOf('-o');
+    const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
+    const sinceIdx = args.indexOf('--since');
+    const since = sinceIdx >= 0 ? args[sinceIdx + 1] : undefined;
+    await exportKnowledgeGraph({ outputPath, since });
+    return;
+  }
+
+  // ─── HTML Export Modes ───
+  if (isExportHtml) {
+    const { exportSessionToHtml } = await import('./export/html-replay/export-html');
+    const outputIdx = args.indexOf('-o');
+    const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
+    const sessionIdIdx = args.indexOf('--session-id');
+    const sessionId = sessionIdIdx >= 0 ? args[sessionIdIdx + 1] : undefined;
+
+    await exportSessionToHtml({
+      outputPath,
+      sessionId,
+      stripThinking: args.includes('--strip-thinking'),
+      maxDetailLength: (() => {
+        const idx = args.indexOf('--max-detail-length');
+        return idx >= 0 ? parseInt(args[idx + 1], 10) : undefined;
+      })(),
+      withSummaries: args.includes('--with-summaries'),
+      theme: (() => {
+        const idx = args.indexOf('--theme');
+        return idx >= 0 ? args[idx + 1] : undefined;
+      })(),
+    });
+    return;
+  }
 
   if (isLiveMode || isPostHoc) {
     const { renderLiveObserver } = await import('./app/ui/live-observer');
@@ -32,6 +82,15 @@ async function main() {
     console.log('  bun run src/main.ts --posthoc [path]   # Post-hoc analysis of latest session');
     console.log('  bun run src/main.ts --observer "<p>"   # Observer mode (for dual-pane)');
     console.log('  bun run src/main.ts --web              # Web API mode');
+    console.log('');
+    console.log('  # HTML Export:');
+    console.log('  bun run src/main.ts --export-html -o replay.html');
+    console.log('  bun run src/main.ts --export-html --session-id <id> --strip-thinking');
+    console.log('  bun run src/main.ts --export-html --max-detail-length 500 --theme catppuccin');
+    console.log('');
+    console.log('  # Web Mirror (real-time browser viewer):');
+    console.log('  bun run src/main.ts --web-mirror');
+    console.log('  bun run src/main.ts --web-mirror --port 8080');
     process.exit(1);
   }
 }

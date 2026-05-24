@@ -20,7 +20,7 @@ import type {
 } from '../../../data/protocol/observer-protocol';
 import type { InspirationRecord } from '../../../data/protocol/observer-protocol';
 
-import { colors, pulseFrames } from '../theme';
+import { colors, pulseFrames, themeManager, applyTheme, useThemeVersion } from '../theme';
 import { LiveObserverFlowBody } from '../live-observer-flow-body';
 
 import { ContextPanel } from './ContextPanel';
@@ -38,6 +38,7 @@ interface FlowObserverShellProps {
   runtimeModel: string;
   wikiExtractedCount: number;
   wikiMatch: WikiMatch | null;
+  wikiDebugInfo?: string;
   explorationSummaries: Record<string, string>;
   flowchartHints: Record<string, FlowchartHint>;
   graphSnapshot: FlowGraphSnapshot;
@@ -53,16 +54,20 @@ interface FlowObserverShellProps {
   directionsMessage: string;
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
+  onSendSnapshot?: (note?: string) => void;
+  notifyStatus?: string;
 }
 
 export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const flowBodyVisible = props.flowBodyVisible ?? true;
   const { width: terminalWidth } = useTerminalDimensions();
+  useThemeVersion();
 
   const [activeTab, setActiveTab] = useState<ContextTab>(null);
   const [inspirationInputFocused, setInspirationInputFocused] = useState(false);
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const [observerMode, setObserverMode] = useState<'exploration' | 'flowchart'>('exploration');
+  const [showThemeNotification, setShowThemeNotification] = useState(false);
 
   const blurInspirationInput = useCallback(() => {
     if (inspirationInputFocused) {
@@ -85,7 +90,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   }, [props]);
 
   const completedCount = props.explorations.filter((e) => e.status === 'complete').length;
-  const runningCount = props.explorations.filter((e) => e.status === 'running').length;
   const interruptionErrorCount = props.explorations.filter(
     (e) => (e.errorCounts.system + e.errorCounts.result) > 0
   ).length;
@@ -110,7 +114,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     return () => clearInterval(timer);
   }, [activityState.spinning]);
 
-  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; preventDefault: () => void }) => {
+  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; shift?: boolean; preventDefault: () => void }) => {
     if (key.ctrl && key.name === 'q') {
       safeExit();
       return;
@@ -139,7 +143,33 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     if (key.name === 'g') {
       setObserverMode((prev) => (prev === 'exploration' ? 'flowchart' : 'exploration'));
     }
-  }, [activeTab, inspirationInputFocused]));
+    if (key.name === 's' && props.onSendSnapshot) {
+      props.onSendSnapshot();
+      return;
+    }
+
+    const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);
+    if (isMorandiKey || key.name === 'j' || key.name === 'k' || key.name === 'l') {
+      try {
+        let peek;
+        if (isMorandiKey) {
+          peek = themeManager.nextMorandiTheme();
+        } else if (key.name === 'k') {
+          peek = themeManager.previousTheme();
+        } else if (key.name === 'l') {
+          peek = themeManager.toggleLightDark();
+        } else {
+          peek = themeManager.nextTheme();
+        }
+        applyTheme(peek);
+        setShowThemeNotification(true);
+        setTimeout(() => setShowThemeNotification(false), 1500);
+      } catch (err) {
+        try { process.stderr.write(`Theme switch failed: ${String(err)}\n`); } catch { /* ignore */ }
+      }
+      return;
+    }
+  }, [activeTab, inspirationInputFocused, props]));
 
   const wikiLinkText = props.wikiMatch ? props.wikiMatch.entry.id : '';
 
@@ -148,18 +178,8 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     ? Math.max(40, terminalWidth - (typeof layout.flexBasis === 'number' ? layout.flexBasis : 40))
     : terminalWidth;
 
-  const activityColor = activityToneColor(activityState.tone);
-  const activityPrefix = activityState.spinning
-    ? pulseFrames[spinnerFrameIndex % pulseFrames.length]
-    : activityState.tone === 'error'
-      ? '✖'
-      : activityState.tone === 'warning'
-        ? '!'
-        : '•';
-
   return (
     <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: colors.bg.primary }}>
-      {/* Header */}
       <box
         style={{
           width: '100%',
@@ -180,15 +200,26 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
           <span fg={interruptionErrorCount > 0 ? colors.status.error : colors.fg.secondary}>
             {`Err:${interruptionErrorCount}`}
           </span>
+          {showThemeNotification && (
+            <>
+              <span fg={colors.fg.dim}>{'  '}</span>
+              <span fg={colors.accent.secondary}>{`🎨 ${themeManager.getThemeDisplayName()}`}</span>
+            </>
+          )}
         </text>
       </box>
 
-      {/* Session path status */}
       <box style={{ width: '100%', backgroundColor: colors.bg.secondary, paddingLeft: 1, paddingRight: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
         <text fg={colors.fg.dim}>
           {props.sessionPath ? props.sessionPath.split('/').slice(-1)[0].slice(0, 52) : 'Waiting for session...'}
         </text>
         <text>
+          {props.notifyStatus && (
+            <>
+              <span fg={colors.status.success}>{props.notifyStatus}</span>
+              <span fg={colors.fg.dim}>{'  │  '}</span>
+            </>
+          )}
           {props.wikiMatch && (
             <span fg={colors.status.warning}>{`Similar wiki: ${wikiLinkText} ${Math.round(props.wikiMatch.score * 100)}%`}</span>
           )}
@@ -199,7 +230,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         </text>
       </box>
 
-      {/* Main content area */}
       <box style={{ flexGrow: 1, flexDirection: 'row' }} onMouseDown={blurInspirationInput}>
         <box
           style={{
@@ -233,6 +263,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
                 directionsMessage={props.directionsMessage}
                 potentialDirections={props.potentialDirections}
                 availableWidth={flowBodyWidth}
+                wikiMatch={props.wikiMatch}
                 persistResults={props.persistResults}
                 cacheStatus={props.cacheStatus}
                 cacheReason={props.cacheReason}
@@ -253,7 +284,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         />
       </box>
 
-      {/* File access heatmap */}
       {props.tree && props.tree.fileAccess.size > 0 && (
         <box style={{ width: '100%', backgroundColor: colors.bg.tertiary, paddingLeft: 1, paddingRight: 1 }}>
           <text fg={colors.fg.muted}>
@@ -271,7 +301,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         </box>
       )}
 
-      {/* End-of-run outcome summary */}
       {!activityState.spinning && props.explorations.length > 0 && (
         <box style={{ width: '100%', backgroundColor: colors.bg.tertiary, paddingLeft: 1, paddingRight: 1 }}>
           <text fg={colors.fg.muted}>
@@ -290,6 +319,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         terminalWidth={terminalWidth}
         inspirationInputFocused={inspirationInputFocused}
         observerMode={observerMode}
+        notificationEnabled={!!props.onSendSnapshot}
       />
     </box>
   );
@@ -299,17 +329,4 @@ function safeExit(): void {
   const restoreSeq = '\u001b[?25h\u001b[?1049l\u001b[?1000l\u001b[?1002l\u001b[?1003l\u001b[?1006l\u001b[?2004l\u001b[0m';
   process.stdout.write(restoreSeq);
   process.exit(0);
-}
-
-function activityToneColor(tone: 'running' | 'idle' | 'warning' | 'error'): string {
-  switch (tone) {
-    case 'running':
-      return colors.status.info;
-    case 'warning':
-      return colors.status.warning;
-    case 'error':
-      return colors.status.error;
-    default:
-      return colors.fg.muted;
-  }
 }

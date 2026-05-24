@@ -4,9 +4,10 @@
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { colors } from '../theme';
-import type { Exploration, ExplorationNode, PersistResult } from '../../../data/protocol/observer-protocol';
+import { colors, useThemeVersion } from '../theme';
+import type { Exploration, ExplorationNode, PersistResult, WikiMatch } from '../../../data/protocol/observer-protocol';
 import { PersistBadge } from './StatusBadges';
+import { WikiMatchCard } from './WikiMatchCard';
 import { lineDisplayWidth, wrapDisplayLines } from './summary-layout';
 
 const TIMELINE_CONTINUE_PREFIX = '│ ';
@@ -19,16 +20,17 @@ interface ExplorationCardProps {
   showRailConnector: boolean;
   isActive: boolean;
   spinnerFrame: string;
-  /** Summary related */
   summary?: string;
   persistStatus?: 'saved' | 'skipped' | 'failed' | 'pending';
   persistResult?: PersistResult;
   isGenerating: boolean;
-  /** Layout */
   availableWidth: number;
+  wikiMatch?: WikiMatch;
 }
 
 export const ExplorationCard = memo(function ExplorationCard(props: ExplorationCardProps): ReactNode {
+  useThemeVersion();
+
   const {
     exploration,
     showRailConnector,
@@ -39,15 +41,14 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     persistResult,
     isGenerating,
     availableWidth,
+    wikiMatch,
   } = props;
 
-  // Stats
   const toolNodes = exploration.nodes.filter((node: ExplorationNode) => node.type === 'tool');
   const errorNodes = exploration.nodes.filter(
     (node: ExplorationNode) => node.status === 'error' || node.type === 'error'
   );
 
-  // Tool usage stats
   const toolCounts = new Map<string, number>();
   for (const node of toolNodes) {
     const toolName = node.label.split(' ')[0] || 'unknown';
@@ -59,7 +60,6 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     .map(([name, count]) => `${truncate(name, 14)}×${count}`)
     .join('  ');
 
-  // Status style
   const statusInfo = getStatusInfo(exploration.status, spinnerFrame);
   const timelinePrefix = getTimelinePrefix(showRailConnector);
   const questionPrefix = `${nodeMarkerFor(isActive)}${statusInfo.badge}  `;
@@ -91,7 +91,6 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
         backgroundColor: colors.bg.primary,
       }}
     >
-      {/* Stream row */}
       <box style={{ width: '100%', flexDirection: 'row' }}>
         <text fg={railColor}>{timelinePrefix}</text>
         <text>
@@ -110,6 +109,12 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
           </text>
         </box>
       ))}
+
+      {wikiMatch && (
+        <box style={{ paddingLeft: 2, paddingTop: 1 }}>
+          <WikiMatchCard match={wikiMatch} availableWidth={availableWidth} />
+        </box>
+      )}
 
       <box style={{ width: '100%', flexDirection: 'row' }}>
         <text fg={railColor}>{timelinePrefix}</text>
@@ -140,12 +145,9 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
           ))}
         </box>
       )}
-
     </box>
   );
 });
-
-// -------- Helpers --------
 
 function getStatusInfo(
   status: Exploration['status'],
@@ -208,7 +210,6 @@ export function buildInlineSummaryLines(
 ): string[] {
   const railColumns = lineDisplayWidth(timelinePrefix);
   const labelColumns = lineDisplayWidth(SUMMARY_LABEL);
-  // Reserve small safety columns for container paddings/border.
   const contentColumns = Math.max(12, availableWidth - railColumns - labelColumns - 6);
   return wrapDisplayLines(summaryText, contentColumns);
 }

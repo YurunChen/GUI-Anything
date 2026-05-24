@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo } from 'react';
 
 import {
   type PotentialDirection,
@@ -18,6 +18,7 @@ import { useWikiPersistence } from './hooks/useWikiPersistence';
 import { useGraphSnapshot } from './hooks/useGraphSnapshot';
 import { useGraphConsolidation } from './hooks/useGraphConsolidation';
 import { buildFlowGraphSnapshot } from '../ui/flow/graph/graph-builder';
+import { useNotification } from './hooks/useNotification';
 
 export function LiveObserverContainer(): ReactNode {
   const cwd = process.env.FLOW_PROJECT_DIR || process.cwd();
@@ -48,7 +49,6 @@ export function LiveObserverContainer(): ReactNode {
     flowchartHints,
     persistMeta: explorationPersistMeta,
     pendingCount: pendingSummaryCount,
-    // Provenance for UI badges
     cacheStatus,
     cacheReason,
   } = useExplorationSummaries(explorations, sessionId, sessionPath, summaryModel, summaryPolicy);
@@ -104,28 +104,51 @@ export function LiveObserverContainer(): ReactNode {
     graphCacheHit,
   });
 
-  const [lastUserQuery, setLastUserQuery] = useState('');
-  const [wikiMatch, setWikiMatch] = useState<WikiMatch | null>(null);
+  const {
+    sendManualSnapshot,
+    lastNotifyStatus,
+  } = useNotification(sessionId, tree ?? undefined);
+
   const wikiMatchServiceRef = useRef(new DefaultWikiMatchService());
-  useEffect(() => {
+  const { wikiMatch, wikiDebugInfo } = useMemo(() => {
     const latest = explorations[explorations.length - 1];
     if (!latest) {
-      setWikiMatch(null);
-      return;
+      return { wikiMatch: null as WikiMatch | null, wikiDebugInfo: `no_exploration (count=${explorations.length})` };
     }
-    const query = latest.question;
-    if (!query || query.length < 5 || query === lastUserQuery) return;
-    setLastUserQuery(query);
-    let cancelled = false;
-    wikiMatchServiceRef.current
-      .searchByQuery(query, WIKI_SEARCH_THRESHOLD)
-      .then((match) => {
-        if (!cancelled) setWikiMatch(match);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [explorations, lastUserQuery]);
+
+    let query = latest.question;
+    if (!query || query.trim() === '') {
+      const textNodes = latest.nodes?.filter((n) =>
+        n.rawText && n.rawText.length > 10
+        && (n.type === 'response' || !n.type),
+      ) || [];
+      if (textNodes.length > 0) {
+        query = textNodes[0].rawText || '';
+      }
+    }
+
+    if (!query || query.length < 5) {
+      return {
+        wikiMatch: null,
+        wikiDebugInfo: `query_too_short (len=${query?.length || 0})`,
+      };
+    }
+
+    try {
+      const match = wikiMatchServiceRef.current.searchByQuerySync(query, WIKI_SEARCH_THRESHOLD);
+      return {
+        wikiMatch: match,
+        wikiDebugInfo: match
+          ? `found: ${match.entry.request.slice(0, 30)} (${Math.round(match.score * 100)}%)`
+          : `no_match (q="${query.slice(0, 30)}" th=${WIKI_SEARCH_THRESHOLD})`,
+      };
+    } catch (error) {
+      return {
+        wikiMatch: null,
+        wikiDebugInfo: `error: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }, [explorations]);
 
   const [potentialDirections, setPotentialDirections] = useState<PotentialDirection[]>([]);
   const [directionsStatus, setDirectionsStatus] = useState<'idle' | 'generating' | 'ready' | 'insufficient' | 'error'>('idle');
@@ -169,6 +192,7 @@ export function LiveObserverContainer(): ReactNode {
       runtimeModel={runtimeModel}
       wikiExtractedCount={wikiExtractedCount}
       wikiMatch={wikiMatch}
+      wikiDebugInfo={wikiDebugInfo}
       explorationSummaries={explorationSummaries}
       flowchartHints={mergedFlowchartHints}
       graphSnapshot={graphSnapshot}
@@ -184,6 +208,8 @@ export function LiveObserverContainer(): ReactNode {
       cacheReason={cacheReason}
       replayOnlyHint={replayOnlyHint || undefined}
       flowBodyVisible={bindingState.visibility === 'show'}
+      onSendSnapshot={sendManualSnapshot}
+      notifyStatus={lastNotifyStatus}
     />
   );
 }

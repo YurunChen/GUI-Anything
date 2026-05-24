@@ -11,12 +11,14 @@ export interface CommandBarProps {
   terminalWidth: number;
   inspirationInputFocused: boolean;
   observerMode: 'exploration' | 'flowchart';
+  notificationEnabled?: boolean;
 }
 
 export function CommandBar({
   terminalWidth,
   inspirationInputFocused: _inspirationInputFocused,
   observerMode,
+  notificationEnabled = false,
 }: CommandBarProps): ReactNode {
   const isCompact = terminalWidth > 0 ? terminalWidth < COMPACT_LAYOUT_WIDTH : false;
   const nextMode = observerMode === 'exploration' ? 'flowchart' : 'exploration';
@@ -24,6 +26,10 @@ export function CommandBar({
   const hotkeys: string[] = [];
   hotkeys.push(isCompact ? `g:${nextMode}` : `[g] switch to ${nextMode}`);
   hotkeys.push(isCompact ? 'i:notes' : '[i] open/close notes');
+  hotkeys.push(isCompact ? 'j/k:theme🎨 l:☀/🌙' : '[j/k] theme  [J] morandi  [l] light↔dark');
+  if (notificationEnabled) {
+    hotkeys.push(isCompact ? 's:notify' : '[s] send snapshot');
+  }
   hotkeys.push(isCompact ? 'q:quit' : '[q] quit');
   const hotkeyText = hotkeys.join(isCompact ? ' | ' : '  ');
 

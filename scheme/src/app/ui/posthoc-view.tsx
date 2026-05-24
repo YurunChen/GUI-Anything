@@ -92,7 +92,11 @@ export function PostHocView({ tree, prompt, sessionPath }: {
 }
 
 export async function renderPostHoc(tree: ActivityTree, prompt: string, sessionPath: string): Promise<void> {
-  const renderer = await createCliRenderer({ exitOnCtrlC: true });
+  const renderer = await createCliRenderer({
+    exitOnCtrlC: true,
+    useMouse: true,
+    enableMouseMovement: false,
+  });
   const root = createRoot(renderer);
   root.render(<PostHocView tree={tree} prompt={prompt} sessionPath={sessionPath} />);
 }
