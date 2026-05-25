@@ -20,7 +20,12 @@ export function resolveGraphNodeChromeParts(
   });
 }
 
-/** Left indent for rail tree depth (spaces, no box-drawing). */
+/** Left indent fallback when connector prefix is empty (multi-root spacing). */
 export function resolveRailRowIndent(depth: number): number {
   return Math.max(0, depth) * flowSpacing.graphRailIndent;
+}
+
+/** Vertical + arrow connector between stacked node cards. */
+export function formatStackConnector(trunk: string, down: string): string {
+  return `${trunk}\n${down}`;
 }

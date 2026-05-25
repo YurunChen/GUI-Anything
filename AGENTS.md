@@ -1,81 +1,168 @@
-# GUI-Anything Agent Notes
+# GUI-Anything — Agent 协作约定
 
-## Purpose
+> **Coding Agent 读本**：共同原则、心智模型、架构红线、完成标准。  
+> **不要在本文件堆细节** — 模块表、env 全表、Wiki 时序 → [docs/development.md](docs/development.md) · [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md)
 
-Dual-pane Flow Observer for Claude Code: left = Claude, right = live observer (`scheme/`).
+---
 
-Public entry: **`ga flow`**, **`ga doctor`**.
+## 1. 项目是什么
 
-## Repo Map
+双栏 **Flow Observer**：左 = Claude Code，右 = `scheme/` 实时读 JSONL、展示时间线/flowchart、按需写 `wiki/`。
 
-| Path | Role |
+- 对外入口：**`ga flow`** · **`ga doctor`**
+- Observer **不驱动** Claude；只读 `~/.claude/projects/.../*.jsonl`，写派生数据到 `wiki/`、`.flow-runtime/`
+- 主代码：**`scheme/src/`**；启动器：**`scripts/flow-run.sh`**（唯一 flow launcher）
+
+---
+
+## 2. 共同原则
+
+### 2.1 产品（与 README 一致）
+
+| 原则 | 含义 | 编码时意味着 |
+|------|------|--------------|
+| **心流** | 不打扰左屏 Claude | 不增常驻弹层；wiki/帮助/笔记仅显式快捷键 |
+| **按需知识** | 需要时才检索/落盘 | KNOWLEDGE ≠ 每轮写 wiki；策展在 pivot/sweep |
+| **无感使用** | 一条命令启动 | 逻辑靠 `FLOW_*` 注入，不让用户手填路径 |
+
+### 2.2 工程（与 development §2 一致）
+
+| 原则 | 含义 |
 |------|------|
-| `cli/` | `ga` CLI |
-| `scheme/` | Observer app + services + data adapters |
-| `docs/development.md` | Layering, launcher, extension guide |
-| `scripts/flow-run.sh` | **Only** flow launcher (Zellij) |
-| `wiki/` | Local runtime data (gitignored at repo root) |
-| `scripts/wiki/` | Wiki helper scripts (tracked) |
+| **分层单向** | `data → services → app(hooks/view-model) → ui`；UI 禁止 `fs` / repository |
+| **策略单点** | binding、摘要 regen、wiki 门禁各只有一个权威模块 — **禁止复制分支** |
+| **协议先行** | 跨层形状在 `data/protocol/`；改行为先改类型/策略，再改 UI |
+| **小步可验证** | 最小 diff；`bun test` + `tsc`；行为变更加测试 |
+| **文档跟代码** | 细节进 `docs/`；本文件只保留原则级变更 |
 
-## Session Binding
+### 2.3 心智模型 Run / Capture / Guide
 
-| Mode | `FLOW_RESUME_MODE` | Summary regen |
-|------|-------------------|---------------|
-| new | `bind_specific` + `FLOW_SESSION_ID` | yes |
-| continue (pinned id) | `bind_specific` + `FLOW_SESSION_ID` | yes |
-| continue (no id) | `auto_latest` | yes |
-| resume id | `resume_specific` | no (strict replay) |
-| resume picker | `resume_picker` | no |
+| 层 | 做什么 | 典型入口 |
+|----|--------|----------|
+| **Run** | 读 JSONL，展示 exploration / 工具 / 错误 | `useSessionPolling` |
+| **Capture** | 摘要、flowchart hint、intent bucket、Wiki 策展 | `useExplorationSummaries` · `useWikiCurator` |
+| **Guide** | Prior wiki、Next、flowchart | `useWikiMatches` · `FlowGraphView` |
 
-Policy: `scheme/src/services/session/session-binding-policy.ts`
+---
 
-## Data Rules
+## 3. Agent 工作流程
 
-- **No SQL DB** — JSONL + `wiki/` + `.flow-runtime/` files
-- Root `/wiki/` gitignored; `scripts/wiki/` tracked
-- File IO: `scheme/src/data/**` repositories only (summaries: `data/wiki/summary-repository.ts`)
-- Session JSONL: `data/session/claude-project.ts`, `jsonl-session.ts`, `repository.ts` (not `services/session/posthoc.ts` for new code)
-- Resume UI may hide flow body until graph cache or flowchart ready (`session-binding-policy.ts`)
-
-## Verify
-
-```bash
-cd scheme && bun test && bun run tsc --noEmit
-ga doctor && ga flow --help
+```
+接到任务
+  → 读 docs/development.md 相关节（§2 宪法 · §4 模块 · §7 扩展）
+  → 确定改动层（protocol / data / services / view-model / hook / ui）
+  → 实现（匹配现有命名与 import 风格）
+  → cd scheme && bun test && bunx tsc --noEmit
+  → 按需更新 docs/（见 development §1.4），勿改无关文件
+  → 汇报：改了什么、测了什么、剩余风险
 ```
 
-## Wiki Agent (无感沉淀)
+**不要**：未读分层就改 UI；在 `ExplorationCard` 里写 wiki IO；顺手大 refactor；提交 `wiki/` / `.flow-runtime/`。
 
-- **Summary Agent** (`services/ai/flow-summaries.ts`): session 摘要 + `persistMeta` 候选信号
-- **Wiki Agent** (`services/wiki/wiki-agent/` + `wiki-maintenance-service.ts`): agentic `/llm-wiki` skill（`runClaudeAgentPrompt` + acceptEdits + Read/Edit/Write/Bash）写 knowledge 条目；manifest JSON 收尾；服务层 post-process：`rebuildKnowledgeIndex` / `appendKnowledgeLog` / `regenerateProgressPage`；失败回退 `--print` JSON 或规则层
-- 默认启用 Claude；仅规则：`FLOW_WIKI_RULES_ONLY=1`；禁用：`FLOW_WIKI_AGENT=0`；仅 print JSON：`FLOW_WIKI_PRINT_ONLY=1`；跳过 progress HTML：`FLOW_WIKI_SKIP_PROGRESS=1`；模型：`FLOW_WIKI_MODEL` 或 `CLAUDE_MODEL`
-- Skill 源码：`skills/llm-wiki/`；Claude 发现路径：`.claude/skills/llm-wiki/`（仓库 symlink，`setup.sh` 可链到 `~/.claude/skills/`）
-- 用户无额外步骤；每张探索卡片 meta 显示 `wiki saved` / `updated` / `skipped` / `pending`
-- 每轮 exploration：AI summary ready 后调用 Wiki Agent 判断是否落盘（`wiki-persist-policy.ts`）；skip 由 `low_value` / Agent 决策，不用 `title_delta` 门禁
-- KNOWLEDGE 卡片 = 仅 prior 检索（`summaries/` 不参与 UI match pool）；`k` = 标记有误 → `wiki/knowledge/audit/`
+---
 
-Scaffold meta: `scripts/wiki/scaffold-knowledge-meta.sh` · Lint: `bun run scripts/wiki/knowledge-lint.ts` · Progress: `bun run scripts/wiki/generate-progress-html.ts` · llm-wiki scripts: `scripts/wiki/llm-wiki/`
+## 4. 架构红线
 
-## UI Layer Rules
+### 4.1 依赖
 
-Presentation code under `scheme/src/app/ui/flow/` must not import services or repositories. See [docs/data-governance/ui-layer-rules.md](docs/data-governance/ui-layer-rules.md).
+| 目录 | 禁止 |
+|------|------|
+| `app/ui/flow/**` | import `services/*`、`data/wiki/*`、`data/session/*` repository |
+| `app/observer/view-model/**` | import services、OpenTUI、repository |
+| `services/**` | import OpenTUI / React 组件 |
+| `data/**` | import `app/*`、`services/*` |
 
-Observer chrome (`FlowObserverShell`):
+编排入口：**`LiveObserverContainer.tsx`** → **`shell-props.ts`** → **`FlowObserverShell.tsx`**。  
+细则：[ui-layer-rules.md](docs/data-governance/ui-layer-rules.md)
 
-| Zone | Component | Shows |
-|------|-----------|--------|
-| Top | `ObserverStatusBar` | Row 1: model, tokens, done/errors, hot files; row 2: intent title — **no session id**, no activity line |
-| Middle | `LiveObserverFlowBody` | Timeline / flowchart; `WikiMatchCard` + per-card `wiki saved/skipped/…` meta |
-| Bottom | `CommandBar` | Hotkeys with action labels (`FLOW_LOCALE` for zh) |
-| Help overlay | `HelpOverlay` | `?` / F1 / Ctrl+/ / `/` / Ctrl-K = shortcuts — **hide CommandBar** while help open |
-| Notes sidebar | `NotesSidePanel` (`i`) | Right column: recent notes + capture; timeline shrinks — CommandBar stays visible |
+### 4.2 单一真相源（改这里，别处只消费）
 
-No separate command palette: `/` and Ctrl-K open the same shortcut list as `?`. Calm compact layout is **off by default**; `c` toggles it. Wiki matches stay inline on expanded cards. Shortcuts apply when the observer pane is focused; `Esc` closes overlays only; `q` / Ctrl+Q quits. Keyboard logic: `observer-key-dispatch.ts`.
+| Concern | 权威文件 |
+|---------|----------|
+| Session 绑定 / resume | `services/session/session-binding-policy.ts` |
+| Live vs Replay / 摘要 regen | `services/session/session-presentation-policy.ts` |
+| Flowchart intent **badge** | `data/protocol/flowchart-intent.ts`（**仅 `intent_key`**） |
+| Intent 词表 / wiki 策展门禁 | `constants/session-intent-keys.ts` |
+| Wiki 路径 | `data/wiki/wiki-data-layout.ts` · `resolveWikiRoot()` |
+| JSONL 解析 | `data/session/jsonl-session.ts`（**勿用** legacy `posthoc.ts`） |
+| Summary 形状 | `data/protocol/summary-contract.ts` |
+| Wiki 检索 vs 落盘 | 两条链 — [data-flow.md](docs/data-governance/data-flow.md) |
 
-**Launcher cleanup** (`flow-run.sh`): panes spawn with `setsid` / `perl setpgrp`; exit uses SIGTERM then SIGKILL; new starts call `cleanup_stale_launchers` (other launcher PIDs only). Stale orphans: `./scripts/flow-run.sh --cleanup`.
+### 4.3 持久化
 
-**Wiki**: agentic llm-wiki — `wiki-maintenance-service.ts`（agent 写盘 + index/log/progress post-process）；prior hit updates existing page (`wiki updated`)。`knowledge/` 含 `contexts/**`、`entities/`、`summaries/`（UI match 排除 summaries）。Audit: `k` hotkey → `knowledge/audit/`。Meta: `SCHEMA.md`, `index.md`, `log/`, `outputs/progress/`。Skill: `skills/llm-wiki/`。`match-service.ts` CJK filler normalize；`auto-extractor.ts` fallback。Legacy E/S/D layout purged on ensure; `scripts/wiki/purge-legacy-knowledge.sh`. Old `knowledge-base/`: `scripts/wiki/migrate-wiki-layout.sh`。
+- 文件 IO **只在** `scheme/src/data/**` repositories
+- 新链路：`data/` → `services/` → `app/observer/hooks/` → UI
+- 根目录 **`wiki/`** gitignore — 不 commit 本地知识库
 
-Optional env:
-- `FLOW_NO_ANIMATIONS=1` — slower spinner interval (400ms) for low-motion
-- `FLOW_LOCALE=zh-Hans` — localized chrome strings (summary body stays model language)
+---
+
+## 5. 常见误解（改代码前核对）
+
+| 误解 | 实际 |
+|------|------|
+| 每轮 exploration 都写 wiki | **默认否**。同 intent 只积累 bucket；**pivot / idle sweep** 才策展 |
+| `node_id` 当 intent badge | **否**。badge / 顶栏 / wiki 门禁用 **`intent_key`**；`node_id` 仅 flowchart 树 |
+| explore 也要 wiki write badge | **否**。ineligible intent 不展示 skip/saved badge（`wiki-write-chrome.ts`） |
+| KNOWLEDGE 卡片 = 刚落盘 | **否**。KNOWLEDGE = **prior 检索**（running 起）；与 write badge 独立 |
+| Resume 要 regen 缺失摘要 | **否**。`resume_*` = strict replay，见 binding policy |
+| Shell 里写 binding 分支 | **否**。`flow-run.sh` 只设 `FLOW_*` |
+| Web Mirror 自动跟 flow 同 session | **否**。独立进程需手动 `FLOW_SESSION_ID` |
+| Skill 失败用 auto-extractor create | **否**。策展路径 skill 失败 → `skipped`，不回落 create |
+
+Wiki 细节：`useWikiCurator`（`useWikiPersistence` 为别名）· Phase 2 → `scripts/wiki/wiki-maintain.sh` · skill → `skills/llm-wiki/`
+
+---
+
+## 6. 查表：任务 → 先读哪里
+
+| 任务 | 先读 |
+|------|------|
+| 任何开发 / 扩展 | [development.md](docs/development.md) §1–§2、§7 |
+| Wiki 链路 / 时序 | [data-flow.md](docs/data-governance/data-flow.md) |
+| UI import / chrome | [ui-layer-rules.md](docs/data-governance/ui-layer-rules.md) · development §8 |
+| Live/Replay 摘要 | [display-policy.md](docs/data-governance/display-policy.md) |
+| Session 模式 / env | development §5 · `flow-run.sh --help` |
+| Wiki CLI / env | [scripts/wiki/README.md](scripts/wiki/README.md) |
+| 通知 | [docs/NOTIFICATION.md](docs/NOTIFICATION.md) |
+| HTML export | development §6 · `scheme/src/export/` |
+| 对外用户文档 | `README.md` |
+
+**Repo 地图**
+
+| 路径 | 用途 |
+|------|------|
+| `scheme/src/app/` | UI + observer hooks/view-model |
+| `scheme/src/services/` | 编排（无 UI） |
+| `scheme/src/data/` | protocol + repository |
+| `scripts/flow-run.sh` | 双栏启动 |
+| `scripts/wiki/` | Wiki 维护 CLI |
+| `skills/llm-wiki/` | Wiki Agent skill 源码 |
+| `docs/` | 设计与 runbook（**详细文档放这里**） |
+
+---
+
+## 7. 完成标准
+
+```bash
+cd scheme && bun test && bunx tsc --noEmit
+ga doctor
+```
+
+- [ ] 未违反 §4 红线
+- [ ] 行为变更有关联测试（或说明为何不测）
+- [ ] 未提交 `wiki/`、`.flow-runtime/`
+- [ ] 用户可见变化已更新 `docs/` 或 `README.md`（development §1.4）
+- [ ] 新 `FLOW_*` 已写入 `flow-run.sh --help` 与 development §5.2
+- [ ] **本文件仅在有新原则/红线时更新**；细节只进 `docs/development.md`
+
+---
+
+## 8. Session 速记
+
+| 用户命令 | `FLOW_RESUME_MODE` | 摘要 |
+|----------|-------------------|------|
+| `ga flow` | `bind_specific` | 可 regen |
+| `ga flow -c` | `bind_specific` 或 `auto_latest` | 可 regen |
+| `ga flow -r [id]` | `resume_specific` / `resume_picker` | **strict replay，不 regen** |
+
+Policy：`session-binding-policy.ts`

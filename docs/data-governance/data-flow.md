@@ -17,11 +17,10 @@
 │                             wiki/sessions/{session}-summaries.json         │
 │                                                                             │
 │  useWikiMatches.ts → match-service（用户问题出现即检索，running 起展示 KNOWLEDGE）│
-│  useWikiPersistence.ts                                                      │
-│  └── 探索 complete + 摘要 ready 后 → persistCompleted()（非阻塞，在检索之后）   │
-│      委托 WikiMaintenanceService：prior match → Agent 决策 → create/update/skip│
-│      卡片：KNOWLEDGE（检索命中，含 running）；顶栏 meta：write + session saved 计数   │
-│      审计：`k` 快捷键 → audit/*.md（Phase 1 用户主动）                        │
+│  useWikiCurator.ts（别名 useWikiPersistence）                                  │
+│  └── pivot 关闭 intent / session idle sweep → WikiCuratorService.curateIntent│
+│      同 intent 内只积累 intent-buckets；卡片 meta：anchor 轮 wiki saved/skipped │
+│      审计：`k` 快捷键 → audit/*.md（Phase 2 用户主动）                        │
 │                          ↓                                                  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     ↓
@@ -32,16 +31,11 @@
 │  ai/exploration-summary-service.ts                                          │
 │  └── 使用: KnowledgeRepository (新)                                         │
 │                                                                             │
-│  wiki/persistence-service.ts                                                │
-│  └── 薄封装 → WikiMaintenanceService                                        │
+│  wiki/wiki-curator-service.ts                                               │
+│  ├── Intent digest → Wiki Agent (skill-only write contexts/)               │
+│  └── post-process: index / log / progress                                   │
 │                                                                             │
-│  wiki/wiki-maintenance-service.ts                                           │
-│  ├── Agentic /llm-wiki (acceptEdits + tools) → manifest JSON               │
-│  ├── 失败 → --print JSON 或规则层 + auto-extractor                          │
-│  ├── Agent 写盘 或 KnowledgeRepository.save / update                       │
-│  ├── knowledge-index-service.rebuildIndex()                                 │
-│  ├── knowledge-log-service.appendKnowledgeLog()                             │
-│  └── progress-html-service.regenerateProgressPage()                         │
+│  wiki/wiki-maintenance-service.ts（legacy: FLOW_WIKI_LEGACY_PER_TURN=1）    │
 │                                                                             │
 │  wiki/audit-service.ts → knowledge/audit/*.md（用户 `k` 快捷键）            │
 │                                                                             │
@@ -162,7 +156,6 @@ sequenceDiagram
 | 服务层 | `rebuildKnowledgeIndex`、log、progress（与 ingest 相同） |
 
 Skill：`skills/llm-wiki/`（Phase 1 + Phase 2）。代码：`wiki-maintenance-report.ts`、`wiki-maintain-agent/`、`wiki-maintain-service.ts`。
-5. `applyAgentDecision` → `finalizeAgentWrite` / `applyUpdate`；mark bucket `curatedAt`
 
 Legacy：`FLOW_WIKI_LEGACY_PER_TURN=1` 恢复每 exploration `persistCompleted`（开发对比用）。
 
@@ -219,7 +212,7 @@ sequenceDiagram
 
 - **KNOWLEDGE 只认磁盘上的 `knowledge/{contexts,entities}/**/*.md`**，不认 `*-summaries.json`（摘要缓存删了不影响 prior hit）。
 - **删 markdown 后**：下一轮检索应无 hit；若仍有 hit，说明当时磁盘上仍有该文件（常见：本轮/上一轮 **落盘或 Agent skill 又写回** C001）。
-- **Observer 进程内**：`useWikiPersistence` 对同一 `exploration.id` **只跑一次**落盘（`resolveWikiPersistPhase` 为 `done` 后不再触发）；删文件**不会**自动触发重试写入。
+- **Observer 进程内**：intent 策展对同一 bucket **只 curate 一次**（`curatedAt` 后不再触发）；删 `knowledge/*.md` **不会**自动重跑 Agent。Legacy per-turn：`useWikiPersistence` + `resolveWikiPersistPhase` 仍可对同一 `exploration.id` 只跑一次。
 
 ### Observer UI：检索 vs 落盘展示
 

@@ -54,7 +54,9 @@ GUI-Anything now exports rich HTML artifacts from Flow sessions:
 
 ### Session Replay
 ```bash
-# Export latest session as interactive HTML
+cd scheme
+
+# Export latest session as interactive HTML (uses findLatestSession — see below)
 bun run src/main.ts --export-html -o replay.html
 
 # With options
@@ -62,18 +64,30 @@ bun run src/main.ts --export-html --strip-thinking --max-detail-length 500 --the
 ```
 Features: Play/Pause/Speed control, timeline navigation, full-text search, keyboard shortcuts, theme switcher.
 
+**Which session?** `findLatestSession` in `data/session/claude-project.ts`: set `FLOW_PROJECT_DIR` (repo root) and optionally `FLOW_SESSION_ID` (same UUID as `flow-run.sh`); otherwise picks the **most recently modified** `.jsonl` under `~/.claude/projects/<encoded-project>/`.
+
 ### Web Mirror
 ```bash
-# Start real-time mirror server
+cd scheme
+
+# Start real-time mirror server (default port 3000, or FLOW_MIRROR_PORT)
 bun run src/main.ts --web-mirror --port 3001
 
 # Open on phone: http://<your-ip>:3001
 ```
 Features: WebSocket real-time updates, phase indicator, live stats, auto-reconnect, mobile-friendly.
 
+**Align with flow observer:** Web Mirror runs in a **separate terminal** and does not inherit `FLOW_SESSION_ID` from `flow-run.sh`. Export the same env when starting mirror:
+
+```bash
+FLOW_PROJECT_DIR=/path/to/repo FLOW_SESSION_ID=<uuid> bun run src/main.ts --web-mirror --port 3001
+```
+
 ### Knowledge Graph
 ```bash
-# Generate interactive graph from Wiki entries
+cd scheme
+
+# Generate interactive graph from Wiki entries (reads resolveWikiRoot() knowledge/)
 bun run src/main.ts --knowledge-graph -o graph.html --since 7d
 ```
 Features: Canvas force-directed layout, type-based coloring, shared-tag edges, hover tooltips, search.

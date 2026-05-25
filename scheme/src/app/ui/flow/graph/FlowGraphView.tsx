@@ -15,6 +15,7 @@ import { buildTreeLevels, buildTreeRows, type TreeDataNode, type TreeRow } from 
 import {
   resolveGraphNodeChromeParts,
   resolveRailRowIndent,
+  formatStackConnector,
 } from './flow-graph-node-chrome';
 import {
   resolveCardInnerWidth,
@@ -108,10 +109,11 @@ export const FlowGraphView = memo(function FlowGraphView(props: FlowGraphViewPro
         {levels.map((level, levelIndex) => (
           <box key={`stack_${levelIndex}`} style={{ width: '100%', flexDirection: 'column', marginBottom: 0 }}>
             {levelIndex > 0 && (
-              <box style={{ ...centeredRowStyle, marginTop: 0, marginBottom: 0 }}>
-                <text fg={connectorColor(graphTheme, level[0]?.meta?.incomingKind)}>
-                  {`  ${graphTheme.chars.down}  `}
-                </text>
+              <box style={{ ...centeredColumnStyle, marginTop: 0, marginBottom: 0 }}>
+                {renderVerticalConnector(
+                  graphTheme,
+                  level[0]?.meta?.incomingKind,
+                )}
               </box>
             )}
             <box style={{ ...centeredRowStyle, marginTop: levelIndex > 0 ? 0 : 0, marginBottom: 1 }}>
@@ -201,7 +203,7 @@ function renderGridConnectorRow(
       }}
     >
       <text fg={connectorColor(theme, node.meta?.incomingKind)}>
-        {`  ${theme.chars.down}  `}
+        {renderVerticalConnectorText(theme, node.meta?.incomingKind)}
       </text>
     </box>
   ));
@@ -361,6 +363,7 @@ function renderRailRow(
       : flowSpacing.graphNodeGap;
 
   if (!flowNode) {
+    const hasConnector = row.connectorPrefix.length > 0;
     return (
       <box
         key={row.node.id}
@@ -368,15 +371,18 @@ function renderRailRow(
           width: '100%',
           flexDirection: 'row',
           marginTop: gapBefore,
-          paddingLeft: indent,
+          paddingLeft: hasConnector ? 0 : indent,
         }}
       >
+        {hasConnector && renderConnectorPrefix(theme, row.connectorPrefix, row.node.meta?.incomingKind)}
         <text fg={theme.color.muted} wrapMode="word">{row.node.text}</text>
       </box>
     );
   }
 
   const parts = resolveGraphNodeChromeParts(flowNode, locale);
+  const incomingKind = row.node.meta?.incomingKind;
+  const hasConnector = row.connectorPrefix.length > 0;
 
   return (
     <box
@@ -385,12 +391,40 @@ function renderRailRow(
         width: '100%',
         flexDirection: 'row',
         marginTop: gapBefore,
-        paddingLeft: indent,
+        paddingLeft: hasConnector ? 0 : indent,
       }}
     >
-      <FlowGraphNodeBody parts={parts} isFocus={!!isFocus} theme={theme} />
+      {hasConnector && renderConnectorPrefix(theme, row.connectorPrefix, incomingKind)}
+      <box style={{ flexDirection: 'column', flexGrow: 1 }}>
+        <FlowGraphNodeBody parts={parts} isFocus={!!isFocus} theme={theme} />
+      </box>
     </box>
   );
+}
+
+function renderConnectorPrefix(
+  theme: GraphTheme,
+  prefix: string,
+  kind: FlowGraphEdgeKind | undefined,
+): ReactNode {
+  return (
+    <text fg={connectorColor(theme, kind)}>{prefix}</text>
+  );
+}
+
+function renderVerticalConnectorText(
+  theme: GraphTheme,
+  _kind: FlowGraphEdgeKind | undefined,
+): string {
+  return formatStackConnector(theme.chars.trunk, theme.chars.down);
+}
+
+function renderVerticalConnector(
+  theme: GraphTheme,
+  kind: FlowGraphEdgeKind | undefined,
+): ReactNode {
+  const fg = connectorColor(theme, kind);
+  return <text fg={fg}>{renderVerticalConnectorText(theme, kind)}</text>;
 }
 
 function connectorColor(theme: GraphTheme, kind: FlowGraphEdgeKind | undefined): string {

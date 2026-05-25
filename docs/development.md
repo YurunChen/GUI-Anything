@@ -1,291 +1,410 @@
 # GUI-Anything 开发指南
 
-本文说明项目架构、数据存储模型，以及如何在此基础上扩展功能。与 `README.md`、`AGENTS.md` 保持同步；以 **代码为准** 时以 `scheme/src/` 与 `scripts/flow-run.sh` 为准。
+> **读者**：在本仓库协作的开发者、Reviewer、AI Agent。  
+> **分工**：`README.md` = 对外安装与 Quick Start · `AGENTS.md` = Agent 红线与速查 · **本文** = 协作方式 + 架构规范 + 扩展手册 · `docs/data-governance/` = 数据流与 UI 细则。
 
-## 1. 项目解决什么问题
+---
 
-Claude Code 擅长执行，但在长会话里缺少：
+## 1. 协作开发
 
-- **结构化观察**：当前在第几段 exploration、工具/错误概况
-- **可复用沉淀**：摘要、flowchart、知识条目跨会话可读
-- **可预期的恢复**：`-r` 严格回放，不误触发 AI 重算
-
-GUI-Anything 是 **旁路 Observer**：左屏仍是 Claude Code，右屏 `scheme/` 实时展示并写入本地 `wiki/`。
-
-## 2. 入口（已统一）
-
-```
-ga flow [--continue|-c] [--resume|-r [id]] [--model|-m MODEL] [--skip-doctor] [prompt...]
-  └── scripts/flow-run.sh
-        └── zellij --layout <generated.kdl> attach --create <session> options --on-force-close quit
-              ├── claude (left)
-              └── FLOW_* env + bun run src/main.ts --live (right)
-```
-
-| 命令 | Launcher 行为 | `FLOW_RESUME_MODE` | `FLOW_SESSION_ID` | Summary |
-|------|---------------|-------------------|-------------------|---------|
-| `ga flow` | 新 UUID + `claude --session-id` | `bind_specific` | 新 UUID | 可 regen |
-| `ga flow --continue`（从 layout 恢复 ID） | `claude --resume <id>` | `bind_specific` | 恢复的 ID | 可 regen |
-| `ga flow --continue`（无 ID） | `claude --continue` | `auto_latest` | 未设置 | 可 regen（mtime 发现 JSONL） |
-| `ga flow --resume` | `claude --resume`（选择器） | `resume_picker` | 未设置 | strict replay |
-| `ga flow --resume <id>` | `claude --resume <id>` | `resume_specific` | `<id>` | strict replay |
-| `ga doctor` | — | — | — | 检查 claude / bun / zellij / wiki / `.flow-runtime` |
-| `./scripts/flow-run.sh --cleanup` | 清理 zellij 会话与残留进程 | — | — | — |
-
-Shell **只负责**把 CLI 标志映射为环境变量；`resume_specific` 等字符串由 `normalizeResumeMode()` 消费（见 `session-binding-policy.ts`）。
-
-### 环境变量（launcher → observer）
-
-| 变量 | 设置方 | 作用 |
-|------|--------|------|
-| `FLOW_PROJECT_DIR` | `flow-run.sh` | 项目根（JSONL 发现，observer `cwd`） |
-| `FLOW_ROOT_DIR` | `flow-run.sh` | 仓库根（wiki、`.flow-runtime` 默认父路径） |
-| `FLOW_DATA_DIR` | `flow-run.sh` 或默认 | 运行时目录（默认 `.flow-runtime`） |
-| `FLOW_WIKI_DIR` | 可选 | 覆盖 wiki 根（优先级见 `data/env.ts`） |
-| `FLOW_LAYOUT_DIR` | 可选 | 覆盖 layout 目录（默认 `FLOW_DATA_DIR/layouts`） |
-| `FLOW_RESUME_MODE` | `flow-run.sh` | `bind_specific` / `auto_latest` / `resume_specific` / `resume_picker` |
-| `FLOW_SESSION_ID` | `flow-run.sh`（有则设置） | 绑定 Claude session UUID |
-| `FLOW_ZELLIJ_SESSION` | `flow-run.sh` | Zellij 会话名 |
-| `FLOW_ZELLIJ_AUTOCLEANUP` | 默认 `1` | 退出时清理 zellij / 孤儿进程 |
-| `FLOW_ZELLIJ_ON_FORCE_CLOSE` | 默认 `quit` | 终端关闭时 `quit` 或 `detach` |
-| `FLOW_ZELLIJ_OBSERVER_WIDTH` | 可选 | 右栏宽度（%） |
-| `FLOW_ZELLIJ_REUSE` | continue 时为 `1` | 复用已有 zellij 会话名 |
-| `ZELLIJ_SOCKET_DIR` | 默认 `/tmp/zellij` | 短 socket 路径（macOS） |
-| `FLOW_INJECT_BACKEND` | observer | `clipboard` / `none`（`services/flow/inject.ts`） |
-| `FLOW_QUIET` | observer UI | 安静模式 |
-| `FLOW_NO_ANIMATIONS` | observer UI | 低动态：spinner 间隔 400ms |
-| `FLOW_LOCALE` | observer UI | `zh-Hans` 本地化 chrome（摘要正文仍为模型语言） |
-
-### Launcher 进程清理（2026-05-24）
-
-`scripts/flow-run.sh` 在启动 zellij 前会：
-
-1. **`cleanup_stale_launchers`** — 对**其他** `flow-run.sh` PID 先发 `TERM`、0.6s 后 `KILL`；并清理指向 `.flow-runtime/layouts` 的旧 zellij layout 进程（不杀当前 `$$`）。
-2. **Pane 进程组** — `wrap_pane_lc()`：`setsid`（Linux）或 `perl setpgrp`（macOS 回退），便于关 tab / `on-force-close quit` 时带走 `claude` 与 `bun run src/main.ts --live`。
-3. **退出清理** — `trap` + PPID watchdog + `cleanup_session`：`zellij kill/delete-session` 后对 session/layout/observer/claude 模式做 **TERM → 0.6s → KILL**（参考 CodeWhale `reference/CodeWhale` 子进程策略）。
-
-运维：
-
-```bash
-./scripts/flow-run.sh --cleanup   # 全量清理 zellij + 匹配进程
-pgrep -fl 'flow-run|zellij.*flow-runtime'   # 关 tab 后应无残留
-FLOW_ZELLIJ_AUTOCLEANUP=0 ./scripts/flow-run.sh   # 调试：退出时不清理
-```
-
-策略与可见性：`scheme/src/services/session/session-binding-policy.ts`。**不要在 app 组件里复制 binding 分支。**
-
-### Resume 模式下的 UI 可见性
-
-`deriveSessionBindingState()` 在 `resume_*` 且尚无图缓存/flowchart 时设 `visibility: 'hide'`，`LiveObserverContainer` 传给 `flowBodyVisible={false}`。摘要缺失时显示 `replayOnlyHint`，不调用 `generateMissing`。
-
-## 3. 分层架构（第一性原理）
-
-```
-┌─────────────────────────────────────────┐
-│  Shell: scripts/flow-run.sh             │  进程编排、环境注入
-├─────────────────────────────────────────┤
-│  App: scheme/src/app/                   │  UI、observer hooks、组合
-├─────────────────────────────────────────┤
-│  Services: scheme/src/services/         │  AI、session、wiki、stream、flow
-├─────────────────────────────────────────┤
-│  Data: scheme/src/data/                 │  协议、repository、env 解析
-├─────────────────────────────────────────┤
-│  Domain: scheme/src/domain/             │  纯模型、树、活动分析
-├─────────────────────────────────────────┤
-│  constants/ + utils/                    │  跨层常量与纯工具
-└─────────────────────────────────────────┘
-         ↓ 只读
-   Claude JSONL（~/.claude/projects/...）
-```
-
-**依赖方向（必须遵守）**
-
-| 层 | 可依赖 | 禁止 |
-|----|--------|------|
-| `app/` | `services/*`, `data/protocol/*`, `domain/*`, `constants/*`, `utils/*` | 直接 `fs` 写 wiki |
-| `services/` | `data/*`, `domain/*`, `constants/*`, `utils/*` | React / OpenTUI 组件 |
-| `data/` | `domain/*`, `constants/*`, `utils/*`, `protocol/*`, `node:fs` | `app/*`、`services/*` |
-| `domain/` | `constants/*`, `utils/*` | `app/`, `services/`, `data/`（含 IO） |
-
-**`scheme/src/data/` 当前模块**
-
-| 路径 | 职责 |
-|------|------|
-| `env.ts` | `resolveWikiRoot`, `resolveFlowDataDir`, `resolveLayoutDir` |
-| `protocol/observer-protocol.ts` | 跨层类型与 ID 规则 |
-| `protocol/wiki-types.ts` | Wiki 持久化/匹配相关类型（无 service 依赖） |
-| `protocol/jsonl-line-parser.ts` | Claude JSONL 行 → `CliEventEnvelope` |
-| `session/claude-project.ts` | `~/.claude/projects/...` 会话路径发现 |
-| `session/jsonl-session.ts` | JSONL 解析、exploration 提取、stats |
-| `session/session-types.ts` | `Exploration` / `SessionStats` 类型 |
-| `session/repository.ts` | `FileSessionRepository` 轮询快照 |
-| `session/session-flow-repository.ts` | `wiki/sessions/{id}.json` |
-| `session/graph-patch-repository.ts` | `wiki/sessions/{id}-graph-patches.json` |
-| `wiki/knowledge-repository.ts` | `wiki/knowledge/{type}/` |
-| `wiki/evidence-repository.ts` | `wiki/sessions/{id}-evidence.json` |
-| `wiki/note-repository.ts` | `NoteRepository` CRUD → `wiki/notes/{date}.md` |
-| `wiki/summary-repository.ts` | `SummaryRepository` CRUD → `wiki/sessions/{id}-summaries.json` |
-| `wiki/wiki-data-layout.ts` | 三链路径常量（knowledge / sessions / notes） |
-| `management/data-governance.ts` | 去重、治理 |
-
-**`scheme/src/services/` 主要模块（编排层）**
-
-| 路径 | 职责 |
-|------|------|
-| `session/session-binding-policy.ts` | Binding + summary + visibility 策略 |
-| `session/observer-session-service.ts` | `PollingObserverSessionService` 轮询 JSONL |
-| `session/graph-cache-service.ts` | 图缓存读写编排 |
-| `session/graph-patch-service.ts` / `graph-digest-service.ts` | 图补丁与 digest |
-| `ai/exploration-summary-service.ts` | 摘要 hydrate/generate（注入 `SummaryRepository`） |
-| `ai/graph-consolidation-service.ts` | 周期性图合并 |
-| `wiki/persistence-service.ts` | exploration 完成 → knowledge + evidence |
-| `wiki/match-service.ts` | Wiki 搜索匹配 |
-| `wiki/inspiration-note-service.ts` | 灵感笔记编排（注入 `NoteRepository`） |
-| `wiki/auto-extractor.ts` | exploration → knowledge 提取（不含笔记 IO） |
-| `flow/inject.ts` | 剪贴板注入 |
-
-## 4. 数据存储：不是 Database
-
-**没有统一 SQL/ORM。** 见 `scheme/src/data/env.ts` 注释（SQLite 已移除）。
-
-| 层 | 路径 | 内容 | 写入路径 |
-|----|------|------|----------|
-| Source | `~/.claude/projects/.../*.jsonl` | Claude 会话 | Claude（observer 只读） |
-| Derived | `wiki/sessions/{id}-summaries.json` | AI 摘要 + flowchart | `FileSummaryRepository`（`data/wiki/summary-repository.ts`） |
-| Derived | `wiki/sessions/{id}.json` | 图 + hints | `session-flow-store` → `session-flow-repository` |
-| Derived | `wiki/sessions/{id}-evidence.json` | exploration 证据 | `evidence-repository`（经 `persistence-service`） |
-| Knowledge | `wiki/knowledge/{type}/*.md` | 长期知识 | `knowledge-repository`（经 `persistence-service`） |
-| Notes | `wiki/notes/{YYYY-MM-DD}.md` | 用户灵感/随手记 | `FileNoteRepository`（`create/find/list/update/delete`） |
-| Runtime | `.flow-runtime/layouts/zellij-layout-*.kdl` | 每次启动生成的 Zellij layout | `scripts/flow-run.sh` |
-
-新增持久化：**`data/` 加 repository → `services/` 编排 → `app/observer/hooks/` 适配 UI**。
-
-## 5. 核心链路
-
-### 5.1 会话轮询
-
-1. `useSessionPolling` → `PollingObserverSessionService.poll()`
-2. `FileSessionRepository` → `claude-project.findLatestSession` + `jsonl-session` 解析
-3. `resolveSessionBindingIntent({ resumeModeRaw: FLOW_RESUME_MODE, explicitSessionId: FLOW_SESSION_ID })`
-4. 输出 `Exploration[]` + `ActivityTree` + stats
-
-### 5.2 摘要
-
-1. `deriveSessionSummaryPolicy(bindingIntent)` → `{ allowRegen }`
-2. `useExplorationSummaries` → `DefaultExplorationSummaryService`
-3. `summaryRepo.loadWithStatus` / `hydrateFromWiki`；若 `allowRegen` → `generateMissing` → `summaryRepo.saveOne`
-4. `shouldGenerateMissing()` 在 `allowRegen === false` 时直接返回 false
-
-### 5.3 Wiki 匹配与持久化
-
-**匹配**（`services/wiki/match-service.ts`）：`normalizeMatchText()` 去掉中英文虚词/助词（如「的」「了」），避免「分析下当前项目」与「分析下当前的项目」无法命中；标签 YAML 引号在 `knowledge-repository.ts` 读取时剥离。
-
-**ID 分配**（`services/wiki/auto-extractor.ts`）：`getExistingIds()` 扫描 `wiki/knowledge/{contexts,entities}/` 与 `wiki/notes/` 内 `N###` 条目；context 用 `C###`，entity 用 `N###`（`knowledge-normalize.allocateId`）。
-
-**持久化链路**
-
-1. `useWikiPersistence` → `DefaultWikiPersistenceService.persistCompleted`
-2. `deduplicateKnowledge`（`data/management/data-governance.ts`）
-3. evidence + knowledge 写入
-
-### 5.3b 灵感笔记（非 exploration 自动提取）
-
-```
-InspirationPanel → useWikiPersistence.saveInspiration
-  → DefaultInspirationNoteService
-  → FileNoteRepository (data/wiki/note-repository.ts)
-  → wiki/notes/{YYYY-MM-DD}.md
-```
-
-| 层 | 类型 / 类 | 职责 |
-|----|-----------|------|
-| data | `NoteRepository` / `FileNoteRepository` | `create` `findById` `listRecent` `listByDate` `update` `delete` |
-| services | `DefaultInspirationNoteService` | 注入 repository，对外 `saveInspiration` / `listRecentInspirations` |
-| app | `useWikiPersistence` | 只依赖 service，不直接 `fs` 或 `auto-extractor` |
-
-条目 ID 前缀 **`N001`**（与 knowledge 的 E/S/D/C 区分）。格式：`## [HH:MM] 标题` + `id` / `created` / `session_id` + 正文。
-
-### 5.4 图
-
-1. `buildFlowGraphSnapshot`（`app/ui/flow/graph/graph-builder.ts`）
-2. `useGraphSnapshot` + `DefaultGraphCacheService`（读写在 `data/session/graph-cache-repository.ts`）
-3. `useGraphConsolidation` + `graph-consolidation-service`（可选周期性 digest/patch）
-
-## 6. 如何扩展（检查清单）
-
-### 新 UI 状态或面板
-
-1. `data/protocol/observer-protocol.ts` 定义类型
-2. `services/` 实现逻辑
-3. `app/observer/hooks/` 写 adapter hook
-4. `app/ui/flow/` 渲染
-5. `scheme` 下 `*.test.ts`
-
-### 新 session 模式
-
-1. 只改 `session-binding-policy.ts` + `session-binding-policy.test.ts`
-2. `scripts/flow-run.sh` 设置 `FLOW_RESUME_MODE` / `FLOW_SESSION_ID`（映射表与本文 §2 一致）
-3. 更新本文、`README.md`、`AGENTS.md`
-
-### 新持久化类型
-
-1. `data/wiki/*-repository.ts` 或 `data/session/*`
-2. `services/wiki/*` 或 `services/ai/*` 或 `services/session/*`
-3. 禁止在 `ExplorationCard.tsx` 等 UI 里直接 `fs.writeFile`
-
-## 7. 本地开发
+### 1.1 新人 5 分钟
 
 ```bash
 ./scripts/setup.sh
 cd scheme && bun install
-
-cd scheme && bun test
-cd scheme && bunx tsc --noEmit
-
-ga doctor
-ga flow
-
-./scripts/flow-run.sh --cleanup
-
-# 仅调试右栏 observer（需自行设置 FLOW_PROJECT_DIR / FLOW_SESSION_ID 等）
-cd scheme && bun run start:live
+cd scheme && bun test && bunx tsc --noEmit
+ga doctor && ga flow
 ```
 
-`scheme/package.json` 的 `start:observer` 与 `start:live` 均指向 `--live`；勿使用已移除的 `--posthoc`。
+右栏单独调试：
 
-## 8. 已知分层例外（后续可收敛）
+```bash
+cd scheme
+FLOW_PROJECT_DIR=/path/to/repo FLOW_SESSION_ID=<uuid> bun run start:live
+```
+
+### 1.2 日常开发循环
+
+```
+1. 读需求 → 确定改动落在哪一层（§2、§4）
+2. 改 scheme/src/（必要时 scripts/、skills/）
+3. 验证：bun test · tsc · ga flow 手测
+4. 按 §1.4 同步 docs/ · README · AGENTS.md
+5. PR：说明行为变化 + 测了什么
+```
+
+**Definition of Done**
+
+- [ ] 行为有测试或说明为何不测
+- [ ] `bun test` + `tsc --noEmit` 通过
+- [ ] 未违反 §2 架构宪法
+- [ ] 相关 `docs/` 已更新（或确认无需更新）
+- [ ] 新 `FLOW_*` 已写入 `flow-run.sh --help` 与 §5.2
+
+### 1.3 协作约定
+
+| 主题 | 约定 |
+|------|------|
+| **改动范围** | 一次 PR 只做一件事；不顺便重构无关模块 |
+| **分层** | 不为了「快」在 UI 里 `fs`、不复制 session binding 分支 |
+| **策略单点** | Resume/摘要/wiki 门禁各只有一个权威模块（§2.3） |
+| **类型与协议** | 跨层形状放 `data/protocol/`；禁止 UI 与 service 各定义一套 |
+| **环境开关** | 行为差异用 `FLOW_*` env，默认值与文档一致 |
+| **Review 重点** | 依赖方向、是否有重复策略、测试、文档是否同步 |
+| **运行时数据** | `wiki/`、`.flow-runtime/` **不提交**；知识条目用 Agent/CLI 生成 |
+
+### 1.4 文档写在哪里
+
+**原则：设计、数据流、运维细节进 `docs/`；根目录保持短。**
+
+| 类型 | 路径 | 何时改 |
+|------|------|--------|
+| 开发总指南 | `docs/development.md` | 协作规范、架构、扩展方式 |
+| 数据 / UI 治理 | `docs/data-governance/` | repository、Wiki 链路、展示策略 |
+| 协议 RFC | `docs/protocols/` | 跨进程契约变更 |
+| 功能 runbook | `docs/NOTIFICATION.md`、`docs/THEMES.md` 等 | 部署、env、故障排查 |
+| 脚本 CLI | `scripts/wiki/README.md` 等 | 新 flag / env |
+| Skill | `skills/<name>/SKILL.md` | Agent 行为 |
+| 对外 | `README.md` | 用户可见命令 |
+| Agent 协作约定 | `AGENTS.md` | 原则、红线、误解表；**不贴长文**，细节在本文 |
+| 历史计划 | `docs/plans/`、`*RFC*` | 可归档；**现行以代码 + 本文为准** |
+
+```
+docs/
+├── development.md           ← 本文
+├── release-checklist.md
+├── data-governance/         ← data-flow · ui-layer-rules · display-policy
+├── protocols/
+├── NOTIFICATION*.md · THEMES.md
+└── plans/                   ← 可能过期
+```
+
+**改代码 → 文档同步（最小集）**
+
+| 改了… | 至少更新… |
+|-------|-----------|
+| UI / chrome | 本文 §8；必要时 [ui-layer-rules.md](data-governance/ui-layer-rules.md) |
+| Session / `FLOW_*` | 本文 §5.1–5.2、`README.md`、`AGENTS.md` |
+| Wiki 检索 / 策展 | [data-flow.md](data-governance/data-flow.md)、本文 §6 |
+| 新 repository | [data-management.md](data-governance/data-management.md)、`wiki-data-layout.ts` |
+| 对外命令 | `README.md` + 本文 |
+
+---
+
+## 2. 架构宪法
+
+争议时以本节为准。细则见 [ui-layer-rules.md](data-governance/ui-layer-rules.md)、[data-flow.md](data-governance/data-flow.md)。
+
+### 2.1 分层与依赖
+
+```
+scripts/flow-run.sh          进程编排、env 注入
+        ↓
+scheme/src/app/              hooks 接线 + UI（OpenTUI）
+        ↓
+scheme/src/services/         AI、session、wiki 编排（无 UI）
+        ↓
+scheme/src/data/             protocol、repository、env（可 fs）
+        ↓ 只读
+~/.claude/projects/*.jsonl     Claude 会话真相源
+```
+
+| 层 | 可依赖 | 禁止 |
+|----|--------|------|
+| `app/ui/flow/**` | `data/protocol`（类型）、view-model props、`theme`、`constants` | `services/*`、repository、`fs` |
+| `app/observer/hooks/**` | `services/*`、`data/protocol`、`constants` | 在 UI 组件里写业务 |
+| `app/observer/view-model/**` | `data/protocol`、`domain/*`、`constants` | services、OpenTUI、repository |
+| `services/**` | `data/*`、`domain/*`、`constants`、`utils` | React / OpenTUI |
+| `data/**` | `protocol`、`domain`、`utils`、`node:fs` | `app/*`、`services/*` |
+
+**新增持久化**：`data/` repository → `services/` 编排 → `app/observer/hooks/` → UI。**禁止** UI 直接写 wiki。
+
+### 2.2 单一真相源
+
+| Concern | 权威模块 | 不要重复实现于 |
+|---------|----------|----------------|
+| Session 绑定 | `services/session/session-binding-policy.ts` | shell、UI、hooks |
+| Live / Replay 展示 | `services/session/session-presentation-policy.ts` | 卡片组件 |
+| 摘要档位 | `data/protocol/summary-contract.ts` + [display-policy.md](data-governance/display-policy.md) | 多套 summary map |
+| Flowchart intent badge | `data/protocol/flowchart-intent.ts`（只用 `intent_key`） | 用 `node_id` 当 badge |
+| Intent 词表 | `constants/session-intent-keys.ts` | 字符串散落 |
+| Wiki 策展门禁 | `shouldCurateWikiForIntent()` | UI 自行判断 |
+| Wiki 路径 | `data/wiki/wiki-data-layout.ts` + `resolveWikiRoot()` | 硬编码路径 |
+| JSONL 解析 | `data/session/jsonl-session.ts` | legacy `posthoc.ts` |
+
+### 2.3 策略集中点
+
+- **Launcher** 只映射 CLI → `FLOW_*`；语义由 TypeScript 策略消费。
+- **Resume 不 regen 摘要**：只在 `session-binding-policy` + `session-presentation-policy` 决定，UI 只读 props。
+- **Wiki 检索 vs 落盘**：两条独立链路（见 [data-flow.md](data-governance/data-flow.md)）；KNOWLEDGE 卡片 ≠ wiki write badge。
+
+### 2.4 UI 规范（摘要）
+
+- 编排唯一入口：`LiveObserverContainer.tsx` → `shell-props.ts` → `FlowObserverShell.tsx`。
+- 叶子组件 prop-driven；chrome 类型在 `shell-chrome.types.ts`。
+- 主题用 `semantic.*`（`app/ui/theme.ts`）；文案用 `observer-messages.ts`（`FLOW_LOCALE=zh-Hans` 仅 chrome）。
+
+### 2.5 已知例外（勿扩散）
 
 | 位置 | 说明 |
 |------|------|
-| `services/session/posthoc.ts` | 仅 **re-export** `data/session/*`，新代码勿再依赖 |
-| `services/ai/summary-cache.ts` | 仅 **re-export** `data/wiki/summary-repository`，新代码勿再依赖 |
+| `services/session/posthoc.ts` | 仅 re-export `data/session/*`，新代码勿用 |
+| `services/ai/summary-cache.ts` | 仅 re-export summary repository |
+| `FLOW_WIKI_LEGACY_PER_TURN=1` | 恢复每 exploration 落盘（对比用） |
 
-`data/` 层不再 `import services/*`。Wiki 根路径统一 `resolveWikiRoot()`。
+---
 
-### Observer UI
+## 3. 系统概览
 
-| 区域 | 实现 |
+### 3.1 产品边界
+
+GUI-Anything = **旁路 Observer**：左 Claude Code，右屏实时读 JSONL、写派生数据到 `wiki/`。**不驱动** Claude 执行。
+
+解决：结构化观察 · 可复用沉淀 · 可预期 resume（`-r` 严格回放、不重算摘要）。
+
+### 3.2 Run / Capture / Guide
+
+| 层 | 职责 | 主路径 |
+|----|------|--------|
+| **Run** | exploration、phase、工具/错误 | `useSessionPolling` → `ExplorationCard` |
+| **Capture** | 摘要、flowchart、intent bucket、Wiki | `useExplorationSummaries` + `useWikiCurator` |
+| **Guide** | prior wiki、Next、flowchart | `useWikiMatches` + `FlowGraphView` |
+
+设计原则：**心流**（不打扰左屏）· **按需知识**（pivot 才策展）· **无感使用**（`ga flow` 一键）。
+
+### 3.3 能力矩阵
+
+| 能力 | 入口 / 代码 |
+|------|-------------|
+| 双栏 Flow | `ga flow` → `scripts/flow-run.sh` |
+| Live / Continue / Resume | `FLOW_RESUME_MODE` · `session-binding-policy.ts` |
+| AI 摘要 + flowchart | `flow-summaries.ts` · `useExplorationSummaries` |
+| Intent 词表 + pivot | `session-intent-keys.ts` |
+| Flowchart（rail/stack/grid + 连线） | `flow-graph-builder.ts` · `FlowGraphView.tsx` |
+| Wiki prior 检索 | `match-service.ts` · KNOWLEDGE 卡片 |
+| Wiki intent 策展 | `useWikiCurator` · `wiki-curator-service.ts` · `/llm-wiki` |
+| Wiki 维护 Phase 2 | `scripts/wiki/wiki-maintain.sh` |
+| 灵感笔记 | `NotesSidePanel` · `note-repository.ts` |
+| 图缓存 / digest | `useGraphSnapshot` · `graph-consolidation-service.ts` |
+| 主题 / i18n | `themes/` · `FLOW_LOCALE` |
+| 通知 | `useNotification` · [NOTIFICATION.md](NOTIFICATION.md) |
+| HTML replay / mirror / graph | `scheme/src/export/` · `main.ts` flags |
+
+### 3.4 延伸阅读
+
+| 文档 | 内容 |
 |------|------|
-| 顶栏 | `ObserverStatusBar`：活动态、模型、token、完成/错误、摘要·wiki 汇总、高频文件；不展示 session UUID |
-| 底栏 | `CommandBar` + `observer-hotkeys.ts` + `observer-key-dispatch.ts`：两行快捷键与 Shell 行为同源；打开帮助时隐藏底栏 |
-| 键盘 | 须先聚焦 observer 窗格；`Esc` 只关浮层/笔记，不退出；`q` / Ctrl+Q 退出 |
-| 时间线 | `LiveObserverFlowBody` / `ExplorationCard`；无 `[cache:hit]` 角标（统计已上顶栏） |
-| 知识卡片 | 聚焦行内联 `WikiMatchCard` + `FlowFramedSection variant="knowledge"` |
-| 摘要 | `shouldShowInlineSummary()`：生成中仍显示 SUMMARY 区 |
-| 流程图 | `flow-graph-layout.ts`：`rail` / `stack` / `grid`（`FlowGraphView.tsx`） |
-| 快捷键帮助 | `HelpOverlay`（`?`、`F1`、`Ctrl+/`、`/`、`Ctrl-K` 同一面板；单块多行文本） |
-| 笔记侧栏 | `NotesSidePanel`（`i` 切换右侧栏：Recent notes + 输入）；`c` 简洁模式（默认关：全展开；开：仅最新一条显示 summary，其余一行折叠） |
+| [data-flow.md](data-governance/data-flow.md) | Wiki 时序、决策树、存储分工 |
+| [display-policy.md](data-governance/display-policy.md) | Live/Replay、摘要 L0–L4 |
+| [data-management.md](data-governance/data-management.md) | Repository 映射 |
+| [ui-layer-rules.md](data-governance/ui-layer-rules.md) | Import 边界 |
+| [scripts/wiki/README.md](../scripts/wiki/README.md) | Wiki CLI |
+| [release-checklist.md](release-checklist.md) | 发包 |
 
-**Scheme 入口（右栏）**：`bun run src/main.ts --live`（`--observer` 同义）。`--posthoc` 已移除（误触会提示改用 `--live` / `ga flow`）。
+---
 
-快捷键以 `HelpOverlay.tsx` 与 `FlowObserverShell.tsx` 为准。勿恢复已删除的 `ContextPanel` / `UnifiedFooter`。
+## 4. 代码组织
 
-## 9. 发布前自检
+### 4.1 仓库目录
 
-- [ ] `ga doctor` 通过
-- [ ] `cd scheme && bun test` 通过
-- [ ] `FLOW_RESUME_MODE` 表与 `flow-run.sh`、`AGENTS.md` 一致
-- [ ] 未在 `app/` 引入文件 IO（摘要缓存例外在 `services/ai/summary-cache.ts`）
-- [ ] 新环境变量已写入 `scripts/flow-run.sh --help` 与 README
-- [ ] 治理文档 `docs/data-governance/` 路径与 repository 文件名一致
-- [ ] `bunx tsc --noEmit` 无报错
+| 路径 | Git | 用途 |
+|------|-----|------|
+| `scheme/src/` | ✅ | 主代码 |
+| `scripts/` | ✅ | `flow-run.sh`、wiki 脚本 |
+| `cli/` | ✅ | `ga` |
+| `skills/` | ✅ | llm-wiki 等 |
+| `docs/` | ✅ | 设计与 runbook |
+| `wiki/` | ❌ | 本地知识库（`FLOW_ROOT_DIR/wiki`） |
+| `.flow-runtime/` | ❌ | Zellij layout 等 |
+
+### 4.2 scheme 模块速查
+
+**Data**（`scheme/src/data/`）
+
+| 模块 | 职责 |
+|------|------|
+| `protocol/observer-protocol.ts` | 跨层 ID、Exploration、图类型 |
+| `protocol/flowchart-intent.ts` | badge 用 `intent_key`；`node_id` 仅树 |
+| `protocol/summary-contract.ts` | `SummaryItem` 唯一形状 |
+| `session/claude-project.ts` | JSONL 路径发现 |
+| `session/jsonl-session.ts` | 解析、exploration 提取 |
+| `wiki/*-repository.ts` | 文件 CRUD |
+| `wiki/wiki-data-layout.ts` | 三链路径常量 |
+
+**Services**（`scheme/src/services/`）
+
+| 模块 | 职责 |
+|------|------|
+| `session/session-binding-policy.ts` | Binding、visibility、allowRegen |
+| `session/observer-session-service.ts` | JSONL 轮询 |
+| `ai/exploration-summary-service.ts` | 摘要 hydrate/generate |
+| `wiki/wiki-curator-service.ts` | Intent digest + Wiki Agent |
+| `wiki/intent-bucket-service.ts` | intent-buckets.json |
+| `wiki/match-service.ts` | Prior 检索 |
+| `wiki/wiki-agent/` · `wiki-maintain-agent/` | Phase 1 / 2 Agent |
+
+### 4.3 Observer 组合
+
+```
+LiveObserverContainer
+  ├── useSessionPolling
+  ├── useExplorationSummaries   → flowchartHints, sessionIntent
+  ├── useWikiCurator            → 策展 + 笔记（useWikiPersistence 别名）
+  ├── useGraphSnapshot / useGraphConsolidation
+  ├── usePotentialDirections    → live only
+  ├── useNotification
+  └── shell-props → FlowObserverShell → app/ui/flow/*
+```
+
+View-model（`app/observer/view-model/`）：`flow-graph-builder`、`intent-chrome*`、`wiki-*-chrome`、`shell-props`、`exploration-card-view` — **无 IO**。
+
+### 4.4 Intent 词表与 Wiki 策展
+
+词表：`constants/session-intent-keys.ts`。Summary Agent 只能选表中 `intent_key`。
+
+| `intent_key` | Wiki 策展（pivot/sweep） |
+|--------------|-------------------------|
+| explore, test_verify, general, greeting | ✗ |
+| project_design, implement, refactor, debug, devops, research | ✓ |
+
+覆盖：`FLOW_WIKI_CURATE_INTENTS=key1,key2`
+
+---
+
+## 5. 运行时
+
+### 5.1 入口与 Session 模式
+
+```
+ga flow [-c|--continue] [-r|--resume [id]] [-m model] [prompt]
+  → scripts/flow-run.sh → zellij → claude | bun run src/main.ts --live
+```
+
+| 命令 | `FLOW_RESUME_MODE` | Summary |
+|------|-------------------|---------|
+| `ga flow` | `bind_specific` + 新 UUID | 可 regen |
+| `ga flow -c`（有 ID） | `bind_specific` | 可 regen |
+| `ga flow -c`（无 ID） | `auto_latest` | 可 regen |
+| `ga flow -r` | `resume_picker` | strict replay |
+| `ga flow -r <id>` | `resume_specific` | strict replay |
+
+Shell **不实现** binding 逻辑；见 `session-binding-policy.ts`。
+
+### 5.2 环境变量
+
+**Launcher → Observer**
+
+| 变量 | 作用 |
+|------|------|
+| `FLOW_PROJECT_DIR` | 项目根（JSONL、observer cwd） |
+| `FLOW_ROOT_DIR` | 仓库根（wiki、`.flow-runtime` 父路径） |
+| `FLOW_SESSION_ID` | 绑定 session UUID |
+| `FLOW_RESUME_MODE` | 见上表 |
+| `FLOW_WIKI_DIR` | 覆盖 wiki 根 |
+| `FLOW_LOCALE` | `zh-Hans` 本地化 chrome |
+| `FLOW_WIKI_AGENT` | `0` 禁用 Wiki Agent |
+| `FLOW_WIKI_CURATE_INTENTS` | 覆盖策展 intent 列表 |
+| `FLOW_MIRROR_PORT` | Web Mirror 端口（默认 3000） |
+
+完整列表：`./scripts/flow-run.sh --help`、`scripts/wiki/README.md`。
+
+### 5.3 数据存储（三链）
+
+无 SQL。详见 [data-management.md](data-governance/data-management.md)。
+
+| 链 | 路径 | 说明 |
+|----|------|------|
+| Source | `~/.claude/projects/.../*.jsonl` | 只读 |
+| Sessions | `wiki/sessions/{id}-*.json` | 摘要、bucket、图、evidence |
+| Knowledge | `wiki/knowledge/**` | contexts / entities markdown |
+| Notes | `wiki/notes/` | 用户灵感 |
+| Runtime | `.flow-runtime/layouts/` | Zellij KDL |
+
+### 5.4 Launcher 运维
+
+```bash
+./scripts/flow-run.sh --cleanup
+pgrep -fl 'flow-run|zellij.*flow-runtime'   # 关 tab 后应无残留
+```
+
+启动前清理其他 launcher PID；pane 用进程组便于退出时带走 claude + observer。
+
+---
+
+## 6. 核心链路（摘要）
+
+细节与 mermaid 时序见 [data-flow.md](data-governance/data-flow.md)。
+
+**会话**：`useSessionPolling` → `FileSessionRepository` → explorations + stats。
+
+**摘要**：binding 决定 `allowRegen` → `useExplorationSummaries` → `*-summaries.json`；Replay 不 `generateMissing`。
+
+**Wiki 检索**：问题写入后 `match-service` → KNOWLEDGE 卡片（与 SUMMARY 独立）。
+
+**Wiki 策展**：同 intent 内只积累 bucket → pivot 或 idle 30s sweep → `WikiCuratorService` + Agent → `contexts/`；badge 仅 anchor 轮。
+
+**Flowchart**：`flow-graph-builder` → `useGraphSnapshot`（缓存）→ `FlowGraphView`（rail/stack/grid）。
+
+**HTML export**（独立 CLI，`cd scheme`）：
+
+```bash
+bun run src/main.ts --export-html -o replay.html
+bun run src/main.ts --web-mirror --port 3001
+bun run src/main.ts --knowledge-graph -o graph.html
+```
+
+Mirror 独立终端需手动 `FLOW_SESSION_ID` 与 flow 对齐。
+
+---
+
+## 7. 扩展手册
+
+统一顺序：**protocol → data repository → services → view-model → hook → UI → docs**。
+
+| 场景 | 步骤 |
+|------|------|
+| **新 UI 面板** | protocol 类型 → view-model chrome → hook → `ui/flow` → `LiveObserverContainer` / `shell-props` |
+| **新 session 模式** | `session-binding-policy.ts` + `flow-run.sh` + display-policy 文档 |
+| **新持久化** | `data/wiki|session/*-repository.ts` → service → hook；更新 data-flow |
+| **新 intent_key** | `session-intent-keys.ts` → prompt catalog → `wiki-write-chrome` / `flow-graph-builder` |
+| **新 flowchart 行为** | `flow-graph-builder`（数据）· `flow-graph-layout`（布局）· `FlowGraphView`（渲染） |
+| **新 Wiki 能力** | `wiki-agent/` 或 `wiki-maintain-agent/` + `skills/llm-wiki/` + data-flow |
+| **新 export** | `scheme/src/export/` + `main.ts`；JSONL 用 `jsonl-session.ts` |
+| **新通知渠道** | notification service + `useNotification` + `NOTIFICATION.md` |
+
+每个场景补 colocated `*.test.ts`；改 env 则更新 §5.2 与脚本 help。
+
+---
+
+## 8. Observer UI 参考
+
+| 区域 | 组件 | 要点 |
+|------|------|------|
+| 顶栏 | `ObserverStatusBar` | Live/Replay · token · errors · intent 标题（第 2 行） |
+| 时间线 | `ExplorationCard` | KNOWLEDGE（running 起）· SUMMARY · wiki badge 仅 anchor 轮 |
+| 流程图 | `FlowGraphView` | rail `├─└─│` / stack·grid `│↓` |
+| 底栏 | `CommandBar` | 帮助打开时隐藏 |
+| 笔记 | `NotesSidePanel`（`i`） | |
+| Next | `InspirationPanel` | 仅 live |
+| 键盘 | `observer-key-dispatch.ts` | 聚焦 observer 窗格；`k` = audit |
+
+Calm（`c`）：默认全展开。Replay 摘要档位见 [display-policy.md](data-governance/display-policy.md)。
+
+---
+
+## 9. 验证与发布
+
+```bash
+cd scheme && bun test && bunx tsc --noEmit
+ga doctor && ga flow   # 手测
+```
+
+**PR / 合并前**
+
+- [ ] §2 架构宪法未违反
+- [ ] 测试 + tsc 通过
+- [ ] `docs/` / README / AGENTS 已按需同步（§1.4）
+- [ ] 新 `FLOW_*` 已文档化
+- [ ] §3.3 能力矩阵仍准确（若用户可见功能变了）
+
+发包：[release-checklist.md](release-checklist.md)。

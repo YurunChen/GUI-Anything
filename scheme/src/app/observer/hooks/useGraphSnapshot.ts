@@ -5,7 +5,7 @@ import type {
   FlowchartHint,
   SessionId,
 } from '../../../data/protocol/observer-protocol';
-import { buildFlowGraphSnapshot } from '../observer/view-model/flow-graph-builder';
+import { buildFlowGraphSnapshot } from '../view-model/flow-graph-builder';
 import {
   DefaultGraphCacheService,
   type GraphCacheLoadStatus,

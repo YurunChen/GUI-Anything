@@ -80,7 +80,7 @@ interface KnowledgeRepository {
 // data/wiki/note-repository.ts — FileNoteRepository
 //   create / findById / listRecent / listByDate / update / delete
 // services/wiki/inspiration-note-service.ts — DefaultInspirationNoteService
-// app/observer/hooks/useWikiPersistence.ts — 只调用 service
+// app/observer/hooks/useWikiCurator.ts — 策展 + 灵感（useWikiPersistence 为别名）
 ```
 
 ## 4. 数据治理机制
@@ -144,7 +144,7 @@ app/ (应用层)
   ├── useSessionPolling.ts → PollingObserverSessionService
   ├── useExplorationSummaries.ts → DefaultExplorationSummaryService
   ├── useGraphSnapshot.ts → graph-cache-service
-  └── useWikiPersistence.ts → WikiPersistenceService + InspirationNoteService
+  └── useWikiCurator.ts → WikiCuratorService + InspirationNoteService
 
 services/ (服务层)
   ├── session/
@@ -155,7 +155,8 @@ services/ (服务层)
   │   ├── exploration-summary-service.ts
   │   └── summary-cache.ts → wiki/sessions/{id}-summaries.json
   └── wiki/
-      ├── persistence-service.ts → knowledge + evidence repositories
+      ├── wiki-curator-service.ts → intent digest + Wiki Agent（默认路径）
+      ├── persistence-service.ts → legacy per-turn（FLOW_WIKI_LEGACY_PER_TURN=1）
       ├── inspiration-note-service.ts → note-repository
       └── match-service.ts → knowledge-repository
 
