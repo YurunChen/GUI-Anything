@@ -59,7 +59,12 @@ async function main() {
     return;
   }
 
-  if (isLiveMode || isPostHoc) {
+  if (isPostHoc) {
+    console.error('Removed: --posthoc tree view. Use dual-pane flow (`ga flow`) or `bun run src/main.ts --live` for the live observer.');
+    process.exit(1);
+  }
+
+  if (isLiveMode || isObserverMode) {
     const { renderLiveObserver } = await import('./app/ui/live-observer');
     const cwd = process.cwd();
     await renderLiveObserver(cwd);
@@ -78,9 +83,8 @@ async function main() {
     console.log('Usage:');
     console.log('  bun run src/main.ts "<prompt>"         # Direct mode (Claude runs once)');
     console.log('  bun run src/main.ts --flow "<prompt>"  # Flow mode (persistent + timeline view)');
-    console.log('  bun run src/main.ts --live             # Live observer (polls session JSONL)');
-    console.log('  bun run src/main.ts --posthoc [path]   # Post-hoc analysis of latest session');
-    console.log('  bun run src/main.ts --observer "<p>"   # Observer mode (for dual-pane)');
+    console.log('  bun run src/main.ts --live             # Live observer (dual-pane right pane; same as --observer)');
+    console.log('  bun run src/main.ts --observer         # Alias for --live');
     console.log('  bun run src/main.ts --web              # Web API mode');
     console.log('');
     console.log('  # HTML Export:');

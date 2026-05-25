@@ -59,7 +59,7 @@ docs/
 └── NOTIFICATION_QUICKSTART.md    # 快速开始指南
 
 scripts/
-└── test-notification.sh          # 测试脚本
+└── test/notification.sh          # 测试脚本
 ```
 
 ### 核心组件
@@ -283,7 +283,7 @@ export FLOW_NOTIFY_DINGTALK_TOKEN=YOUR_SIGN_SECRET
 ### 运行测试脚本
 
 ```bash
-./scripts/test-notification.sh
+./test/notification.sh
 ```
 
 这会检查你的配置是否正确。

@@ -7,18 +7,37 @@ import type { ReactNode } from 'react';
 import { useState, useRef, useCallback } from 'react';
 import type { TextareaRenderable } from '@opentui/core';
 import { useTerminalDimensions } from '@opentui/react';
-import { colors } from '../theme';
+import { semantic } from '../theme';
 import type { InspirationRecord } from '../../../data/protocol/observer-protocol';
 import { getNotesSectionLayout } from '../../../constants/flow-constants';
+import { lineDisplayWidth, truncateFlowText } from '../../../utils/flow-text';
+import { FlowTextBlock } from './FlowTextBlock';
+import { getObserverMessages } from '../i18n/observer-messages';
 
 export interface InspirationPanelProps {
   inspirations: InspirationRecord[];
+  /** Sidebar inner width (columns), for list truncation. */
+  panelWidth?: number;
   focused: boolean;
   onFocusChange: (focused: boolean) => void;
   onSave: (text: string) => void;
 }
 
-export function InspirationPanel({ inspirations, focused, onFocusChange, onSave }: InspirationPanelProps): ReactNode {
+export function formatNoteListLine(prefix: string, title: string, timeStr: string, maxCols: number): string {
+  const titleShown = truncateForListRow(title, Math.max(8, maxCols - lineDisplayWidth(prefix)));
+  const line = `${prefix}${titleShown}`;
+  if (!timeStr) return line;
+  return `${line}\n  ${timeStr}`;
+}
+
+export function InspirationPanel({
+  inspirations,
+  panelWidth,
+  focused,
+  onFocusChange,
+  onSave,
+}: InspirationPanelProps): ReactNode {
+  const m = getObserverMessages();
   const textareaRef = useRef<TextareaRenderable>(null);
 
   const handleSave = useCallback(() => {
@@ -44,7 +63,7 @@ export function InspirationPanel({ inspirations, focused, onFocusChange, onSave 
     <box style={{ flexDirection: 'column', height: '100%' }} onMouseDown={handleNotesAreaClick}>
       <scrollbox style={{ flexGrow: 1 }}>
         <box style={{ flexDirection: 'column', flexShrink: 0 }} onMouseDown={handleNotesAreaClick}>
-          <NotesList inspirations={inspirations} />
+          <NotesList inspirations={inspirations} panelWidth={panelWidth ?? 28} messages={m} />
         </box>
 
         <box
@@ -57,35 +76,35 @@ export function InspirationPanel({ inspirations, focused, onFocusChange, onSave 
           }}
           onMouseDown={handleInputAreaClick}
         >
-          <text fg={colors.accent.secondary}>Write Notes</text>
+          <text fg={semantic.label.secondary}>{m.notesWriteLabel}</text>
           <box
             style={{
               flexDirection: 'column',
               marginTop: 1,
               border: true,
-              borderColor: focused ? colors.border.active : colors.border.muted,
-              backgroundColor: colors.bg.primary,
+              borderColor: focused ? semantic.separatorActive : semantic.separator,
+              backgroundColor: semantic.fill.base,
               paddingLeft: 1,
               paddingRight: 1,
             }}
           >
             <textarea
               ref={textareaRef}
-              placeholder="One concise insight (plain text)..."
+              placeholder={m.notesPlaceholder}
               focused={focused}
               keyBindings={[{ name: 'return', action: 'submit' }]}
               onSubmit={handleSave}
               style={{
                 height: 3,
-                wrapMode: 'char',
+                wrapMode: 'word',
                 backgroundColor: 'transparent',
-                textColor: colors.fg.primary,
+                textColor: semantic.label.primary,
               }}
             />
           </box>
           {focused && (
-            <text fg={colors.fg.muted} style={{ marginTop: 1, paddingLeft: 1 }}>
-              [Enter] Save
+            <text fg={semantic.label.quaternary} style={{ marginTop: 1, paddingLeft: 1 }}>
+              {m.notesEnterSave}
             </text>
           )}
         </box>
@@ -104,43 +123,8 @@ function formatNoteTimestamp(iso: string): string {
   return `${date} ${time}`;
 }
 
-function truncateForListRow(title: string, maxChars: number): string {
-  const t = title.trim();
-  if (t.length <= maxChars) return t;
-  return `${t.slice(0, Math.max(0, maxChars - 1))}...`;
-}
-
-function charDisplayWidth(ch: string): number {
-  const code = ch.codePointAt(0) ?? 0;
-  // Treat CJK / full-width glyphs as width 2 in terminal.
-  if (
-    (code >= 0x1100 && code <= 0x115f) ||
-    (code >= 0x2e80 && code <= 0xa4cf) ||
-    (code >= 0xac00 && code <= 0xd7a3) ||
-    (code >= 0xf900 && code <= 0xfaff) ||
-    (code >= 0xfe10 && code <= 0xfe6f) ||
-    (code >= 0xff00 && code <= 0xff60) ||
-    (code >= 0xffe0 && code <= 0xffe6)
-  ) {
-    return 2;
-  }
-  return 1;
-}
-
-function lineDisplayWidth(line: string): number {
-  let width = 0;
-  for (const ch of line) {
-    width += charDisplayWidth(ch);
-  }
-  return width;
-}
-
-function expandedTitleHeight(text: string, columnsPerLine: number): number {
-  const safeCols = Math.max(10, columnsPerLine);
-  const totalLines = text
-    .split('\n')
-    .reduce((sum, line) => sum + Math.max(1, Math.ceil(lineDisplayWidth(line) / safeCols)), 0);
-  return Math.max(2, totalLines);
+function truncateForListRow(title: string, maxCols: number): string {
+  return truncateFlowText(title.trim(), maxCols, '...');
 }
 
 function dedupeBodyAgainstTitle(title: string, body: string): string {
@@ -160,15 +144,20 @@ function calculateUsableColumns(containerWidth: number): number {
   return Math.max(20, containerWidth - PADDING);
 }
 
-// Recent notes: click row to preview body below.
-function NotesList({ inspirations }: { inspirations: InspirationRecord[] }): ReactNode {
-  const { height: terminalHeight, width: terminalWidth } = useTerminalDimensions();
+function NotesList({
+  inspirations,
+  panelWidth,
+  messages,
+}: {
+  inspirations: InspirationRecord[];
+  panelWidth: number;
+  messages: ReturnType<typeof getObserverMessages>;
+}): ReactNode {
+  const { height: terminalHeight } = useTerminalDimensions();
   const { maxItems } = getNotesSectionLayout(terminalHeight);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
-  // Calculate usable width for title display
-  // ContextPanel width is ~34-40 columns in side mode
-  const usableCols = calculateUsableColumns(terminalWidth < 96 ? terminalWidth - 4 : 36);
+  const usableCols = calculateUsableColumns(Math.max(20, panelWidth - 2));
 
   const handleClick = (index: number) => {
     if (expandedIndex === index) {
@@ -180,13 +169,8 @@ function NotesList({ inspirations }: { inspirations: InspirationRecord[] }): Rea
 
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
-      <text>
-        <span fg={colors.accent.secondary}>Recent Notes</span>
-        <span fg={colors.fg.dim}>{`  (${inspirations.length})`}</span>
-      </text>
-
       {inspirations.length === 0 ? (
-        <text fg={colors.fg.muted} style={{ marginTop: 1 }}>No notes yet</text>
+        <text fg={semantic.label.tertiary} style={{ marginTop: 1 }}>{messages.notesEmpty}</text>
       ) : (
         <box style={{ flexDirection: 'column', paddingLeft: 1 }}>
           {inspirations.slice(0, maxItems).map((item, index) => {
@@ -196,9 +180,10 @@ function NotesList({ inspirations }: { inspirations: InspirationRecord[] }): Rea
             // Keep title start column aligned for rows with/without expand affordance.
             const prefix = canExpand ? (isExpanded ? '▾ ' : '▸ ') : '  ';
             const timeStr = formatNoteTimestamp(String(item?.created || ''));
-            const titleShown = isExpanded ? title : truncateForListRow(title, usableCols - 2);
-            const expandedText = `${prefix}${title}`;
-            const expandedHeight = expandedTitleHeight(expandedText, usableCols);
+            const collapsedLine = formatNoteListLine(prefix, title, timeStr, usableCols);
+            const rawBody = String(item?.body || '').trim();
+            const body = dedupeBodyAgainstTitle(title, rawBody);
+            const expandedHead = `${prefix}${title}${timeStr ? `\n  ${timeStr}` : ''}`;
             return (
               <box
                 key={item.path || index}
@@ -207,30 +192,22 @@ function NotesList({ inspirations }: { inspirations: InspirationRecord[] }): Rea
                   marginTop: 1,
                   paddingLeft: 1,
                   paddingRight: 1,
-                  backgroundColor: isExpanded ? colors.bg.tertiary : 'transparent',
+                  backgroundColor: isExpanded ? semantic.fill.grouped : 'transparent',
                 }}
                 onMouseDown={() => {
                   if (canExpand) handleClick(index);
                 }}
               >
                 {isExpanded && canExpand ? (
-                  <textarea
-                    initialValue={expandedText}
-                    focused={false}
-                    style={{
-                      height: expandedHeight,
-                      wrapMode: 'char',
-                      backgroundColor: 'transparent',
-                      textColor: colors.fg.primary,
-                    }}
+                  <FlowTextBlock
+                    text={body ? `${expandedHead}\n${body}` : expandedHead}
+                    fg={semantic.label.primary}
                   />
                 ) : (
-                  <text fg={colors.status.info}>
-                    {prefix}
-                    {titleShown}
+                  <text wrapMode="none" fg={semantic.label.secondary}>
+                    {collapsedLine}
                   </text>
                 )}
-                {timeStr ? <text fg={colors.fg.dim}>{timeStr}</text> : null}
               </box>
             );
           })}

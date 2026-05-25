@@ -1,53 +1,61 @@
 /**
  * FlowObserverShell - Main shell component
- * Responsible for: state management, data fetching, orchestration
- * NOT responsible for: layout details, rendering individual panels
+ * Responsible for: layout orchestration and keyboard chrome
  */
 
 import type { ReactNode } from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTerminalDimensions, useKeyboard } from '@opentui/react';
 
 import type { ActivityTree } from '../../../domain/types';
 import type { PotentialDirection } from '../../../services/ai/flow-summaries';
 import type {
   Exploration,
-  WikiMatch,
   PersistResult,
-  CacheLoadStatus,
   FlowchartHint,
   FlowGraphSnapshot,
+  SessionScopedId,
+  SummaryItem,
+  SessionIntentState,
 } from '../../../data/protocol/observer-protocol';
-import type { InspirationRecord } from '../../../data/protocol/observer-protocol';
+import type { SessionPresentationMode } from '../../../services/session/session-presentation-policy';
+import type { WikiWriteChromeView } from '../../observer/view-model/wiki-write-chrome';
 
-import { colors, pulseFrames, themeManager, applyTheme, useThemeVersion } from '../theme';
+import { semantic, themeManager, applyTheme, useThemeVersion } from '../theme';
 import { LiveObserverFlowBody } from '../live-observer-flow-body';
+import { buildShellChromeProps } from '../../observer/view-model/shell-props';
+import { getObserverMessages } from '../i18n/observer-messages';
 
-import { ContextPanel } from './ContextPanel';
 import { CommandBar } from './CommandBar';
-import { getContextPanelLayout } from '../../../constants/flow-constants';
-import type { ContextTab } from './flow-observer-state';
-import { buildOutcomeSummary, deriveActivityState } from './activity-state';
+import { HelpOverlay } from './HelpOverlay';
+import type { ObserverHotkeyContext } from './observer-hotkeys';
+import { dispatchObserverKey } from './observer-key-dispatch';
+import { NotesSidePanel } from './NotesSidePanel';
+import {
+  NOTES_SIDEBAR_MIN_TERMINAL_COLS,
+  resolveNotesSidebarWidth,
+} from '../../../constants/flow-constants';
+import { ObserverStatusBar } from './ObserverStatusBar';
+import { flowSpacing } from './flow-ui/flow-spacing';
 
 interface FlowObserverShellProps {
   explorations: Exploration[];
   tree: ActivityTree | null;
-  sessionPath: string;
   sessionId: string;
   tokenDisplay: string;
   runtimeModel: string;
   wikiExtractedCount: number;
-  wikiMatch: WikiMatch | null;
-  wikiDebugInfo?: string;
   explorationSummaries: Record<string, string>;
   flowchartHints: Record<string, FlowchartHint>;
   graphSnapshot: FlowGraphSnapshot;
-  explorationPersistStatus: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  explorationPersistStatus: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   persistResults?: Record<string, PersistResult>;
-  cacheStatus?: CacheLoadStatus | null;
-  cacheReason?: string;
-  replayOnlyHint?: string;
+  wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
+  sessionPresentationMode?: SessionPresentationMode;
+  sessionBannerHint?: string;
+  summaryItems?: Record<SessionScopedId, SummaryItem>;
+  sessionIntent?: SessionIntentState | null;
   flowBodyVisible?: boolean;
   potentialDirections: PotentialDirection[];
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
@@ -55,31 +63,61 @@ interface FlowObserverShellProps {
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
   onSendSnapshot?: (note?: string) => void;
+  onFileWikiAudit?: () => { filed: boolean; targetId?: string };
   notifyStatus?: string;
+}
+
+function resolveSpinnerIntervalMs(): number {
+  const raw = (process.env.FLOW_NO_ANIMATIONS || '').trim().toLowerCase();
+  if (raw === '1' || raw === 'true' || raw === 'yes') return 400;
+  return 160;
 }
 
 export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const flowBodyVisible = props.flowBodyVisible ?? true;
   const { width: terminalWidth } = useTerminalDimensions();
   useThemeVersion();
+  const messages = getObserverMessages();
 
-  const [activeTab, setActiveTab] = useState<ContextTab>(null);
+  const [showNotes, setShowNotes] = useState(false);
   const [inspirationInputFocused, setInspirationInputFocused] = useState(false);
-  const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
-  const [observerMode, setObserverMode] = useState<'exploration' | 'flowchart'>('exploration');
   const [showThemeNotification, setShowThemeNotification] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [observerMode, setObserverMode] = useState<'exploration' | 'flowchart'>('exploration');
+  const [calmMode, setCalmMode] = useState(false);
+  const [chromeHint, setChromeHint] = useState<string | undefined>();
+  const chromeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const blurInspirationInput = useCallback(() => {
-    if (inspirationInputFocused) {
-      setInspirationInputFocused(false);
+  const spinnerIntervalMs = useMemo(() => resolveSpinnerIntervalMs(), []);
+  const notesSidebarWidth = useMemo(
+    () => (showNotes ? resolveNotesSidebarWidth(terminalWidth) : 0),
+    [showNotes, terminalWidth],
+  );
+  const timelineWidth = useMemo(
+    () => Math.max(24, terminalWidth - notesSidebarWidth - flowSpacing.contentPadX * 2),
+    [terminalWidth, notesSidebarWidth],
+  );
+
+  const flashChromeHint = useCallback((text: string) => {
+    if (chromeHintTimerRef.current) {
+      clearTimeout(chromeHintTimerRef.current);
     }
-  }, [inspirationInputFocused]);
+    setChromeHint(text);
+    chromeHintTimerRef.current = setTimeout(() => {
+      setChromeHint(undefined);
+      chromeHintTimerRef.current = null;
+    }, 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (chromeHintTimerRef.current) clearTimeout(chromeHintTimerRef.current);
+  }, []);
 
   useEffect(() => {
-    if (activeTab !== 'inspiration') {
+    if (!showNotes) {
       setInspirationInputFocused(false);
     }
-  }, [activeTab]);
+  }, [showNotes]);
 
   const handleSaveInspiration = useCallback((text: string) => {
     if (!text.trim()) return;
@@ -89,238 +127,210 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     }
   }, [props]);
 
-  const completedCount = props.explorations.filter((e) => e.status === 'complete').length;
-  const interruptionErrorCount = props.explorations.filter(
-    (e) => (e.errorCounts.system + e.errorCounts.result) > 0
-  ).length;
-  const persistSavedCount = Object.values(props.explorationPersistStatus).filter((v) => v === 'saved').length;
-  const persistSkippedCount = Object.values(props.explorationPersistStatus).filter((v) => v === 'skipped').length;
-  const persistFailedCount = Object.values(props.explorationPersistStatus).filter((v) => v === 'failed').length;
-  const persistPendingCount = Object.values(props.explorationPersistStatus).filter((v) => v === 'pending').length;
-  const summaryCount = Object.keys(props.explorationSummaries).length;
-
-  const activityState = deriveActivityState({
+  const chrome = buildShellChromeProps({
+    sessionId: props.sessionId,
+    sessionPresentationMode: props.sessionPresentationMode ?? 'live',
     explorations: props.explorations,
+    tree: props.tree,
+    runtimeModel: props.runtimeModel,
+    tokenDisplay: props.tokenDisplay,
+    notifyStatus: chromeHint ?? props.notifyStatus,
+    themeNotification: showThemeNotification ? themeManager.getThemeDisplayName() : undefined,
+    terminalWidth,
     pendingSummaryCount: props.pendingSummaryCount,
-    persistPendingCount,
     directionsStatus: props.directionsStatus,
+    explorationSummaries: props.explorationSummaries,
+    explorationPersistStatus: props.explorationPersistStatus,
+    explorationPersistResults: props.persistResults,
+    summaryItems: props.summaryItems,
+    sessionIntent: props.sessionIntent,
   });
 
-  useEffect(() => {
-    if (!activityState.spinning) return;
-    const timer = setInterval(() => {
-      setSpinnerFrameIndex((prev) => (prev + 1) % pulseFrames.length);
-    }, 160);
-    return () => clearInterval(timer);
-  }, [activityState.spinning]);
+  const hotkeyContext: ObserverHotkeyContext = useMemo(() => ({
+    footerMode: inspirationInputFocused
+      ? 'notes-input'
+      : showNotes
+        ? 'notes'
+        : 'default',
+    observerMode,
+    calmMode,
+    notifyAvailable: !!props.onSendSnapshot,
+    wikiAuditAvailable: !!props.onFileWikiAudit,
+  }), [
+    calmMode,
+    inspirationInputFocused,
+    observerMode,
+    props.onFileWikiAudit,
+    props.onSendSnapshot,
+    showNotes,
+  ]);
 
-  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; shift?: boolean; preventDefault: () => void }) => {
-    if (key.ctrl && key.name === 'q') {
-      safeExit();
-      return;
+  const handleFileWikiAudit = useCallback(() => {
+    if (!props.onFileWikiAudit) return;
+    const result = props.onFileWikiAudit();
+    if (result.filed && result.targetId) {
+      flashChromeHint(messages.wikiAuditFiled(result.targetId));
+    } else {
+      flashChromeHint(messages.wikiAuditNoMatch);
     }
+  }, [flashChromeHint, messages, props]);
 
-    if (inspirationInputFocused) {
-      if (key.name === 'escape') {
-        setInspirationInputFocused(false);
+  const applyThemeKind = useCallback((kind: 'morandi' | 'prev' | 'next') => {
+    try {
+      let peek;
+      if (kind === 'morandi') {
+        peek = themeManager.nextMorandiTheme();
+      } else if (kind === 'prev') {
+        peek = themeManager.previousTheme();
+      } else {
+        peek = themeManager.nextTheme();
       }
-      return;
+      applyTheme(peek);
+      setShowThemeNotification(true);
+      setTimeout(() => setShowThemeNotification(false), 1500);
+    } catch (err) {
+      try { process.stderr.write(`Theme switch failed: ${String(err)}\n`); } catch { /* ignore */ }
     }
+  }, []);
 
-    if (key.name === 'i') {
-      setActiveTab(activeTab === 'inspiration' ? null : 'inspiration');
-      return;
-    }
+  const toggleNotes = useCallback(() => {
+    setShowNotes((prev) => {
+      if (prev) return false;
+      if (resolveNotesSidebarWidth(terminalWidth) === 0) {
+        flashChromeHint(messages.notesTooNarrow(NOTES_SIDEBAR_MIN_TERMINAL_COLS));
+        return false;
+      }
+      return true;
+    });
+  }, [flashChromeHint, messages, terminalWidth]);
 
-    if (key.name === 'escape') {
-      if (activeTab !== 'inspiration') {
+  useKeyboard(useCallback((key: { name: string; ctrl: boolean; meta: boolean; shift?: boolean }) => {
+    const action = dispatchObserverKey(key, {
+      showHelp,
+      showNotes,
+      inspirationInputFocused,
+      notifyAvailable: !!props.onSendSnapshot,
+      wikiAuditAvailable: !!props.onFileWikiAudit,
+    });
+    if (!action) return;
+
+    switch (action.type) {
+      case 'exit':
         safeExit();
-      }
-      return;
+        break;
+      case 'close_help':
+        setShowHelp(false);
+        break;
+      case 'toggle_help':
+        setShowHelp((prev) => !prev);
+        break;
+      case 'close_notes_input':
+        setInspirationInputFocused(false);
+        break;
+      case 'toggle_notes':
+        toggleNotes();
+        break;
+      case 'close_notes':
+        setShowNotes(false);
+        break;
+      case 'toggle_calm':
+        setCalmMode((prev) => !prev);
+        break;
+      case 'toggle_mode':
+        setObserverMode((prev) => (prev === 'exploration' ? 'flowchart' : 'exploration'));
+        break;
+      case 'send_snapshot':
+        props.onSendSnapshot?.();
+        break;
+      case 'file_wiki_audit':
+        handleFileWikiAudit();
+        break;
+      case 'theme':
+        applyThemeKind(action.kind);
+        break;
+      default:
+        break;
     }
-
-    if (key.name === 'q') safeExit();
-    if (key.name === 'g') {
-      setObserverMode((prev) => (prev === 'exploration' ? 'flowchart' : 'exploration'));
-    }
-    if (key.name === 's' && props.onSendSnapshot) {
-      props.onSendSnapshot();
-      return;
-    }
-
-    const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);
-    if (isMorandiKey || key.name === 'j' || key.name === 'k' || key.name === 'l') {
-      try {
-        let peek;
-        if (isMorandiKey) {
-          peek = themeManager.nextMorandiTheme();
-        } else if (key.name === 'k') {
-          peek = themeManager.previousTheme();
-        } else if (key.name === 'l') {
-          peek = themeManager.toggleLightDark();
-        } else {
-          peek = themeManager.nextTheme();
-        }
-        applyTheme(peek);
-        setShowThemeNotification(true);
-        setTimeout(() => setShowThemeNotification(false), 1500);
-      } catch (err) {
-        try { process.stderr.write(`Theme switch failed: ${String(err)}\n`); } catch { /* ignore */ }
-      }
-      return;
-    }
-  }, [activeTab, inspirationInputFocused, props]));
-
-  const wikiLinkText = props.wikiMatch ? props.wikiMatch.entry.id : '';
-
-  const layout = getContextPanelLayout(terminalWidth);
-  const flowBodyWidth = activeTab && !layout.isStacked
-    ? Math.max(40, terminalWidth - (typeof layout.flexBasis === 'number' ? layout.flexBasis : 40))
-    : terminalWidth;
+  }, [
+    applyThemeKind,
+    handleFileWikiAudit,
+    inspirationInputFocused,
+    props,
+    showHelp,
+    showNotes,
+    toggleNotes,
+  ]));
 
   return (
-    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: colors.bg.primary }}>
-      <box
-        style={{
-          width: '100%',
-          backgroundColor: colors.bg.secondary,
-          paddingLeft: 1,
-          paddingRight: 1,
-          flexDirection: 'row',
-          justifyContent: 'space-between',
-        }}
-      >
-        <text>
-          <span fg={colors.accent.primary}>[{props.runtimeModel}]</span>
-          <span fg={colors.fg.dim}>{'  │ '}</span>
-          <span fg={colors.status.warning}>{props.tokenDisplay}</span>
-          <span fg={colors.fg.dim}>{'  '}</span>
-          <span fg={colors.status.success}>{`Done:${completedCount}`}</span>
-          <span fg={colors.fg.dim}>{'  '}</span>
-          <span fg={interruptionErrorCount > 0 ? colors.status.error : colors.fg.secondary}>
-            {`Err:${interruptionErrorCount}`}
-          </span>
-          {showThemeNotification && (
-            <>
-              <span fg={colors.fg.dim}>{'  '}</span>
-              <span fg={colors.accent.secondary}>{`🎨 ${themeManager.getThemeDisplayName()}`}</span>
-            </>
-          )}
-        </text>
-      </box>
+    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: semantic.fill.base }}>
+      <ObserverStatusBar {...chrome.statusBar} />
 
-      <box style={{ width: '100%', backgroundColor: colors.bg.secondary, paddingLeft: 1, paddingRight: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
-        <text fg={colors.fg.dim}>
-          {props.sessionPath ? props.sessionPath.split('/').slice(-1)[0].slice(0, 52) : 'Waiting for session...'}
-        </text>
-        <text>
-          {props.notifyStatus && (
-            <>
-              <span fg={colors.status.success}>{props.notifyStatus}</span>
-              <span fg={colors.fg.dim}>{'  │  '}</span>
-            </>
-          )}
-          {props.wikiMatch && (
-            <span fg={colors.status.warning}>{`Similar wiki: ${wikiLinkText} ${Math.round(props.wikiMatch.score * 100)}%`}</span>
-          )}
-          {props.wikiMatch && props.wikiExtractedCount > 0 && <span fg={colors.fg.dim}>{'  │  '}</span>}
-          {props.wikiExtractedCount > 0 && (
-            <span fg={colors.status.info}>{`Wiki: ${props.wikiExtractedCount} extracted`}</span>
-          )}
-        </text>
-      </box>
-
-      <box style={{ flexGrow: 1, flexDirection: 'row' }} onMouseDown={blurInspirationInput}>
-        <box
-          style={{
-            flexGrow: 1,
-            flexDirection: 'column',
-            border: !activeTab,
-            borderColor: colors.border.normal,
-          }}
-          onMouseDown={blurInspirationInput}
-        >
+      <box style={{ flexGrow: 1, flexDirection: 'row', minHeight: 0 }}>
+        <box style={{ flexGrow: 1, flexDirection: 'column', minWidth: 0 }}>
           <scrollbox
             style={{
               flexGrow: 1,
-              padding: 1,
+              paddingLeft: flowSpacing.contentPadX,
+              paddingRight: flowSpacing.contentPadX,
+              paddingTop: 1,
+              paddingBottom: 0,
               stickyScroll: true,
               stickyStart: 'bottom',
               viewportCulling: false,
             }}
-            onMouseDown={blurInspirationInput}
           >
-            {flowBodyVisible && (
+            {!flowBodyVisible ? (
+              <box style={{ flexDirection: 'column' }}>
+                <text fg={semantic.label.primary}>{messages.replayOnlyTitle}</text>
+                <text fg={semantic.label.secondary} style={{ marginTop: 1 }}>
+                  {messages.replayOnlyBody}
+                </text>
+              </box>
+            ) : (
               <LiveObserverFlowBody
                 sessionId={props.sessionId}
                 explorations={props.explorations}
                 summaries={props.explorationSummaries}
+                summaryItems={props.summaryItems}
                 flowchartHints={props.flowchartHints}
                 graphSnapshot={props.graphSnapshot}
                 wikiPersistStatus={props.explorationPersistStatus}
+                wikiPersistResults={props.persistResults}
+                wikiWriteChromeByExploration={props.wikiWriteChromeByExploration}
                 pendingSummaryCount={props.pendingSummaryCount}
                 directionsStatus={props.directionsStatus}
                 directionsMessage={props.directionsMessage}
                 potentialDirections={props.potentialDirections}
-                availableWidth={flowBodyWidth}
-                wikiMatch={props.wikiMatch}
-                persistResults={props.persistResults}
-                cacheStatus={props.cacheStatus}
-                cacheReason={props.cacheReason}
-                replayOnlyHint={props.replayOnlyHint}
+                availableWidth={timelineWidth}
+                sessionPresentationMode={props.sessionPresentationMode ?? 'live'}
+                sessionBannerHint={props.sessionBannerHint}
                 mode={observerMode}
+                calmMode={calmMode}
+                spinnerIntervalMs={spinnerIntervalMs}
               />
             )}
           </scrollbox>
         </box>
 
-        <ContextPanel
-          activeTab={activeTab}
-          terminalWidth={terminalWidth}
-          inputFocused={inspirationInputFocused}
-          onInputFocusChange={setInspirationInputFocused}
-          inspirations={props.recentInspirations}
-          onSaveInspiration={handleSaveInspiration}
-        />
+        {showNotes && notesSidebarWidth > 0 && (
+          <NotesSidePanel
+            width={notesSidebarWidth}
+            inspirations={props.recentInspirations}
+            inputFocused={inspirationInputFocused}
+            onInputFocusChange={setInspirationInputFocused}
+            onSaveInspiration={handleSaveInspiration}
+          />
+        )}
       </box>
 
-      {props.tree && props.tree.fileAccess.size > 0 && (
-        <box style={{ width: '100%', backgroundColor: colors.bg.tertiary, paddingLeft: 1, paddingRight: 1 }}>
-          <text fg={colors.fg.muted}>
-            {'  '}
-            {[...props.tree.fileAccess.entries()]
-              .sort((a, b) => b[1] - a[1])
-              .slice(0, 5)
-              .map(([path, count]) => {
-                const short = path.includes('/') ? path.split('/').pop()! : path;
-                const warn = count >= 3 ? ' ⚠' : '';
-                return `${short}: ${count}${warn}`;
-              })
-              .join('  |  ')}
-          </text>
-        </box>
-      )}
+      {showHelp && <HelpOverlay hotkeyContext={hotkeyContext} />}
 
-      {!activityState.spinning && props.explorations.length > 0 && (
-        <box style={{ width: '100%', backgroundColor: colors.bg.tertiary, paddingLeft: 1, paddingRight: 1 }}>
-          <text fg={colors.fg.muted}>
-            {buildOutcomeSummary({
-              summaryCount,
-              savedCount: persistSavedCount,
-              skippedCount: persistSkippedCount,
-              failedCount: persistFailedCount,
-              errorCount: interruptionErrorCount,
-            })}
-          </text>
-        </box>
+      {!showHelp && (
+        <CommandBar
+          terminalWidth={terminalWidth}
+          context={hotkeyContext}
+        />
       )}
-
-      <CommandBar
-        terminalWidth={terminalWidth}
-        inspirationInputFocused={inspirationInputFocused}
-        observerMode={observerMode}
-        notificationEnabled={!!props.onSendSnapshot}
-      />
     </box>
   );
 }

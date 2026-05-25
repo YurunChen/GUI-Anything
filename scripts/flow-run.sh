@@ -65,7 +65,8 @@ while [[ $# -gt 0 ]]; do
       echo "  FLOW_SESSION_ID      Pin observer to Claude session UUID"
       echo "  FLOW_ZELLIJ_SESSION  Zellij session name (default: unique)"
       echo "  FLOW_ZELLIJ_AUTOCLEANUP   1=cleanup on exit (default)"
-      echo "  FLOW_ZELLIJ_ON_FORCE_CLOSE quit|detach (default: quit)"
+      echo "  FLOW_ZELLIJ_ON_FORCE_CLOSE quit|detach (default: quit; quit kills panes)"
+      echo "  Pane spawns use setsid/perl setpgrp (CodeWhale-style process groups)"
       echo "  ZELLIJ_SOCKET_DIR"
       exit 0
       ;;
@@ -127,12 +128,70 @@ latest_session_name() {
   list_zellij_sessions_plain | awk 'NF>0 {print $1; exit}'
 }
 
+# CodeWhale-style shutdown: SIGTERM grace, then SIGKILL backstop (mcp.rs / shell.rs).
+pkill_pattern() {
+  local signal="$1"
+  shift
+  local pattern
+  for pattern in "$@"; do
+    pkill "-${signal}" -f "$pattern" 2>/dev/null || true
+  done
+}
+
+pkill_patterns_graceful() {
+  pkill_pattern TERM "$@"
+  sleep 0.6
+  pkill_pattern KILL "$@"
+}
+
+# Each zellij pane gets its own session/process group (CodeWhale: process_group(0) + group kill).
+wrap_pane_lc() {
+  local inner_cmd="$1"
+  if command -v setsid >/dev/null 2>&1; then
+    printf 'exec setsid bash -lc %s' "$(kdl_quote "$inner_cmd")"
+    return
+  fi
+  if command -v perl >/dev/null 2>&1; then
+    printf 'exec perl -e %s bash -lc %s' "$(kdl_quote 'setpgrp(0,0); exec @ARGV')" "$(kdl_quote "$inner_cmd")"
+    return
+  fi
+  printf 'exec bash -lc %s' "$(kdl_quote "$inner_cmd")"
+}
+
 cleanup_flow_sessions() {
   zellij kill-all-sessions -y >/dev/null 2>&1 || true
   zellij delete-all-sessions -y >/dev/null 2>&1 || true
-  pkill -f "scripts/flow-run\.sh" >/dev/null 2>&1 || true
-  pkill -f "zellij --layout .*zellij-layout-" >/dev/null 2>&1 || true
+  pkill_patterns_graceful \
+    "scripts/flow-run\.sh" \
+    "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" \
+    "zellij --layout .*zellij-layout-" \
+    "FLOW_ZELLIJ_SESSION=" \
+    "FLOW_SESSION_ID=" \
+    "bun run src/main.ts --live"
   rm -f "${LAYOUT_DIR}"/zellij-layout-*.kdl >/dev/null 2>&1 || true
+}
+
+cleanup_stale_launchers() {
+  [[ "${FLOW_ZELLIJ_AUTOCLEANUP:-${FLOW_AUTOCLEANUP:-1}}" == "1" ]] || return 0
+  local self="$$"
+  local stale_pids=()
+  local pid
+  while read -r pid; do
+    [[ -n "$pid" ]] || continue
+    [[ "$pid" == "$self" ]] && continue
+    stale_pids+=("$pid")
+  done < <(pgrep -f 'scripts/flow-run\.sh' 2>/dev/null || true)
+
+  if (( ${#stale_pids[@]} > 0 )); then
+    echo "[flow-run] Cleaning ${#stale_pids[@]} stale flow launcher(s) from prior terminals..."
+    kill -TERM "${stale_pids[@]}" 2>/dev/null || true
+    sleep 0.6
+    kill -KILL "${stale_pids[@]}" 2>/dev/null || true
+  fi
+
+  pkill_pattern TERM "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" || true
+  sleep 0.3
+  pkill_pattern KILL "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" || true
 }
 
 preflight_cleanup_session() {
@@ -140,8 +199,9 @@ preflight_cleanup_session() {
   [[ -n "$name" ]] || return 0
   zellij kill-session "$name" >/dev/null 2>&1 || true
   zellij delete-session "$name" >/dev/null 2>&1 || true
-  pkill -f "attach --create ${name}" >/dev/null 2>&1 || true
-  pkill -f "zellij --server .*/${name}" >/dev/null 2>&1 || true
+  pkill_patterns_graceful \
+    "attach --create ${name}" \
+    "zellij --server .*/${name}"
 }
 
 prune_sessions_keep_one() {
@@ -174,6 +234,7 @@ build_observer_cmd() {
     "FLOW_DATA_DIR=\"${FLOW_DATA_DIR}\""
     "FLOW_RESUME_MODE=\"$mode\""
     "FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\""
+    "FLOW_THEME=\"${FLOW_THEME:-tokyo-night}\""
   )
   if [[ -n "${SESSION_ID:-}" ]]; then
     cmd+=("FLOW_SESSION_ID=\"$SESSION_ID\"")
@@ -187,6 +248,8 @@ if [[ "$CLEANUP_ONLY" == "1" ]]; then
   echo "[flow-run] Cleanup done."
   exit 0
 fi
+
+cleanup_stale_launchers
 
 if [[ -n "$RESUME_ID" ]]; then
   SESSION_ID="$RESUME_ID"
@@ -273,17 +336,19 @@ elif [[ -n "$SESSION_ID" ]]; then
 fi
 
 OBSERVER_CMD="$(build_observer_cmd "$OBSERVER_RESUME_MODE")"
+CLAUDE_PANE_LC="$(wrap_pane_lc "$CLAUDE_CMD")"
+OBSERVER_PANE_LC="$(wrap_pane_lc "$OBSERVER_CMD")"
 
 cat > "$LAYOUT_FILE" <<EOF
 layout {
   pane split_direction="vertical" {
     pane name="claude" size="${LEFT_WIDTH}%" command="bash" {
-      args "-lc" $(kdl_quote "exec $CLAUDE_CMD")
+      args "-lc" $(kdl_quote "$CLAUDE_PANE_LC")
       cwd $(kdl_quote "$ROOT_DIR")
       focus true
     }
     pane name="observer" size="${OBSERVER_WIDTH}%" command="bash" {
-      args "-lc" $(kdl_quote "$OBSERVER_CMD")
+      args "-lc" $(kdl_quote "$OBSERVER_PANE_LC")
       cwd $(kdl_quote "$SCHEME_DIR")
     }
   }
@@ -331,18 +396,26 @@ cleanup_session() {
 
   local name="$SESSION_NAME"
   local layout_base="${LAYOUT_BASENAME:-$name}"
+  local patterns=(
+    "attach --create ${name}"
+    "zellij --layout .*${layout_base}"
+    "zellij --server .*/${name}"
+    "FLOW_ZELLIJ_SESSION=\"${name}\""
+    "bun run src/main.ts --live"
+  )
 
   zellij kill-session "$name" >/dev/null 2>&1 || true
   zellij delete-session "$name" >/dev/null 2>&1 || true
-  pkill -f "attach --create ${name}" >/dev/null 2>&1 || true
-  pkill -f "zellij --layout .*${layout_base}" >/dev/null 2>&1 || true
-  pkill -f "zellij --server .*/${name}" >/dev/null 2>&1 || true
-  pkill -f "FLOW_ZELLIJ_SESSION=\"${name}\"" >/dev/null 2>&1 || true
+
   if [[ -n "${SESSION_ID:-}" ]]; then
-    pkill -f "FLOW_SESSION_ID=\"${SESSION_ID}\"" >/dev/null 2>&1 || true
-    pkill -f "claude --session-id ${SESSION_ID}" >/dev/null 2>&1 || true
-    pkill -f "claude --resume ${SESSION_ID}" >/dev/null 2>&1 || true
+    patterns+=(
+      "FLOW_SESSION_ID=\"${SESSION_ID}\""
+      "claude --session-id ${SESSION_ID}"
+      "claude --resume ${SESSION_ID}"
+    )
   fi
+
+  pkill_patterns_graceful "${patterns[@]}"
 }
 
 start_terminal_watchdog() {

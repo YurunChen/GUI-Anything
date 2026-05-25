@@ -616,8 +616,10 @@ import {
   matchaLight,     matchaDark,
   peachLight,      peachDark,
 } from './morandi-v2';
+import { appleSystemDark, appleSystemLight } from './apple-system';
 
 export type ThemeName =
+  | 'apple-system-dark' | 'apple-system-light'
   | 'tokyo-night' | 'nord' | 'catppuccin' | 'dracula' | 'gruvbox' | 'solarized' | 'one-dark'
   | 'solarized-light' | 'gruvbox-light' | 'catppuccin-latte' | 'github-light'
   | 'monokai' | 'synthwave' | 'ocean'
@@ -631,6 +633,8 @@ export type ThemeName =
   | 'peach-light'       | 'peach-dark';
 
 export const themes: Record<ThemeName, ColorScheme> = {
+  'apple-system-dark': appleSystemDark,
+  'apple-system-light': appleSystemLight,
   // 深色主题
   'tokyo-night': tokyoNight,
   'nord': nord,

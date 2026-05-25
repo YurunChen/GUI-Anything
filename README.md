@@ -8,7 +8,7 @@ Three core principles guide every design decision:
 
 | Principle | What it means | In Practice |
 |-----------|---------------|-------------|
-| **心流 (Flow State)** | Don't interrupt the left pane (Claude) | Observer defaults to passive mode; context panels (Wiki/Inspiration/Directions) only expand when explicitly requested |
+| **心流 (Flow State)** | Don't interrupt the left pane (Claude) | Observer stays a single timeline; notes/help open only on explicit keys; wiki matches inline per exploration card |
 | **按需知识 (On-Demand)** | Retrieve and persist knowledge only when needed | Wiki search has thresholds; auto-extract only when model signals persist; quiet mode available |
 | **无感使用 (Seamless)** | One command to start; failures don't block; no manual path hunting | `FLOW_PROJECT_DIR` + `FLOW_SESSION_ID` auto-bound; loading states neutral (not error-like) |
 
@@ -147,7 +147,7 @@ This automatically:
 2. Checks **Zellij** (required for `ga flow`)
 3. Installs project dependencies (`bun install`)
 4. Sets executable permissions
-5. Installs Claude Code skill to `~/.claude/skills/`
+5. Symlinks **llm-wiki** to `.claude/skills/llm-wiki/` (and optionally `~/.claude/skills/llm-wiki/`)
 
 After setup, run:
 ```bash
@@ -155,43 +155,18 @@ ga doctor
 ga flow
 ```
 
-## Using Claude Code Skill
+## Running Flow Observer
 
-The setup script automatically installs the Flow skill to `~/.claude/skills/flow/`.
-
-### Verify Installation
-
-```bash
-ls ~/.claude/skills/flow/SKILL.md
-```
-
-### How to Use
-
-Flow needs an **interactive terminal** (Zellij attaches in your shell). From Claude Code, ask it to run `ga flow` in a terminal you control, or start flow yourself:
-
-| What you want | Say this in Claude Code |
-|---------------|------------------------|
-| Start flow | "start flow mode" |
-| With model | "start flow with sonnet" |
-| With prompt | "start flow with prompt 'analyze codebase'" |
-
-#### Cleanup and Fixes
-
-These operations work fully inside Claude Code:
-
-| Task | Say this |
-|------|----------|
-| Clean sessions | "clean stale flow sessions" |
-| Fix display | "fix scrollback duplication in flow" |
-| Check status | "what flow sessions are running?" |
-
-#### Direct terminal use
+Flow needs an **interactive terminal** (Zellij). Start from the repo root:
 
 ```bash
 ga flow
+ga flow --continue
 ga flow --model sonnet "Your prompt"
 # or: ./scripts/flow-run.sh -m sonnet "Your prompt"
 ```
+
+Cleanup stale sessions: `./scripts/flow-run.sh --cleanup`
 
 ### Manual Setup
 
@@ -255,7 +230,7 @@ All flow sessions use **`scripts/flow-run.sh`** (invoked by `ga flow`): dual-pan
 | Session name | Unique (`f-mmdd-HHMMSS-xxxx`) unless `FLOW_ZELLIJ_SESSION` is set |
 | Layout | `.flow-runtime/layouts/zellij-layout-{sessionId}.kdl` (generated per launch) |
 | Inject to Claude | Clipboard (`pbcopy` on macOS); see `FLOW_INJECT_BACKEND` |
-| Cleanup | `./scripts/flow-run.sh --cleanup` or exit trap + watchdog |
+| Cleanup | `--cleanup`; on start kills **other** stale launchers; on exit TERM→KILL for zellij/claude/observer; panes use `setsid` / `setpgrp` |
 
 ### Session lifecycle modes
 
@@ -274,7 +249,7 @@ Summary generation policy by mode:
 | **new** / **continue** | Hydrate from cache/wiki, then generate missing summaries when needed |
 | **resume** (`--resume <id>` or picker) | Strict replay: hydrate from cache/wiki only, do not regenerate missing summaries |
 
-**Resume UI**: until `wiki/runtime/{id}-graph.json` exists or flowchart hints are ready, the flow body may stay hidden (`bindingState.visibility === 'hide'`). Missing summaries show a replay-only hint instead of regenerating.
+**Resume UI**: replay mode shows the timeline when explorations exist; summaries load from cache/wiki or fall back to rule-based excerpts (no AI regen). Stale cache is shown read-only. See [docs/data-governance/display-policy.md](docs/data-governance/display-policy.md).
 
 ## Quick Start
 
@@ -335,17 +310,26 @@ ga flow --model opus "Analyze codebase structure"
 
 #### Observer (right pane)
 
-| Key | Action | Context |
-|-----|--------|---------|
-| `t` | Toggle `flow` / `tree` view | Global |
-| `g` | Generate potential directions | Global |
-| `w` | Open Wiki tab in ContextPanel | When Wiki match available |
-| `i` | Open Inspiration tab | Global |
-| `d` | Open Directions tab | Global |
-| `Esc` | Close Context / safe quit | Global |
-| `q` | Quit observer | Global |
+**Focus this pane first** (click the right pane or switch Zellij focus) — shortcuts do not run while Claude has keyboard focus.
 
-> **心流提示**: ContextPanel (Wiki/Inspiration/Directions) only opens when explicitly requested or when there's a strong signal (Wiki match). Default view shows only the flow timeline to avoid interrupting your focus.
+| Key | Action |
+|-----|--------|
+| `g` | Toggle exploration ↔ flowchart |
+| `i` | Toggle notes sidebar (inspiration capture; needs enough terminal width) |
+| `/` or `Ctrl-K` | Toggle keyboard help (same list as `?`) |
+| `?` / `F1` / `Ctrl+/` | Toggle keyboard help overlay |
+| `c` | Toggle calm layout (off by default): latest card shows summary; older cards collapse to one line |
+| `s` | Send notification snapshot (only when notify is configured) |
+| `[` / `]` | Previous / next theme |
+| `J` | Cycle morandi themes |
+| `l` | Toggle light ↔ dark pair |
+| `Enter` | Save note (when notes input is focused) |
+| `Esc` | Close help or notes sidebar / cancel note input — does not quit |
+| `q` / `Ctrl+Q` | Quit observer |
+
+Wiki knowledge appears **inline** on each exploration card when a match is found. Default is full expanded detail; press `c` for calm mode (latest summary only; older turns fold to one line).
+
+While the help overlay is open, the bottom hotkey bar is hidden. Set `FLOW_LOCALE=zh-Hans` for Chinese chrome strings.
 
 ### Usage Examples
 
@@ -371,32 +355,16 @@ ga flow --model qwen3.6-plus "Summarize this project"
 FLOW_ZELLIJ_AUTOCLEANUP=0 ./scripts/flow-run.sh
 ```
 
-## Claude Code Skill Installation
+## llm-wiki skill (Wiki Agent)
 
-Install the Flow skill to enable natural language workflow control in Claude Code.
-
-### Install
+Skill source: `skills/llm-wiki/`. Claude loads `.claude/skills/llm-wiki/` (committed symlink). `./scripts/setup.sh` refreshes links.
 
 ```bash
-mkdir -p ~/.claude/skills/flow
-cp docs/skills/flow/SKILL.md ~/.claude/skills/flow/SKILL.md
+ls .claude/skills/llm-wiki/SKILL.md
+ls skills/llm-wiki/SKILL.md
 ```
 
-### Verify
-
-```bash
-ls ~/.claude/skills/flow/SKILL.md
-```
-
-### Use
-
-In Claude Code chat, use natural prompts:
-- `start flow mode`
-- `run flow-run with sonnet`
-- `clean stale flow sessions`
-- `fix scrollback duplication in flow`
-
-Claude Code will apply the skill automatically.
+See `gui-anything-layout.md` for the knowledge layout contract.
 
 ## Environment Variables & Contracts
 
@@ -424,6 +392,8 @@ Claude Code will apply the skill automatically.
 |----------|--------|---------|
 | `FLOW_QUIET` | `0` (default), `1` | Quiet mode: suppress Wiki banners, minimal status |
 | `FLOW_INJECT_BACKEND` | `clipboard`, `none` | How to send text to Claude pane (macOS: `pbcopy`) |
+| `FLOW_NO_ANIMATIONS` | `0`, `1` | Low-motion: slower spinner interval |
+| `FLOW_LOCALE` | `zh-Hans`, … | Localized observer chrome strings |
 
 Default: `clipboard` when `pbcopy` is available, otherwise `none`.
 
@@ -433,7 +403,7 @@ Default: `clipboard` when `pbcopy` is available, otherwise `none`.
 |------|---------|-------------|
 | **Direct** | `bun run src/main.ts "<prompt>"` | One-shot TUI run |
 | **Flow** | `bun run src/main.ts --flow "<prompt>"` | Flow observer mode |
-| **Posthoc** | `bun run src/main.ts --posthoc [path]` | Analyze finished session |
+| **Live observer** | `bun run src/main.ts --live` | Right pane in `ga flow` (replaces legacy `--posthoc` tree UI) |
 | **Web API** | `bun run src/main.ts --web` | HTTP server at `:3000` |
 
 ## Architecture Boundaries
@@ -495,9 +465,10 @@ Changes to contracts must update all consumers and this documentation.
 
 ### Data Management Rules
 
-- `wiki/evidence/{sessionId}.json` is the session evidence source.
-- `wiki/runtime/{sessionId}-summaries.json` is transient AI summary cache.
-- `wiki/knowledge-base/{type}/` holds long-lived knowledge entries.
+- `wiki/sessions/{sessionId}-evidence.json` is the session evidence source.
+- `wiki/sessions/{sessionId}-summaries.json` is transient AI summary cache.
+- `wiki/knowledge/{type}/` holds long-lived knowledge entries.
+- `wiki/notes/{YYYY-MM-DD}.md` holds user daily notes.
 - `.flow-runtime/` is for runtime layout/snapshot artifacts, not wiki knowledge.
 - `wiki/` and `.flow-runtime/` are local runtime data and should stay out of Git.
 

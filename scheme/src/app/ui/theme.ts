@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { themeManager } from './themes/theme-manager';
 import type { ColorScheme, ThemeName } from './themes';
+import { buildSemanticColors, type SemanticColors } from './themes/semantic-map';
 
 // 导出主题管理器供组件使用
 export { themeManager };
@@ -25,6 +26,8 @@ function cloneScheme(src: ColorScheme): ColorScheme {
 }
 
 export const colors: ColorScheme = cloneScheme(themeManager.getColors());
+
+export const semantic: SemanticColors = buildSemanticColors(colors);
 
 export const phaseIcons: Record<string, string> = {
   exploring: '🔍',
@@ -82,6 +85,17 @@ export function applyTheme(themeName: ThemeName): void {
   Object.assign(colors.accent, next.accent);
   Object.assign(colors.border, next.border);
   Object.assign(colors.wiki, next.wiki);
+
+  Object.assign(semantic.label, buildSemanticColors(next).label);
+  Object.assign(semantic.fill, buildSemanticColors(next).fill);
+  semantic.separator = next.border.muted;
+  semantic.separatorActive = next.border.active;
+  semantic.tint = next.accent.primary;
+  semantic.tintMuted = next.accent.tertiary;
+  semantic.activity = buildSemanticColors(next).activity;
+  semantic.destructive = next.status.error;
+  semantic.warning = next.status.warning;
+  Object.assign(semantic.wiki, next.wiki);
 
   // Rebuild derived records
   Object.assign(phaseColors, {

@@ -5,7 +5,7 @@ import type {
   FlowchartHint,
   SessionId,
 } from '../../../data/protocol/observer-protocol';
-import { buildFlowGraphSnapshot } from '../../ui/flow/graph/graph-builder';
+import { buildFlowGraphSnapshot } from '../observer/view-model/flow-graph-builder';
 import {
   DefaultGraphCacheService,
   type GraphCacheLoadStatus,
@@ -20,7 +20,7 @@ export interface UseGraphSnapshotInput {
   explorations: Exploration[];
   summaries: Record<string, string>;
   flowchartHints?: Record<string, FlowchartHint>;
-  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  wikiPersistStatus?: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
 }
 
 export interface GraphSnapshotState {
@@ -66,12 +66,12 @@ export function resolveGraphSnapshot(
     jsonlMtime: input.sourceMtimeMs,
     fingerprint,
   });
-  if (cache.snapshot) {
+  if (cache.snapshot && cache.status === 'hit') {
     return {
       snapshot: cache.snapshot,
       cacheStatus: cache.status,
       cacheReason: cache.reason,
-      cacheHit: cache.status === 'hit',
+      cacheHit: true,
       shouldPersist: false,
     };
   }
@@ -157,6 +157,7 @@ export function useGraphSnapshot(input: UseGraphSnapshotInput): GraphSnapshotSta
         jsonlMtime: sourceMtimeMs,
         fingerprint,
         snapshot: resolved.snapshot,
+        flowchartHints: flowchartHints ?? {},
       });
     }, 300);
     return () => clearTimeout(timer);

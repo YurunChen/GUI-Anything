@@ -22,14 +22,37 @@ describe('validateStructuredSummaryOutput flowchart contract', () => {
         branch_type: 'trunk',
         importance: 'high',
         drop_from_chart: false,
-        intent_key: 'flowchart_refactor',
+        intent_key: 'refactor',
       },
     });
     const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 3 });
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.flowchart?.node_id).toBe('refactor_tree_ui');
-    expect(toFlowchartHint(result.data)?.intentKey).toBe('flowchart_refactor');
+    expect(toFlowchartHint(result.data)?.intentKey).toBe('refactor');
+  });
+
+  it('normalizes alias intent keys to catalog', () => {
+    const raw = JSON.stringify({
+      summary: 'wiki 方案',
+      solution_detail: '',
+      persist: { should_persist: true, type: 'context', confidence: 0.8 },
+      flowchart: {
+        node_id: 'wiki_plan',
+        node_title: 'Wiki 策展',
+        parent_id: 'project_design',
+        branch_type: 'trunk',
+        importance: 'high',
+        drop_from_chart: false,
+        intent_key: 'wiki_intent_curator',
+        title_delta: 'pivot',
+      },
+    });
+    const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 2 });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(toFlowchartHint(result.data)?.intentKey).toBe('project_design');
+    expect(result.data.flowchart?.parent_id).toBe('project_design');
   });
 
   it('fails when required flowchart fields are missing', () => {
@@ -57,7 +80,26 @@ describe('validateStructuredSummaryOutput flowchart contract', () => {
     expect(result.fallbackReason).toBe('missing_flowchart_fields');
   });
 
-  it('fails when cjk summary exceeds 200 chars', () => {
+  it('accepts persist.type entity', () => {
+    const raw = JSON.stringify({
+      summary: '记录新工具。',
+      solution_detail: '',
+      persist: { should_persist: true, type: 'entity', confidence: 0.9 },
+      flowchart: {
+        node_id: 'note_tool',
+        node_title: '记录工具',
+        parent_id: null,
+        branch_type: 'trunk',
+        importance: 'medium',
+        drop_from_chart: false,
+        intent_key: 'devops',
+      },
+    });
+    const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts long cjk summary (no length cap)', () => {
     const longSummary = '结论'.repeat(120);
     const raw = JSON.stringify({
       summary: longSummary,
@@ -74,13 +116,13 @@ describe('validateStructuredSummaryOutput flowchart contract', () => {
         branch_type: 'trunk',
         importance: 'medium',
         drop_from_chart: false,
-        intent_key: 'x',
+        intent_key: 'general',
       },
     });
     const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 1 });
-    expect(result.success).toBe(false);
-    if (result.success) return;
-    expect(result.fallbackReason).toBe('summary_too_long');
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.summary).toBe(longSummary);
   });
 });
 

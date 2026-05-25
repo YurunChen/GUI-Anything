@@ -1,110 +1,114 @@
 /**
- * WikiMatchCard - 显示匹配的 Wiki 知识卡片
+ * WikiMatchCard — prior knowledge hit: meta row, excerpt body, tags.
  */
 
 import type { ReactNode } from 'react';
 import type { WikiMatch } from '../../../data/protocol/observer-protocol';
-import { colors } from '../theme';
+import { semantic } from '../theme';
+import { formatFlowText, truncateFlowText } from '../../../utils/flow-text';
+import { getObserverMessages } from '../i18n/observer-messages';
+import { FlowLineGap } from './flow-ui/FlowInsetGroup';
+import { FlowTagRow } from './flow-ui/FlowTagRow';
+import { formatKnowledgeExcerpt } from '../../../services/wiki/wiki-text-utils';
 
 interface WikiMatchCardProps {
   match: WikiMatch;
   availableWidth: number;
+  contextQuestion?: string;
+  inset?: boolean;
 }
 
-export function WikiMatchCard({ match, availableWidth }: WikiMatchCardProps): ReactNode {
-  const scorePercent = Math.round(match.score * 100);
-  const maxContentWidth = Math.max(40, availableWidth - 8);
+export function WikiMatchCard({
+  match,
+  availableWidth,
+  contextQuestion,
+}: WikiMatchCardProps): ReactNode {
+  const messages = getObserverMessages();
+  const excerpt = formatKnowledgeExcerpt(match.entry.content, 240, messages);
+  const showRequest = shouldShowRequest(match.entry.request, contextQuestion);
+  const displayTags = (match.entry.tags || []).filter((t) => !t.startsWith('proj:'));
+  const typeLabel = formatKnowledgeTypeLabel(match.entry.type, messages.wikiKnowledgeType);
+  const slugLine = formatSlugForDisplay(match.entry.slug, availableWidth);
 
-  // Wrap content text
-  const contentLines = wrapText(match.entry.content, maxContentWidth);
+  const continuityLine = formatWikiContinuityLine(match, messages);
 
   return (
-    <box
-      style={{
-        width: '100%',
-        flexDirection: 'column',
-        paddingLeft: 2,
-        paddingRight: 2,
-        paddingTop: 1,
-        paddingBottom: 1,
-        backgroundColor: colors.wiki.background,
-      }}
-    >
-      {/* Header: 💡 知识匹配 */}
-      <box style={{ flexDirection: 'row', marginBottom: 1 }}>
-        <text>
-          <span fg={colors.wiki.titleColor}>{'💡 '}</span>
-          <span fg={colors.wiki.labelColor}>{'相关知识'}</span>
-          <span fg={colors.fg.dim}>{'  │  '}</span>
-          <span fg={colors.wiki.matchColor}>{`匹配度 ${scorePercent}%`}</span>
-        </text>
-      </box>
-
-      {/* Title */}
-      <text fg={colors.wiki.titleColor}>
-        {match.entry.request}
+    <box style={{ width: '100%', flexDirection: 'column' }}>
+      <text wrapMode="char" fg={semantic.wiki.matchColor}>
+        {continuityLine}
       </text>
-
-      {/* Content */}
-      <box style={{ flexDirection: 'column', marginTop: 1 }}>
-        {contentLines.map((line, idx) => (
-          <text key={idx} fg={colors.wiki.contentColor}>
-            {line}
+      <text>
+        <span fg={semantic.label.quaternary}>{typeLabel}</span>
+      </text>
+      {slugLine ? (
+        <text fg={semantic.label.quaternary} wrapMode="char">
+          {slugLine}
+        </text>
+      ) : null}
+      {match.entry.relativePath ? (
+        <text fg={semantic.label.quaternary} wrapMode="char">
+          {truncateFlowText(match.entry.relativePath, Math.max(32, availableWidth - 2))}
+        </text>
+      ) : null}
+      {showRequest ? (
+        <>
+          <FlowLineGap />
+          <text wrapMode="char" fg={semantic.label.tertiary}>
+            {formatFlowText(match.entry.request)}
           </text>
-        ))}
-      </box>
-
-      {/* Tags */}
-      {match.entry.tags && match.entry.tags.length > 0 && (
-        <box style={{ flexDirection: 'row', marginTop: 1 }}>
-          <text fg={colors.fg.muted}>
-            {'🏷️  '}
-            {match.entry.tags.map((tag, idx) => (
-              <span key={idx} fg={colors.wiki.tagColor}>
-                {idx > 0 ? ' · ' : ''}
-                {tag}
-              </span>
-            ))}
-          </text>
-        </box>
-      )}
+        </>
+      ) : null}
+      <FlowLineGap />
+      <text wrapMode="char" fg={semantic.label.secondary}>
+        {excerpt}
+      </text>
+      {displayTags.length > 0 ? (
+        <>
+          <FlowLineGap />
+          <FlowTagRow tags={displayTags} variant="wiki" />
+        </>
+      ) : null}
     </box>
   );
 }
 
-// Helper function
-function wrapText(text: string, maxWidth: number): string[] {
-  const words = text.split(/\s+/);
-  const lines: string[] = [];
-  let currentLine = '';
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (getDisplayWidth(testLine) <= maxWidth) {
-      currentLine = testLine;
-    } else {
-      if (currentLine) lines.push(currentLine);
-      currentLine = word;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines;
+export function formatWikiContinuityLine(
+  match: WikiMatch,
+  messages: ReturnType<typeof getObserverMessages>,
+): string {
+  const title = continuityTitleFromMatch(match, messages);
+  const score = Math.round(match.score * 100);
+  return messages.wikiContinuity(match.entry.id, title, score);
 }
 
-function getDisplayWidth(text: string): number {
-  let width = 0;
-  for (const char of text) {
-    // CJK characters are typically double-width
-    const code = char.charCodeAt(0);
-    if (
-      (code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
-      (code >= 0x3400 && code <= 0x4dbf) || // CJK Extension A
-      (code >= 0xac00 && code <= 0xd7af)    // Hangul
-    ) {
-      width += 2;
-    } else {
-      width += 1;
-    }
-  }
-  return width;
+function continuityTitleFromMatch(
+  match: WikiMatch,
+  messages: ReturnType<typeof getObserverMessages>,
+): string {
+  const excerpt = formatKnowledgeExcerpt(match.entry.content, 40, messages);
+  const empty = messages.wikiExcerptEmpty;
+  if (excerpt && excerpt !== empty) return excerpt;
+  const slug = (match.entry.slug || match.entry.id).replace(/-/g, ' ');
+  return formatSlugForDisplay(slug, 32) || match.entry.id;
 }
+
+export function formatKnowledgeTypeLabel(
+  type: string,
+  labels: Record<string, string>,
+): string {
+  return labels[type] ?? type;
+}
+
+export function formatSlugForDisplay(slug: string, availableWidth: number): string {
+  const trimmed = slug.trim();
+  if (!trimmed) return '';
+  const budget = Math.max(28, Math.min(64, availableWidth - 2));
+  return truncateFlowText(trimmed, budget);
+}
+
+export function shouldShowRequest(request: string, contextQuestion?: string): boolean {
+  if (!request.trim()) return false;
+  if (!contextQuestion?.trim()) return true;
+  return formatFlowText(request) !== formatFlowText(contextQuestion);
+}
+

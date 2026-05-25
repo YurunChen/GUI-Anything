@@ -15,14 +15,19 @@ import type {
   FlowchartImportance,
   GraphPatch,
   GraphPatchOp,
+  TitleDelta,
 } from '../../data/protocol/observer-protocol';
+import {
+  formatSessionIntentKeyCatalogForPrompt,
+  normalizeSessionIntentKey,
+} from '../../constants/session-intent-keys';
 
 /**
  * 结构化 Summary 输出格式
  * 这是 AI 被要求输出的严格 JSON 结构
  */
 export interface StructuredSummaryOutput {
-  /** 一句话心流摘要（UI 显示用，中文≤200字，英文≤300词） */
+  /** 一句话心流摘要（UI 显示用，中文≤200字，英文≤300词 — prompt 软约束，校验不截断） */
   summary: string;
   /** 用于写入 Wiki"解决方案"的详细过程 */
   solution_detail: string;
@@ -41,11 +46,13 @@ export interface StructuredSummaryOutput {
   flowchart?: {
     node_id: string;
     node_title: string;
+    intent_key: string;
+    title_delta: TitleDelta;
+    title_delta_note?: string;
     parent_id: string | null;
     branch_type: FlowchartBranchType;
     importance: FlowchartImportance;
     drop_from_chart: boolean;
-    intent_key: string;
   };
 }
 
@@ -142,16 +149,6 @@ export function validateStructuredSummaryOutput(
     };
   }
 
-  // summary 长度限制（中文≤200字，英文≤300词）
-  const summaryLengthError = getSummaryLengthError(summary);
-  if (summaryLengthError) {
-    return {
-      success: false,
-      error: summaryLengthError,
-      fallbackReason: 'summary_too_long',
-    };
-  }
-
   // 校验 persist 对象
   const persist = parsed.persist;
   if (!isObject(persist)) {
@@ -172,7 +169,9 @@ export function validateStructuredSummaryOutput(
   }
 
   // 校验 type
-  const validTypes: WikiPersistType[] = ['error', 'snippet', 'decision', 'context', 'none'];
+  const validTypes: WikiPersistType[] = [
+    'error', 'snippet', 'decision', 'context', 'entity', 'none',
+  ];
   if (!validTypes.includes(persist.type as WikiPersistType)) {
     return {
       success: false,
@@ -259,15 +258,19 @@ function validateFlowchartHint(flowchartRaw: unknown):
 
   const nodeId = isNonEmptyString(flowchartRaw.node_id) ? flowchartRaw.node_id.trim() : '';
   const nodeTitle = isNonEmptyString(flowchartRaw.node_title) ? flowchartRaw.node_title.trim() : '';
-  const parentId = flowchartRaw.parent_id === null
-    ? null
-    : (isNonEmptyString(flowchartRaw.parent_id) ? flowchartRaw.parent_id.trim() : null);
-  const intentKey = isNonEmptyString(flowchartRaw.intent_key) ? flowchartRaw.intent_key.trim() : '';
+  const intentKey = normalizeSessionIntentKey(
+    isNonEmptyString(flowchartRaw.intent_key) ? flowchartRaw.intent_key.trim() : '',
+  );
   const branchType = normalizeBranchType(flowchartRaw.branch_type);
   const importance = normalizeImportance(flowchartRaw.importance);
   const dropFromChart = typeof flowchartRaw.drop_from_chart === 'boolean'
     ? flowchartRaw.drop_from_chart
     : false;
+
+  const parentIdRaw = flowchartRaw.parent_id === null
+    ? null
+    : (isNonEmptyString(flowchartRaw.parent_id) ? flowchartRaw.parent_id.trim() : null);
+  const parentId = parentIdRaw ? normalizeSessionIntentKey(parentIdRaw) : null;
 
   if (!nodeId || !nodeTitle || !intentKey) {
     return {
@@ -289,6 +292,11 @@ function validateFlowchartHint(flowchartRaw: unknown):
       },
     };
   }
+  const titleDelta = normalizeTitleDelta(flowchartRaw.title_delta);
+  let titleDeltaNote: string | undefined;
+  if (isNonEmptyString(flowchartRaw.title_delta_note)) {
+    titleDeltaNote = truncate(flowchartRaw.title_delta_note.trim(), 40);
+  }
   return {
     success: true,
     data: {
@@ -299,6 +307,8 @@ function validateFlowchartHint(flowchartRaw: unknown):
       importance,
       drop_from_chart: dropFromChart,
       intent_key: intentKey,
+      title_delta: titleDelta,
+      title_delta_note: titleDeltaNote,
     },
   };
 }
@@ -313,7 +323,23 @@ export function toFlowchartHint(output: StructuredSummaryOutput): FlowchartHint 
     importance: output.flowchart.importance,
     dropFromChart: output.flowchart.drop_from_chart,
     intentKey: output.flowchart.intent_key,
+    titleDelta: output.flowchart.title_delta,
+    titleDeltaNote: output.flowchart.title_delta_note,
   };
+}
+
+function normalizeTitleDelta(value: unknown): TitleDelta {
+  if (
+    value === 'idle'
+    || value === 'continue'
+    || value === 'refine'
+    || value === 'pivot'
+    || value === 'blocked'
+    || value === 'done'
+  ) {
+    return value;
+  }
+  return 'continue';
 }
 
 function normalizeBranchType(value: unknown): FlowchartBranchType {
@@ -345,39 +371,16 @@ export function toWikiPersistMeta(output: StructuredSummaryOutput): WikiPersistM
   };
 }
 
-/**
- * 生成 fallback 摘要（当结构化输出校验失败时使用）
- */
-export function generateFallbackSummary(
-  question: string,
-  context: {
-    toolCount: number;
-    errorCount: number;
-    responseCount: number;
-    hasOutput: boolean;
-    outputPreview?: string;
-  },
-  validationError?: string
-): string {
-  const { toolCount, errorCount, hasOutput, outputPreview } = context;
-  let base: string;
-  if (!hasOutput) {
-    base = `针对"${question}"，当前证据不足，建议继续补充关键信息后再给出结论。`;
-  } else if (outputPreview) {
-    base = `针对"${question}"，当前可得结论为：${outputPreview}`;
-  } else if (errorCount > 0) {
-    base = `针对"${question}"，执行中出现错误，建议先修复关键问题再收敛结论。`;
-  } else if (toolCount > 0) {
-    base = `针对"${question}"，已形成初步结论，建议继续验证后确认最终方案。`;
-  } else {
-    base = `针对"${question}"，已形成初步结论。`;
-  }
-
-  if (validationError) {
-    return `${base}（AI输出格式异常：${validationError}）`;
-  }
-
-  return base;
+/** User-facing summary when structured JSON fails — no technical errors (Apple: calm degradation). */
+export function generateCalmDisplaySummary(context: {
+  hasOutput: boolean;
+  outputPreview?: string;
+}): string {
+  const m = getObserverMessages();
+  const preview = context.outputPreview?.trim();
+  if (preview) return preview;
+  if (context.hasOutput) return m.calmNoBriefSummary;
+  return m.calmNoSummary;
 }
 
 // -------- 类型守卫 --------
@@ -393,21 +396,6 @@ function isNonEmptyString(value: unknown): value is string {
 function truncate(str: string, maxLen: number): string {
   if (str.length <= maxLen) return str;
   return `${str.slice(0, maxLen - 1)}…`;
-}
-
-function getSummaryLengthError(summary: string): string | null {
-  if (!summary.trim()) return null;
-  const hasCjk = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u.test(summary);
-  if (hasCjk && summary.length > 200) {
-    return `Summary too long (${summary.length} chars, max 200 for CJK text)`;
-  }
-  if (!hasCjk) {
-    const words = summary.trim().split(/\s+/).filter(Boolean).length;
-    if (words > 300) {
-      return `Summary too long (${words} words, max 300 for non-CJK text)`;
-    }
-  }
-  return null;
 }
 
 export interface GraphConsolidationOutput {

@@ -60,5 +60,5 @@ export function getDefaultTheme(): ThemeName {
     if (resolved) return resolved;
   }
 
-  return 'tokyo-night'; // 默认主题（与 THEMES.md 文档一致）
+  return 'tokyo-night';
 }

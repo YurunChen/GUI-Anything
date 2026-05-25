@@ -1,5 +1,7 @@
 # Scheme Flow Observer Plan
 
+> **2026-05-24 note:** `ContextPanel` side tabs were removed. Notes use `NotesOverlay`; wiki matches are inline on `ExplorationCard`. Treat references below to `ContextPanel.tsx` as historical.
+
 基于 [Pocket Flow](https://the-pocket.github.io/PocketFlow/) 的核心理念，scheme 当前不应该先发展成通用 workflow 框架，而应该明确为：
 
 ```text

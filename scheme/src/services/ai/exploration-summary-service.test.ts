@@ -41,22 +41,23 @@ describe('DefaultExplorationSummaryService', () => {
     })).resolves.toEqual({});
   });
 
-  it('limits parallel summary generation and retries transient errors', async () => {
+  it('generates summaries sequentially and passes prior session summaries in history', async () => {
     const attempts: Record<string, number> = {};
     let active = 0;
     let maxActive = 0;
-    const generatedOrder: string[] = [];
+    const historyByQuestion: Record<string, Array<{ summary?: string }>> = {};
 
     const service = new DefaultExplorationSummaryService(undefined, {
-      maxConcurrency: 2,
       maxAttempts: 2,
-      generateSummary: async (question) => {
+      generateSummary: async (question, _nodes, history, _model, sessionIntent) => {
         attempts[question] = (attempts[question] || 0) + 1;
         active += 1;
         maxActive = Math.max(maxActive, active);
-        generatedOrder.push(`${question}:${attempts[question]}`);
+        historyByQuestion[question] = history;
+        if (question === 'normal-b' && sessionIntent) {
+          expect(sessionIntent.intentKey).toBe(`intent_${'normal-a'}`);
+        }
         try {
-          await sleep(15);
           if (question === 'retry-me' && attempts[question] === 1) {
             throw new Error('transient');
           }
@@ -71,6 +72,7 @@ describe('DefaultExplorationSummaryService', () => {
               importance: 'high',
               dropFromChart: false,
               intentKey: `intent_${question}`,
+              titleDelta: 'pivot',
             },
           };
         } finally {
@@ -94,12 +96,16 @@ describe('DefaultExplorationSummaryService', () => {
     });
 
     expect(Object.keys(generated)).toHaveLength(3);
-    expect(maxActive).toBeLessThanOrEqual(2);
+    expect(maxActive).toBe(1);
     expect(attempts['retry-me']).toBe(2);
     expect(generated['session-b:exp_1']?.status).toBe('ready');
     expect(generated['session-b:exp_1']?.flowchart?.nodeId).toBe('intent_retry-me');
-    expect(generatedOrder).toContain('retry-me:1');
-    expect(generatedOrder).toContain('retry-me:2');
+    expect(historyByQuestion['retry-me']).toEqual([]);
+    expect(historyByQuestion['normal-a']?.[0]?.summary).toBe('summary:retry-me');
+    expect(historyByQuestion['normal-b']?.map((h) => h.summary)).toEqual([
+      'summary:retry-me',
+      'summary:normal-a',
+    ]);
     expect(service.getRuntimeStats().retried).toBe(1);
   });
 
@@ -111,6 +117,7 @@ describe('DefaultExplorationSummaryService', () => {
         throw new Error('always-fail');
       },
       summaryRepository: { saveOne: () => {} } as never,
+      intentRepository: { load: () => null, save: () => {} },
     });
 
     const generated = await service.generateMissing({
@@ -122,10 +129,11 @@ describe('DefaultExplorationSummaryService', () => {
 
     const failed = generated['session-c:exp_1'];
     expect(failed).toBeDefined();
-    expect(failed?.status).toBe('failed');
-    expect(failed?.source).toBe('fallback');
+    expect(failed?.status).toBe('ready');
+    expect(failed?.source).toBe('ai');
     expect(failed?.reason).toBe('always-fail');
-    expect(service.getRuntimeStats().failed).toBe(1);
+    expect(service.getRuntimeStats().completed).toBe(1);
+    expect(service.getRuntimeStats().failed).toBe(0);
     expect(service.getRuntimeStats().retried).toBe(1);
   });
 

@@ -4,7 +4,13 @@
 
 import type { KnowledgeEntry } from '../wiki/knowledge-repository';
 
-export type WikiPersistType = 'error' | 'snippet' | 'decision' | 'context' | 'none';
+export type WikiPersistType =
+  | 'error'
+  | 'snippet'
+  | 'decision'
+  | 'context'
+  | 'entity'
+  | 'none';
 
 export interface WikiPersistMeta {
   should_persist: boolean;
@@ -20,7 +26,9 @@ export interface WikiExtractionResult {
   id: string;
   slug: string;
   request: string;
-  type: 'error' | 'snippet' | 'decision' | 'context';
+  type: 'context' | 'entity';
+  /** Set when normalized from error|snippet|decision persist types */
+  facet?: 'hypothesis' | 'protocol' | 'command' | 'failure' | 'note';
   problem?: string;
   solution?: string;
   command?: string;

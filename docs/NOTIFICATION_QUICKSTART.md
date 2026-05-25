@@ -127,7 +127,7 @@ export FLOW_NOTIFY_PLATFORMS=wechat,feishu
 
 **问题：按 `s` 没反应**
 - 检查是否配置了 Webhook URL
-- 运行 `./scripts/test-notification.sh` 检查配置
+- 运行 `./test/notification.sh` 检查配置
 
 **问题：收不到消息**
 - 检查 Webhook URL 是否正确

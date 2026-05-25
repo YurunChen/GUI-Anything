@@ -1,27 +1,21 @@
 /**
  * SummaryPanel - renders exploration summary with lightweight provenance context.
- * Core component in the "Learned" section.
  */
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { colors, useThemeVersion } from '../theme';
-import { formatSummaryForTui } from '../../../utils/summary-text';
-import { wrapDisplayLines } from './summary-layout';
+import { semantic, useThemeVersion } from '../theme';
+import { truncateFlowText } from '../../../utils/flow-text';
+import { FlowTextBlock } from './FlowTextBlock';
 
 interface SummaryPanelProps {
-  /** Summary text */
   summary: string | undefined;
-  /** Whether summary is being generated */
   isGenerating: boolean;
-  /** Available width for textarea height calculation */
   availableWidth: number;
-  /** Compact single-line mode for stream layouts */
   compact?: boolean;
 }
 
 export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps): ReactNode {
-  // memo 子树需显式订阅主题版本号, 否则 colors mutate 后这里不会重渲染
   useThemeVersion();
 
   const {
@@ -32,14 +26,13 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
   } = props;
 
   const summaryText = summary?.trim() || (isGenerating ? 'Generating...' : 'No summary');
-  const displayText = formatSummaryForTui(summaryText);
-  const textColor = isGenerating || !summary ? colors.fg.muted : colors.fg.primary;
+  const textColor = isGenerating || !summary ? semantic.label.tertiary : semantic.label.primary;
 
   if (compact) {
     return (
       <text fg={textColor}>
         <span>{'summary: '}</span>
-        <span>{truncate(displayText, Math.max(20, availableWidth - 16))}</span>
+        <span>{truncateFlowText(summaryText, Math.max(20, availableWidth - 16))}</span>
       </text>
     );
   }
@@ -55,38 +48,12 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
         paddingTop: 0,
         paddingBottom: 0,
         border: ['left'],
-        borderColor: colors.accent.secondary,
-        borderStyle: 'single',
-        backgroundColor: colors.bg.tertiary,
+        borderColor: semantic.separator,
+        backgroundColor: semantic.fill.grouped,
       }}
     >
-      <text fg={colors.accent.secondary}>{'summary'}</text>
-
-      {/* Summary text */}
-      <textarea
-        key={`summary_${displayText.slice(0, 50)}`}
-        initialValue={displayText}
-        focused={false}
-        style={{
-          height: calculateTextareaHeight(displayText, availableWidth),
-          wrapMode: 'char',
-          backgroundColor: 'transparent',
-          textColor: textColor,
-        }}
-      />
+      <text fg={semantic.tint}>{'summary'}</text>
+      <FlowTextBlock text={summaryText} fg={textColor} />
     </box>
   );
 });
-
-// -------- Helpers --------
-
-/** Calculate textarea height (number of lines) */
-function calculateTextareaHeight(value: string, availableWidth: number): number {
-  const columns = Math.max(20, availableWidth - 8);
-  return wrapDisplayLines(value, columns).length;
-}
-
-function truncate(value: string, maxLen: number): string {
-  if (value.length <= maxLen) return value;
-  return `${value.slice(0, Math.max(0, maxLen - 1))}…`;
-}

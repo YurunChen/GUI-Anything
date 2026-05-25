@@ -6,23 +6,15 @@
 
 // Components
 export { FlowObserverShell } from './FlowObserverShell';
-export { ContextPanel } from './ContextPanel';
 export { CommandBar } from './CommandBar';
 
 // State Machine
 export type {
   SessionState,
-  ExplorationState,
-  ContextTab,
   DirectionsState,
   WikiSearchState,
 } from './flow-observer-state';
-export {
-  deriveSessionState,
-  deriveExplorationState,
-  getExplorationStatusText,
-  getExplorationStatusColor,
-} from './flow-observer-state';
+export { deriveSessionState } from './flow-observer-state';
 
 // Inject Backend
 export type { InjectBackend } from '../../../services/flow/inject';
@@ -34,7 +26,6 @@ export {
   COMPACT_LAYOUT_WIDTH,
   INPUT_BOX_HEIGHT_DEFAULT,
   INPUT_BOX_HEIGHT_COMPACT,
-  INSPIRATION_SIDEBAR_WIDTH,
   INSPIRATION_MAX_RECENT,
   FILE_ACCESS_MAX_SHOW,
   FILE_ACCESS_WARN_THRESHOLD,

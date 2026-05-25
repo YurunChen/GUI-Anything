@@ -78,8 +78,8 @@ export function deriveSessionBindingState(
   const dataReady = deriveDataReadyState(data);
   const resumeMode = intent.mode === 'resume_picker' || intent.mode === 'resume_specific';
   const summaryPolicy = deriveSessionSummaryPolicy(intent);
-  const canShowInResume = data.graphCacheHit || dataReady === 'flowchart_ready';
-  const shouldHideInResume = resumeMode && !canShowInResume;
+  const canShowTimeline = data.explorationCount > 0 || data.graphCacheHit || dataReady === 'flowchart_ready';
+  const shouldHideInResume = resumeMode && !canShowTimeline;
   return {
     mode: intent.mode,
     explicitSessionId: intent.explicitSessionId,

@@ -1,49 +1,53 @@
 /**
- * CommandBar - Bottom status bar with context-aware hotkeys
- * Design: minimal, context-aware hints.
+ * CommandBar — bottom chrome: two-line hotkey hints (keys + action labels).
+ * Single multiline <text> avoids OpenTUI sibling overlap in narrow panes (see HelpOverlay).
  */
 
 import type { ReactNode } from 'react';
-import { colors } from '../theme';
+import { semantic } from '../theme';
 import { COMPACT_LAYOUT_WIDTH } from '../../../constants/flow-constants';
+import { flowSpacing } from './flow-ui/flow-spacing';
+import {
+  buildFooterHotkeyBody,
+  buildObserverHotkeyHints,
+  formatFooterHotkeyLines,
+  type ObserverHotkeyContext,
+} from './observer-hotkeys';
+
+export type CommandBarContext = ObserverHotkeyContext;
 
 export interface CommandBarProps {
   terminalWidth: number;
-  inspirationInputFocused: boolean;
-  observerMode: 'exploration' | 'flowchart';
-  notificationEnabled?: boolean;
+  context: CommandBarContext;
 }
 
-export function CommandBar({
-  terminalWidth,
-  inspirationInputFocused: _inspirationInputFocused,
-  observerMode,
-  notificationEnabled = false,
-}: CommandBarProps): ReactNode {
-  const isCompact = terminalWidth > 0 ? terminalWidth < COMPACT_LAYOUT_WIDTH : false;
-  const nextMode = observerMode === 'exploration' ? 'flowchart' : 'exploration';
+export function CommandBar({ terminalWidth, context }: CommandBarProps): ReactNode {
+  const contentWidth = Math.max(24, terminalWidth - flowSpacing.chromePadX * 2);
+  const isCompact = terminalWidth > 0 && terminalWidth < COMPACT_LAYOUT_WIDTH;
+  const hints = buildObserverHotkeyHints(context);
+  const lines = formatFooterHotkeyLines(hints, isCompact, contentWidth);
+  const body = buildFooterHotkeyBody(lines);
 
-  const hotkeys: string[] = [];
-  hotkeys.push(isCompact ? `g:${nextMode}` : `[g] switch to ${nextMode}`);
-  hotkeys.push(isCompact ? 'i:notes' : '[i] open/close notes');
-  hotkeys.push(isCompact ? 'j/k:theme🎨 l:☀/🌙' : '[j/k] theme  [J] morandi  [l] light↔dark');
-  if (notificationEnabled) {
-    hotkeys.push(isCompact ? 's:notify' : '[s] send snapshot');
-  }
-  hotkeys.push(isCompact ? 'q:quit' : '[q] quit');
-  const hotkeyText = hotkeys.join(isCompact ? ' | ' : '  ');
+  if (!body) return null;
 
   return (
     <box
       style={{
         width: '100%',
-        backgroundColor: colors.bg.tertiary,
-        paddingLeft: 1,
-        paddingRight: 1,
+        flexDirection: 'column',
+        flexShrink: 0,
+        backgroundColor: semantic.fill.elevated,
+        paddingLeft: flowSpacing.chromePadX,
+        paddingRight: flowSpacing.chromePadX,
+        paddingTop: 0,
+        paddingBottom: 0,
+        border: ['top'],
+        borderColor: semantic.separator,
+        borderStyle: 'single',
       }}
     >
-      <text fg={colors.fg.dim}>
-        {hotkeyText}
+      <text wrapMode="none" fg={semantic.label.tertiary}>
+        {body}
       </text>
     </box>
   );

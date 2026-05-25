@@ -1,7 +1,10 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { GraphPatch, SessionId } from '../protocol/observer-protocol';
-import { resolveWikiRoot } from '../env';
+import {
+  ensureDir,
+  sessionGraphPatchesPath,
+  wikiSessionsDir,
+} from '../wiki/wiki-data-layout';
+import { deleteJsonFile, readJsonFile, writeJsonFile } from './json-io';
 
 export interface GraphPatchLedger {
   sessionId: SessionId;
@@ -15,51 +18,31 @@ export interface GraphPatchRepository {
   clear(sessionId: SessionId): void;
 }
 
-function getRuntimeDir(): string {
-  return path.join(resolveWikiRoot(), 'runtime');
-}
-
 function getLedgerPath(sessionId: SessionId): string {
-  return path.join(getRuntimeDir(), `${sessionId}-graph-patches.json`);
+  return sessionGraphPatchesPath(sessionId);
 }
 
-function ensureRuntimeDir(): void {
-  const dir = getRuntimeDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+function ensureSessionsDir(): void {
+  ensureDir(wikiSessionsDir());
 }
 
 export class FileGraphPatchRepository implements GraphPatchRepository {
   load(sessionId: SessionId): GraphPatchLedger | null {
-    const filePath = getLedgerPath(sessionId);
-    if (!fs.existsSync(filePath)) return null;
-    try {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(raw) as GraphPatchLedger;
-    } catch {
-      try {
-        fs.unlinkSync(filePath);
-      } catch {
-        // Ignore cleanup errors.
-      }
+    const result = readJsonFile<GraphPatchLedger>(getLedgerPath(sessionId));
+    if (result === null) return null;
+    if (result === Symbol.for('corrupted') as unknown as GraphPatchLedger) {
+      deleteJsonFile(getLedgerPath(sessionId));
       return null;
     }
+    return result;
   }
 
   save(sessionId: SessionId, ledger: GraphPatchLedger): void {
-    ensureRuntimeDir();
-    const filePath = getLedgerPath(sessionId);
-    fs.writeFileSync(filePath, JSON.stringify(ledger, null, 2), 'utf-8');
+    ensureSessionsDir();
+    writeJsonFile(getLedgerPath(sessionId), ledger);
   }
 
   clear(sessionId: SessionId): void {
-    const filePath = getLedgerPath(sessionId);
-    if (!fs.existsSync(filePath)) return;
-    try {
-      fs.unlinkSync(filePath);
-    } catch {
-      // Ignore cleanup errors.
-    }
+    deleteJsonFile(getLedgerPath(sessionId));
   }
 }

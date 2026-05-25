@@ -8,7 +8,7 @@
     "start": "bun run src/main.ts --",
     "start:live": "bun run src/main.ts --live",
     "web": "bun run src/main.ts --web",
-    "observer": "bun run src/main.ts --observer",
+    "start:observer": "bun run src/main.ts --live",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
     "build": "bunx tsc -p tsconfig.json"
@@ -16,7 +16,8 @@
   "dependencies": {
     "@opentui/core": "0.1.72",
     "@opentui/react": "0.1.72",
-    "react": "^19.2.3"
+    "react": "^19.2.3",
+    "string-width": "^8.2.1"
   },
   "devDependencies": {
     "@types/bun": "latest",

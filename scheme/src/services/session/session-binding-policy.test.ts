@@ -46,7 +46,7 @@ describe('session binding policy', () => {
       summaryCount: 0,
       flowchartHintCount: 0,
     });
-    expect(explorationOnly.visibility).toBe('hide');
+    expect(explorationOnly.visibility).toBe('show');
     expect(explorationOnly.dataReady).toBe('exploration_ready');
     expect(explorationOnly.summaryPolicy.allowRegen).toBe(false);
 

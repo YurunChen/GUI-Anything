@@ -1,31 +1,66 @@
-import { colors } from '../../theme';
+import { semantic } from '../../theme';
 
-export const graphTheme = {
-  laneGap: 3,
-  maxVisibleNodes: 120,
+export interface GraphTheme {
+  laneGap: number;
+  maxVisibleNodes: number;
   chars: {
-    trunk: '│',
-    forkRepair: '├─',
-    forkAlternative: '┬─',
-    merge: '└─',
-    deadEnd: '╰─',
-    focus: '◆',
-    normal: '•',
-  },
+    trunk: string;
+    down: string;
+    forkRepair: string;
+    forkAlternative: string;
+    merge: string;
+    deadEnd: string;
+    focus: string;
+    normal: string;
+  };
   color: {
-    rail: colors.border.normal,
-    focusRail: colors.border.active,
-    trunk: colors.border.active,
-    branchRepair: colors.status.warning,
-    branchAlternative: colors.accent.secondary,
-    merge: colors.accent.primary,
-    deadEnd: colors.status.error,
-    label: colors.fg.primary,
-    muted: colors.fg.secondary,
-    focusLabel: colors.accent.tertiary,
-    statusComplete: colors.status.success,
-    statusRunning: colors.status.info,
-    statusInterrupted: colors.status.warning,
-    statusError: colors.status.error,
-  },
-};
+    rail: string;
+    focusRail: string;
+    trunk: string;
+    branchRepair: string;
+    branchAlternative: string;
+    merge: string;
+    deadEnd: string;
+    label: string;
+    muted: string;
+    focusLabel: string;
+    statusComplete: string;
+    statusRunning: string;
+    statusInterrupted: string;
+    statusError: string;
+  };
+}
+
+/** Read fresh semantic colors (supports theme hot-switch). */
+export function buildGraphTheme(): GraphTheme {
+  return {
+    laneGap: 4,
+    maxVisibleNodes: 120,
+    chars: {
+      trunk: '│',
+      down: '↓',
+      forkRepair: '├─',
+      forkAlternative: '┬─',
+      merge: '└─',
+      deadEnd: '╰─',
+      focus: '◆',
+      normal: '•',
+    },
+    color: {
+      rail: semantic.separator,
+      focusRail: semantic.separatorActive,
+      trunk: semantic.separatorActive,
+      branchRepair: semantic.warning,
+      branchAlternative: semantic.label.secondary,
+      merge: semantic.tintMuted,
+      deadEnd: semantic.destructive,
+      label: semantic.label.primary,
+      muted: semantic.label.secondary,
+      focusLabel: semantic.label.primary,
+      statusComplete: semantic.label.secondary,
+      statusRunning: semantic.activity,
+      statusInterrupted: semantic.warning,
+      statusError: semantic.destructive,
+    },
+  };
+}

@@ -2,40 +2,61 @@
  * useExplorationSummaries - application adapter for summary generation.
  */
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import type {
   Exploration,
-  WikiPersistMeta,
+  SessionIntentState,
   SessionScopedId,
   SummaryItem,
   CacheLoadStatus,
-  FlowchartHint,
 } from '../../../data/protocol/observer-protocol';
+import { defaultSessionIntentRepository } from '../../../data/wiki/session-intent-repository';
 import {
   DefaultExplorationSummaryService,
   type CacheHydrateResult,
 } from '../../../services/ai/exploration-summary-service';
+import type { SessionPresentationPolicy } from '../../../services/session/session-presentation-policy';
+import { applyExcerptFallback, applyLiveSummaryPreview } from '../view-model/presentation-summaries';
+import {
+  toExplorationFlowchartHintMap,
+  toExplorationPersistMetaMap,
+  toExplorationSummaryTextMap,
+} from '../../../data/protocol/summary-contract';
 
 interface SummaryState {
   items: Record<SessionScopedId, SummaryItem>;
   pendingCount: number;
   wikiHydratedSessionId: string;
-  /** Cache provenance for UI badges */
   cacheStatus: CacheLoadStatus | null;
   cacheReason: string;
 }
 
+/** @deprecated Use SessionPresentationPolicy from session-presentation-policy.ts */
 export interface SummaryGenerationPolicy {
   allowRegen: boolean;
+  preserveStaleCache?: boolean;
+  fillExcerptFallback?: boolean;
+}
+
+export function presentationToSummaryPolicy(
+  presentation: SessionPresentationPolicy,
+): SummaryGenerationPolicy {
+  return {
+    allowRegen: presentation.allowSummaryRegen,
+    preserveStaleCache: presentation.preserveStaleCache,
+    fillExcerptFallback: presentation.fillExcerptFallback,
+  };
 }
 
 export function useExplorationSummaries(
   explorations: Exploration[],
   sessionId: string,
   sessionPath: string,
-  summaryModel?: string,
-  summaryPolicy: SummaryGenerationPolicy = { allowRegen: true },
+  summaryModel: string | undefined,
+  presentation: SessionPresentationPolicy,
 ) {
+  const summaryPolicy = presentationToSummaryPolicy(presentation);
+
   const [state, setState] = useState<SummaryState>({
     items: {},
     pendingCount: 0,
@@ -75,9 +96,10 @@ export function useExplorationSummaries(
       cacheReason: '',
     });
 
-    // Try to load from cache immediately on session change
     if (sid && sessionPath) {
-      const cached = summaryServiceRef.current!.hydrateFromCache(sid, sessionPath);
+      const cached = summaryServiceRef.current!.hydrateFromCache(sid, sessionPath, {
+        preserveStale: summaryPolicy.preserveStaleCache,
+      });
       setState((prev) => ({
         ...prev,
         items: Object.keys(cached.items).length > 0
@@ -87,7 +109,7 @@ export function useExplorationSummaries(
         cacheReason: cached.cacheReason,
       }));
     }
-  }, [sessionId, sessionPath]);
+  }, [sessionId, sessionPath, summaryPolicy.preserveStaleCache]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -107,7 +129,6 @@ export function useExplorationSummaries(
       .catch((error) => {
         if (cancelled) return;
         console.error('[useExplorationSummaries] Hydrate error:', error);
-        // Degrade gracefully: allow AI generation path to proceed even if wiki hydration fails.
         setState((prev) => ({
           ...prev,
           wikiHydratedSessionId: sessionId,
@@ -146,8 +167,6 @@ export function useExplorationSummaries(
     }));
     pending
       .then((generatedItems) => {
-        // Keep results if still mounted and same session.
-        // exploration updates can re-run this effect frequently; those should not drop completed results.
         if (!mountedRef.current) return;
         if (runSessionId !== lastSessionRef.current) return;
         setState((prev) => ({
@@ -169,16 +188,37 @@ export function useExplorationSummaries(
       });
   }, [explorations, sessionId, state.wikiHydratedSessionId, sessionPath, summaryPolicy.allowRegen]);
 
+  const displayItems = useMemo(() => {
+    let items = state.items;
+    if (summaryPolicy.allowRegen) {
+      items = applyLiveSummaryPreview(sessionId, explorations, items);
+    }
+    if (summaryPolicy.fillExcerptFallback) {
+      items = applyExcerptFallback(sessionId, explorations, items);
+    }
+    return items;
+  }, [
+    sessionId,
+    explorations,
+    state.items,
+    summaryPolicy.allowRegen,
+    summaryPolicy.fillExcerptFallback,
+  ]);
+
+  const sessionIntent = useMemo((): SessionIntentState | null => {
+    if (!sessionId.trim()) return null;
+    return defaultSessionIntentRepository.load(sessionId);
+  }, [sessionId, displayItems]);
+
   return {
-    summaries: toExplorationSummaryMap(state.items),
-    flowchartHints: toExplorationFlowchartHintMap(state.items),
-    persistMeta: toExplorationPersistMetaMap(state.items),
+    summaries: toExplorationSummaryTextMap(displayItems),
+    flowchartHints: toExplorationFlowchartHintMap(displayItems),
+    persistMeta: toExplorationPersistMetaMap(displayItems),
     pendingCount: state.pendingCount,
-    // Provenance for UI badges
     cacheStatus: state.cacheStatus,
     cacheReason: state.cacheReason,
-    // Full items for source/reason access
-    summaryItems: state.items,
+    summaryItems: displayItems,
+    sessionIntent,
   };
 }
 
@@ -192,33 +232,4 @@ export function shouldGenerateMissingSummaries(input: {
   if (!input.sessionId) return false;
   if (!input.sessionPath) return false;
   return input.wikiHydratedSessionId === input.sessionId;
-}
-
-function toExplorationSummaryMap(items: Record<SessionScopedId, SummaryItem>): Record<string, string> {
-  const summaries: Record<string, string> = {};
-  for (const item of Object.values(items)) {
-    summaries[item.explorationId] = item.text;
-  }
-  return summaries;
-}
-
-function toExplorationPersistMetaMap(
-  items: Record<SessionScopedId, SummaryItem>,
-): Record<string, WikiPersistMeta | null> {
-  const persistMeta: Record<string, WikiPersistMeta | null> = {};
-  for (const item of Object.values(items)) {
-    persistMeta[item.explorationId] = item.persistMeta;
-  }
-  return persistMeta;
-}
-
-function toExplorationFlowchartHintMap(
-  items: Record<SessionScopedId, SummaryItem>,
-): Record<string, FlowchartHint> {
-  const hints: Record<string, FlowchartHint> = {};
-  for (const item of Object.values(items)) {
-    if (!item.flowchart) continue;
-    hints[item.explorationId] = item.flowchart;
-  }
-  return hints;
 }

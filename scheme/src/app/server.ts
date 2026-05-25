@@ -1,5 +1,5 @@
 import { startClaudeStdoutStream } from '../services/stream/claude';
-import { parseClaudeJsonLine } from '../services/protocol/parser';
+import { parseClaudeJsonLine } from '../data/protocol/jsonl-line-parser';
 import type { ParseContext } from '../domain/protocol';
 import { ActivityTreeBuilder } from '../domain/tree-builder';
 

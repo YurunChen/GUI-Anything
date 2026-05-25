@@ -1,8 +1,10 @@
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import type { FlowGraphSnapshot, SessionId } from '../protocol/observer-protocol';
-import { resolveWikiRoot } from '../env';
+import type { FlowGraphSnapshot, SessionFlowRecord, SessionId } from '../protocol/observer-protocol';
+import {
+  FileSessionFlowRepository,
+  type SessionFlowRepository,
+} from './session-flow-repository';
 
+/** @deprecated Use SessionFlowRecord */
 export interface GraphCacheRecord {
   sessionId: SessionId;
   jsonlMtime: number;
@@ -12,56 +14,23 @@ export interface GraphCacheRecord {
 }
 
 export interface GraphCacheRepository {
-  load(sessionId: SessionId): GraphCacheRecord | null;
-  save(record: GraphCacheRecord): void;
+  load(sessionId: SessionId): SessionFlowRecord | null;
+  save(record: SessionFlowRecord): void;
   clear(sessionId: SessionId): void;
 }
 
-function getRuntimeDir(): string {
-  return path.join(resolveWikiRoot(), 'runtime');
-}
-
-function getGraphCachePath(sessionId: SessionId): string {
-  return path.join(getRuntimeDir(), `${sessionId}-graph.json`);
-}
-
-function ensureRuntimeDir(): void {
-  const dir = getRuntimeDir();
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
 export class FileGraphCacheRepository implements GraphCacheRepository {
-  load(sessionId: SessionId): GraphCacheRecord | null {
-    const cachePath = getGraphCachePath(sessionId);
-    if (!fs.existsSync(cachePath)) return null;
-    try {
-      const content = fs.readFileSync(cachePath, 'utf-8');
-      return JSON.parse(content) as GraphCacheRecord;
-    } catch {
-      try {
-        fs.unlinkSync(cachePath);
-      } catch {
-        // Ignore cleanup failures.
-      }
-      return null;
-    }
+  constructor(private readonly inner: SessionFlowRepository = new FileSessionFlowRepository()) {}
+
+  load(sessionId: SessionId): SessionFlowRecord | null {
+    return this.inner.load(sessionId);
   }
 
-  save(record: GraphCacheRecord): void {
-    ensureRuntimeDir();
-    const cachePath = getGraphCachePath(record.sessionId);
-    fs.writeFileSync(cachePath, JSON.stringify(record, null, 2), 'utf-8');
+  save(record: SessionFlowRecord): void {
+    this.inner.save(record);
   }
 
   clear(sessionId: SessionId): void {
-    const cachePath = getGraphCachePath(sessionId);
-    if (!fs.existsSync(cachePath)) return;
-    try {
-      fs.unlinkSync(cachePath);
-    } catch {
-      // Ignore cleanup failures.
-    }
+    this.inner.clear(sessionId);
   }
 }

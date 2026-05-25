@@ -34,6 +34,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         startedAt: 100,
         summaryPreview: 'root',
         metaBadges: { tools: 1, errors: 0, wiki: 'none' },
+        intentKey: 'explore',
       },
       {
         id: 's:left',
@@ -43,6 +44,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         startedAt: 200,
         summaryPreview: 'left',
         metaBadges: { tools: 2, errors: 1, wiki: 'none' },
+        intentKey: 'debug',
       },
       {
         id: 's:right',
@@ -52,6 +54,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         startedAt: 300,
         summaryPreview: 'right',
         metaBadges: { tools: 1, errors: 0, wiki: 'saved' },
+        intentKey: 'implement',
       },
       {
         id: 's:leaf',
@@ -61,6 +64,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         startedAt: 400,
         summaryPreview: 'leaf',
         metaBadges: { tools: 1, errors: 0, wiki: 'saved' },
+        intentKey: 'implement',
       },
     ],
     edges: [

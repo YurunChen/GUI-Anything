@@ -18,26 +18,6 @@ const MORANDI_THEMES: ThemeName[] = [
   'peach-light',       'peach-dark',
 ];
 
-// 每个 morandi 主题对应的 light/dark 配对
-const LIGHT_DARK_PAIR: Partial<Record<ThemeName, ThemeName>> = {
-  'sakura-pink-light': 'sakura-pink-dark',
-  'sakura-pink-dark':  'sakura-pink-light',
-  'sage-green-light':  'sage-green-dark',
-  'sage-green-dark':   'sage-green-light',
-  'lavender-light':    'lavender-dark',
-  'lavender-dark':     'lavender-light',
-  'misty-blue-light':  'misty-blue-dark',
-  'misty-blue-dark':   'misty-blue-light',
-  'milk-tea-light':    'milk-tea-dark',
-  'milk-tea-dark':     'milk-tea-light',
-  'lotus-pink-light':  'lotus-pink-dark',
-  'lotus-pink-dark':   'lotus-pink-light',
-  'matcha-light':      'matcha-dark',
-  'matcha-dark':       'matcha-light',
-  'peach-light':       'peach-dark',
-  'peach-dark':        'peach-light',
-};
-
 class ThemeManager {
   private currentTheme: ThemeName;
   private listeners: Array<(theme: ColorScheme) => void> = [];
@@ -98,20 +78,6 @@ class ThemeManager {
     return this.currentTheme;
   }
 
-  /**
-   * 切换当前 morandi 主题的 light/dark 变体（保持色调）。
-   * 不在 morandi 系列里时，原地不动并返回当前主题。
-   */
-  toggleLightDark(): ThemeName {
-    const pair = LIGHT_DARK_PAIR[this.currentTheme];
-    if (pair) {
-      this.currentTheme = pair;
-      saveThemeConfig(this.currentTheme);
-      this.notifyListeners();
-    }
-    return this.currentTheme;
-  }
-
   subscribe(listener: (theme: ColorScheme) => void): () => void {
     this.listeners.push(listener);
     return () => {
@@ -127,6 +93,8 @@ class ThemeManager {
   getThemeDisplayName(themeName?: ThemeName): string {
     const name = themeName || this.currentTheme;
     const names: Record<ThemeName, string> = {
+      'apple-system-dark': 'Apple System · Dark',
+      'apple-system-light': 'Apple System · Light',
       'tokyo-night': '🌙 Tokyo Night',
       'nord': '❄️ Nord',
       'catppuccin': '🌸 Catppuccin',

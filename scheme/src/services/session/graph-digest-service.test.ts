@@ -14,6 +14,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         endedAt: 20,
         summaryPreview: 'A summary',
         metaBadges: { tools: 1, errors: 0, wiki: 'none' },
+        intentKey: 'explore',
       },
       {
         id: 's1:b',
@@ -24,6 +25,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         endedAt: 40,
         summaryPreview: 'B summary',
         metaBadges: { tools: 1, errors: 0, wiki: 'none' },
+        intentKey: 'implement',
       },
     ],
     edges: [{ from: 's1:a', to: 's1:b', kind: 'trunk' }],

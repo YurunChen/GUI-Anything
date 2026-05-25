@@ -5,9 +5,24 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { resolveWikiRoot } from '../../data/env';
-import { KnowledgeRepository, type KnowledgeEntry } from '../../data/wiki/knowledge-repository';
+import { resolveWikiRoot, resolveProjectTag } from '../../data/env';
+import { wikiKnowledgeDir } from '../../data/wiki/wiki-data-layout';
+import { normalizeSessionIntentKey } from '../../constants/session-intent-keys';
+import {
+  collectKnowledgeIds,
+  KnowledgeRepository,
+  type KnowledgeEntry,
+} from '../../data/wiki/knowledge-repository';
+import {
+  allocateId,
+  facetFromPersistType,
+  normalizeStorageType,
+  type KnowledgeFacet,
+  type StorageKnowledgeType,
+} from '../../data/wiki/knowledge-normalize';
 import { EvidenceRepository } from '../../data/wiki/evidence-repository';
+import { formatKnowledgeDates } from '../../utils/knowledge-dates';
+import { walkMarkdownFiles } from '../../utils/file-walk';
 import type {
   ExplorationSummary,
   WikiExtractionResult,
@@ -22,57 +37,24 @@ export type {
   WikiPersistType,
 } from '../../data/protocol/wiki-types';
 
-const KNOWLEDGE_BASE_DIR = 'knowledge-base';
-const EVIDENCE_DIR = 'evidence';
 
-// Type to subdirectory mapping
-const TYPE_TO_SUBDIR: Record<WikiExtractionResult['type'], string> = {
-  error: 'errors',
-  snippet: 'snippets',
-  decision: 'decisions',
+const STORAGE_TO_CATEGORY: Record<StorageKnowledgeType, string> = {
   context: 'contexts',
+  entity: 'entities',
+  summary: 'summaries',
 };
 
-// 生成 ID
-function generateId(type: string, existingIds: string[]): string {
-  const prefix = type.charAt(0).toUpperCase();
-  let num = 1;
-  
-  // 找出当前最大编号
-  for (const id of existingIds) {
-    if (id.startsWith(prefix)) {
-      const n = parseInt(id.slice(1), 10);
-      if (!isNaN(n) && n >= num) {
-        num = n + 1;
-      }
-    }
-  }
-  
-  return `${prefix}${String(num).padStart(3, '0')}`;
+function getExistingIds(): string[] {
+  return collectKnowledgeIds(resolveWikiRoot());
 }
 
-// 获取现有所有 Wiki ID
-function getExistingIds(): string[] {
-  const wikiRoot = resolveWikiRoot();
-  const ids: string[] = [];
-  
-  const categories = [KNOWLEDGE_BASE_DIR, 'daily-notes'];
-  
-  for (const category of categories) {
-    const dir = path.join(wikiRoot, category);
-    if (!fs.existsSync(dir)) continue;
-    
-    const files = fs.readdirSync(dir).filter(f => f.endsWith('.md'));
-    for (const file of files) {
-      // 从文件名提取 ID (如 E001-docker-daemon.md -> E001)
-      const match = file.match(/^([A-Z]\d+)-/);
-      if (match) {
-        ids.push(match[1]);
-      }
-    }
-  }
-  
-  return ids;
+function resolveIntentKeyFromSummary(summary: ExplorationSummary): string | undefined {
+  const reason = summary.persistMeta?.reason?.trim() || '';
+  const digestMatch = reason.match(/^intent_digest:([a-z0-9_]+)$/i);
+  if (digestMatch) return normalizeSessionIntentKey(digestMatch[1]);
+  const tag = summary.persistMeta?.tags?.find((item) => item.startsWith('intent:'));
+  if (tag) return normalizeSessionIntentKey(tag.slice('intent:'.length));
+  return undefined;
 }
 
 // kebab-case 转换
@@ -131,7 +113,8 @@ function generateKnowledgeSlug(input: {
 
 // 分析 exploration：完全依赖模型判断，本地只做兜底默认
 function analyzeExploration(summary: ExplorationSummary): {
-  type: 'error' | 'snippet' | 'decision' | 'context';
+  type: 'context' | 'entity';
+  facet?: KnowledgeFacet;
   request: string;
   problem?: string;
   solution?: string;
@@ -140,25 +123,28 @@ function analyzeExploration(summary: ExplorationSummary): {
 } {
   const normalizedRequest = (summary.request || '').trim();
   const effectiveRequest = normalizedRequest || summary.summary.substring(0, 50);
-
-  // 优先使用模型返回的元数据
   const meta = summary.persistMeta;
-  if (meta && meta.type && meta.type !== 'none') {
+  const persistType = meta?.type && meta.type !== 'none' ? meta.type : 'context';
+  const storage = normalizeStorageType(persistType);
+  if (!storage || storage === 'summary') {
     return {
-      type: meta.type,
+      type: 'context',
+      facet: facetFromPersistType('context'),
       request: effectiveRequest,
       solution: summary.summary,
       command: summary.commands[0],
-      confidence: meta.confidence,
+      confidence: meta?.confidence ?? 0.75,
     };
   }
+  const type: 'context' | 'entity' = storage === 'entity' ? 'entity' : 'context';
 
-  // 兜底：未分类知识，统一进 context
   return {
-    type: 'context',
+    type,
+    facet: type === 'context' ? facetFromPersistType(persistType) : undefined,
     request: effectiveRequest,
     solution: summary.summary,
-    confidence: 0.75, // 默认置信度，确保能落盘
+    command: summary.commands[0],
+    confidence: meta?.confidence ?? 0.75,
   };
 }
 
@@ -168,21 +154,26 @@ function yamlBlockList(items: string[]): string {
   return items.map((t) => `  - "${String(t).replace(/"/g, '\\"')}"`).join('\n');
 }
 
+function facetSection(facet: KnowledgeFacet | undefined, command?: string): string {
+  if (facet === 'protocol') return '\n## 协议\n(见解决方案)\n';
+  if (facet === 'command' && command) {
+    return `\n## 命令\n\`\`\`bash\n${command}\n\`\`\`\n`;
+  }
+  if (facet === 'failure') return '\n## 失败记录\n(见解决方案)\n';
+  return '';
+}
+
 function generateWikiContent(
   result: WikiExtractionResult,
   summary: ExplorationSummary
 ): string {
-  const categoryByType: Record<WikiExtractionResult['type'], string> = {
-    error: 'errors',
-    snippet: 'snippets',
-    decision: 'decisions',
-    context: 'contexts',
-  };
-  const now = new Date().toISOString();
-  const tags =
-    summary.persistMeta?.tags && summary.persistMeta.tags.length > 0
-      ? yamlBlockList(summary.persistMeta.tags)
-      : '  []';
+  const dates = formatKnowledgeDates();
+  const metaTags = summary.persistMeta?.tags && summary.persistMeta.tags.length > 0
+    ? summary.persistMeta.tags
+    : [];
+  const tagSet = new Set([resolveProjectTag(), ...metaTags]);
+  const tags = yamlBlockList([...tagSet]);
+  const facetLine = result.facet ? `facet: "${result.facet}"\n` : '';
 
   const sourceSessionId = (summary.sessionId || process.env.FLOW_SESSION_ID || 'unknown').trim() || 'unknown';
 
@@ -190,12 +181,12 @@ function generateWikiContent(
 id: "${result.id}"
 slug: "${result.slug}"
 request: "${result.request}"
-created: "${now}"
-updated: "${now}"
+created: "${dates.created}"
+updated: "${dates.updated}"
 version: 1
 type: "${result.type}"
-category: "${categoryByType[result.type]}"
-tags:
+category: "${STORAGE_TO_CATEGORY[result.type]}"
+${facetLine}tags:
 ${tags}
 related: []
 aliases: []
@@ -204,6 +195,7 @@ source:
   exploration_id: "${summary.id}"
 extraction_confidence: ${result.confidence}
 status: "draft"
+---
 ## 问题
 ${result.problem || result.request}
 
@@ -220,23 +212,14 @@ ${summary.files.length > 0 ? `- 涉及文件: ${summary.files.slice(0, 5).join('
 ${summary.persistMeta?.solution_detail || result.solution || summary.summary}
 
 ${summary.persistMeta?.reason ? `## 落盘说明（模型）\n${summary.persistMeta.reason}\n` : ''}
-${result.command ? `## 命令\n\`\`\`bash\n${result.command}\n\`\`\`` : ''}
+${facetSection(result.facet, result.command)}
 
 ## 参考
 - 来源: Exploration ${summary.id}
 - 结果: ${summary.result}
 
----
-
 **注意**: 此条目由系统自动提取 (置信度: ${Math.round(result.confidence * 100)}%)。请审核内容是否准确。
 `;
-}
-
-function normalizeWikiType(
-  t: WikiPersistType | undefined,
-): 'error' | 'snippet' | 'decision' | 'context' | null {
-  if (t === 'error' || t === 'snippet' || t === 'decision' || t === 'context') return t;
-  return null;
 }
 
 function buildEvidence(summary: ExplorationSummary): string {
@@ -274,20 +257,19 @@ function isLowValueExploration(summary: ExplorationSummary): boolean {
   const trivialKeywords = [
     'hello', 'hi', 'hey', '你好', '您好', '在吗', 'test', 'ping', 'thanks', 'thank you',
   ];
-  return trivialKeywords.some((kw) => request === kw || summaryText.includes(kw));
+  return trivialKeywords.some((kw) => {
+    if (request === kw) return true;
+    if (/^[a-z\s]+$/i.test(kw)) {
+      return new RegExp(`\\b${kw.replace(/\s+/g, '\\s+')}\\b`, 'i').test(summaryText);
+    }
+    return summaryText.includes(kw);
+  });
 }
 
 // 主提取函数：完全依赖模型判断
 export function extractWikiEntry(summary: ExplorationSummary): WikiExtractionResult | null {
   // 放弃的任务不进知识库
   if (summary.result === 'abandoned') {
-    return null;
-  }
-
-  const meta = summary.persistMeta;
-
-  // 模型明确不落盘时，直接跳过。
-  if (meta && meta.should_persist === false) {
     return null;
   }
 
@@ -302,23 +284,21 @@ export function extractWikiEntry(summary: ExplorationSummary): WikiExtractionRes
   // 完全依赖模型判断，本地只做兜底
   const analysis = analyzeExploration(summary);
 
-  // 类型优先用模型的，否则用兜底
-  const effectiveType = (meta?.type && meta.type !== 'none') ? meta.type : analysis.type;
+  const effectiveConfidence = (typeof analysis.confidence === 'number')
+    ? Math.min(1, Math.max(0, analysis.confidence))
+    : 0.75;
 
-  // 置信度优先用模型的，否则用兜底
-  const effectiveConfidence = (meta && typeof meta.confidence === 'number')
-    ? Math.min(1, Math.max(0, meta.confidence))
-    : analysis.confidence;
-
-  // 命令优先用模型的，否则从 summary 取
-  const effectiveCommand = (meta?.key_command && meta.key_command.trim()) || analysis.command || summary.commands[0];
+  const effectiveCommand = analysis.command || summary.commands[0];
 
   const existingIds = getExistingIds();
-  const id = generateId(effectiveType, existingIds);
+  const id = allocateId(
+    analysis.type === 'entity' ? 'entity' : 'context',
+    existingIds,
+  );
   const slug = generateKnowledgeSlug({
     request: analysis.request,
     summary: summary.summary,
-    tags: meta?.tags,
+    tags: summary.persistMeta?.tags,
   });
   const sourceSessionId = (summary.sessionId || process.env.FLOW_SESSION_ID || 'unknown').trim() || 'unknown';
 
@@ -326,7 +306,8 @@ export function extractWikiEntry(summary: ExplorationSummary): WikiExtractionRes
     id,
     slug,
     request: analysis.request,
-    type: effectiveType,
+    type: analysis.type,
+    facet: analysis.facet,
     problem: analysis.problem,
     solution: analysis.solution,
     command: effectiveCommand,
@@ -344,8 +325,9 @@ export function extractWikiEntry(summary: ExplorationSummary): WikiExtractionRes
 // 保存 Wiki 条目 - 使用 KnowledgeRepository 统一接口
 export async function saveWikiEntry(
   entry: WikiExtractionResult,
-  knowledgeRepo?: KnowledgeRepository
+  options?: { knowledgeRepo?: KnowledgeRepository; summary?: ExplorationSummary },
 ): Promise<string | null> {
+  const { knowledgeRepo, summary } = options || {};
   const repo = knowledgeRepo || new KnowledgeRepository();
   
   try {
@@ -360,7 +342,7 @@ export async function saveWikiEntry(
     }
     
     // 使用 KnowledgeRepository 保存知识条目，确保只写入新格式：
-    // wiki/knowledge-base/{type}/{id}-{slug}.md
+    // wiki/knowledge/{type}/{id}-{slug}.md
     const knowledgeEntry: KnowledgeEntry = {
       id: entry.id,
       slug: entry.slug,
@@ -374,7 +356,8 @@ export async function saveWikiEntry(
       createdAt: Date.now(),
     };
 
-    const result = await repo.save(knowledgeEntry);
+    const intentKey = summary ? resolveIntentKeyFromSummary(summary) : undefined;
+    const result = await repo.save(knowledgeEntry, intentKey ? { intentKey } : undefined);
     return result.success ? result.path || null : null;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -394,7 +377,7 @@ export async function autoExtractAndSave(
     return { saved: false };
   }
   
-  const savedPath = await saveWikiEntry(entry, knowledgeRepo);
+  const savedPath = await saveWikiEntry(entry, { knowledgeRepo, summary });
   
   if (savedPath) {
     return {
@@ -412,27 +395,24 @@ export function loadWikiSummariesBySession(sessionId: string): Record<string, st
   if (!sid) return {};
 
   const wikiRoot = resolveWikiRoot();
-  const knowledgeDir = path.join(wikiRoot, KNOWLEDGE_BASE_DIR);
+  const knowledgeDir = wikiKnowledgeDir(wikiRoot);
   if (!fs.existsSync(knowledgeDir)) return {};
 
   const out: Record<string, string> = {};
-  
-  // 递归遍历所有类型子目录
-  const typeDirs = ['errors', 'snippets', 'decisions', 'contexts'];
-  
-  for (const typeDir of typeDirs) {
-    const dir = path.join(knowledgeDir, typeDir);
-    if (!fs.existsSync(dir)) continue;
-    
-    let files: string[] = [];
-    try {
-      files = fs.readdirSync(dir).filter((name) => name.endsWith('.md'));
-    } catch {
-      continue;
-    }
 
-    for (const fileName of files) {
-      const filePath = path.join(dir, fileName);
+  const markdownFiles: string[] = [];
+  const walkMd = (dir: string): void => {
+    if (!fs.existsSync(dir)) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walkMd(full);
+      else if (entry.name.endsWith('.md') && entry.name !== 'index.md') markdownFiles.push(full);
+    }
+  };
+  walkMd(path.join(knowledgeDir, 'contexts'));
+  walkMd(path.join(knowledgeDir, 'entities'));
+
+  for (const filePath of markdownFiles) {
       let text = '';
       try {
         text = fs.readFileSync(filePath, 'utf-8');
@@ -456,7 +436,6 @@ export function loadWikiSummariesBySession(sessionId: string): Record<string, st
       if (!summaryText) continue;
 
       out[explorationId] = summaryText;
-    }
   }
 
   return out;

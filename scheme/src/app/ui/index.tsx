@@ -8,7 +8,7 @@ import { createCliRenderer } from '@opentui/core';
 import { createRoot } from '@opentui/react';
 import type { ReactNode } from 'react';
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import { parseClaudeJsonLine } from '../../services/protocol/parser';
+import { parseClaudeJsonLine } from '../../data/protocol/jsonl-line-parser';
 import type { ParseContext } from '../../domain/protocol';
 import { ActivityTreeBuilder } from '../../domain/tree-builder';
 import { startObserverStream } from '../../services/stream/observer';

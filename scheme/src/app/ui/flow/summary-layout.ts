@@ -1,43 +1,77 @@
 /**
- * Summary layout utilities - text layout helpers.
- * Shared by `SummaryPanel` and tests.
+ * Flow text layout — wrapping + column presets for observer UI.
+ * Display width / mixed-script normalization: `utils/flow-text`.
  */
 
-/** Character display width: CJK chars count as width 2. */
-export function charDisplayWidth(ch: string): number {
-  const code = ch.codePointAt(0) ?? 0;
-  if (
-    (code >= 0x1100 && code <= 0x115f) || // Hangul Jamo
-    (code >= 0x2e80 && code <= 0xa4cf) || // CJK
-    (code >= 0xac00 && code <= 0xd7a3) || // Hangul Syllables
-    (code >= 0xf900 && code <= 0xfaff) || // CJK Compatibility
-    (code >= 0xfe10 && code <= 0xfe6f) || // Vertical Forms
-    (code >= 0xff00 && code <= 0xff60) || // Fullwidth
-    (code >= 0xffe0 && code <= 0xffe6)    // Fullwidth Symbols
-  ) {
-    return 2;
-  }
-  return 1;
+import {
+  charDisplayWidth,
+  formatFlowText,
+  lineDisplayWidth,
+} from '../../../utils/flow-text';
+
+export { charDisplayWidth, formatFlowText, lineDisplayWidth };
+
+/** Reserved columns for common observer surfaces. */
+export type FlowTextPreset =
+  | 'timeline-body'
+  | 'wiki-card'
+  | 'summary-panel'
+  | 'graph-node';
+
+const PRESET_RESERVE: Record<FlowTextPreset, number> = {
+  'timeline-body': 14,
+  'wiki-card': 12,
+  'summary-panel': 8,
+  'graph-node': 6,
+};
+
+const PRESET_MIN_COLUMNS: Record<FlowTextPreset, number> = {
+  'timeline-body': 12,
+  'wiki-card': 16,
+  'summary-panel': 20,
+  'graph-node': 8,
+};
+
+/** Estimate content columns from terminal width and UI preset. */
+export function contentTextColumns(
+  availableWidth: number,
+  preset: FlowTextPreset,
+  extraReserve = 0,
+): number {
+  return Math.max(
+    PRESET_MIN_COLUMNS[preset],
+    availableWidth - PRESET_RESERVE[preset] - extraReserve,
+  );
 }
 
-/** Calculate display width of one line. */
-export function lineDisplayWidth(line: string): number {
-  let width = 0;
-  for (const ch of line) {
-    width += charDisplayWidth(ch);
-  }
-  return width;
+/** Timeline row: rail + label prefix + padding. */
+export function flowContentColumns(options: {
+  availableWidth: number;
+  leftGutter?: string;
+  labelPrefix?: string;
+  reserve?: number;
+  min?: number;
+}): number {
+  const {
+    availableWidth,
+    leftGutter = '',
+    labelPrefix = '',
+    reserve = 4,
+    min = 12,
+  } = options;
+  return Math.max(
+    min,
+    availableWidth - lineDisplayWidth(leftGutter) - lineDisplayWidth(labelPrefix) - reserve,
+  );
 }
 
-/** Calculate available columns for summary text. */
+/** @deprecated alias — prefer `contentTextColumns(..., 'summary-panel')`. */
 export function summaryTextColumns(availableWidth: number): number {
-  // Parent row + scrollbox padding + summary box padding + left border.
-  const RESERVED_COLUMNS = 8;
-  return Math.max(20, availableWidth - RESERVED_COLUMNS);
+  return contentTextColumns(availableWidth, 'summary-panel');
 }
 
-/** Wrap text by display width. */
-export function wrapDisplayLines(value: string, columns: number): string[] {
+/** Character-level wrap (low-level). */
+export function wrapCharLines(value: string, columns: number): string[] {
   const safeColumns = Math.max(1, columns);
   const output: string[] = [];
 
@@ -66,7 +100,79 @@ export function wrapDisplayLines(value: string, columns: number): string[] {
   return output.length > 0 ? output : [''];
 }
 
-/** Calculate textarea height. */
+/** Word-aware wrap for mixed CJK / Latin UI copy (height estimates; prefer FlowTextBlock for display). */
+export function wrapFlowText(value: string, columns: number): string[] {
+  const safeColumns = Math.max(1, columns);
+  const output: string[] = [];
+
+  for (const sourceLine of formatFlowText(value).split(/\r?\n/)) {
+    const trimmed = sourceLine.trim();
+    if (!trimmed) {
+      output.push('');
+      continue;
+    }
+
+    const tokens = expandTokens(trimmed, safeColumns);
+    let current = '';
+    let currentWidth = 0;
+
+    const flush = () => {
+      if (current) {
+        output.push(current);
+        current = '';
+        currentWidth = 0;
+      }
+    };
+
+    for (const token of tokens) {
+      const tokenWidth = lineDisplayWidth(token);
+      if (tokenWidth > safeColumns) {
+        flush();
+        output.push(...wrapCharLines(token, safeColumns).filter(Boolean));
+        continue;
+      }
+
+      const separator = current ? 1 : 0;
+      if (current && currentWidth + separator + tokenWidth > safeColumns) {
+        flush();
+      }
+      current = current ? `${current} ${token}` : token;
+      currentWidth = lineDisplayWidth(current);
+    }
+    flush();
+  }
+
+  return output.length > 0 ? output : [''];
+}
+
+export function wrapFlowTextInPreset(
+  value: string,
+  availableWidth: number,
+  preset: FlowTextPreset,
+  extraReserve = 0,
+): string[] {
+  return wrapFlowText(value, contentTextColumns(availableWidth, preset, extraReserve));
+}
+
+/** Back-compat: user-facing callers should migrate to `wrapFlowText`. */
+export function wrapDisplayLines(value: string, columns: number): string[] {
+  return wrapFlowText(value, columns);
+}
+
 export function summaryTextareaHeight(value: string, availableWidth: number): number {
-  return wrapDisplayLines(value, summaryTextColumns(availableWidth)).length;
+  return wrapFlowText(value, summaryTextColumns(availableWidth)).length;
+}
+
+function expandTokens(line: string, columns: number): string[] {
+  const words = line.match(/\S+/g) ?? [];
+  const expanded: string[] = [];
+  for (const word of words) {
+    expanded.push(...splitLongToken(word, columns));
+  }
+  return expanded;
+}
+
+function splitLongToken(token: string, columns: number): string[] {
+  if (lineDisplayWidth(token) <= columns) return [token];
+  return wrapCharLines(token, columns).filter((line) => line.length > 0);
 }

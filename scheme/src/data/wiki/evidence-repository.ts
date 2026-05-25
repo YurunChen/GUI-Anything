@@ -4,7 +4,6 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type { SessionId, ExplorationId } from '../protocol/observer-protocol';
 import { resolveWikiRoot } from '../env';
 
@@ -29,7 +28,11 @@ export interface EvidenceData {
   entries: Record<ExplorationId, EvidenceEntry>;
 }
 
-const EVIDENCE_DIR = 'evidence';
+import {
+  ensureDir,
+  sessionEvidencePath,
+  wikiSessionsDir,
+} from './wiki-data-layout';
 
 export class EvidenceRepository {
   private wikiRoot: string;
@@ -38,28 +41,30 @@ export class EvidenceRepository {
     this.wikiRoot = wikiRoot || resolveWikiRoot();
   }
 
-  private getEvidenceDir(): string {
-    return path.join(this.wikiRoot, EVIDENCE_DIR);
-  }
-
   private getEvidencePath(sessionId: string): string {
-    return path.join(this.getEvidenceDir(), `${sessionId}.json`);
+    return sessionEvidencePath(sessionId, this.wikiRoot);
   }
 
-  // 列出所有有 evidence 的 session
+  private ensureSessionsDir(): void {
+    ensureDir(wikiSessionsDir(this.wikiRoot));
+  }
+
   listSessions(): string[] {
-    const dir = this.getEvidenceDir();
+    const ids = new Set<string>();
     try {
-      if (!fs.existsSync(dir)) return [];
-      return fs.readdirSync(dir)
-        .filter(f => f.endsWith('.json'))
-        .map(f => f.replace('.json', ''));
+      const sessionsDir = wikiSessionsDir(this.wikiRoot);
+      if (fs.existsSync(sessionsDir)) {
+        for (const file of fs.readdirSync(sessionsDir)) {
+          const match = file.match(/^(.+)-evidence\.json$/);
+          if (match) ids.add(match[1]);
+        }
+      }
     } catch {
       return [];
     }
+    return [...ids];
   }
 
-  // 加载单个 session 的 evidence
   loadEvidence(sessionId: SessionId): EvidenceData | null {
     const filePath = this.getEvidencePath(sessionId);
     
@@ -84,10 +89,7 @@ export class EvidenceRepository {
     explorationId: ExplorationId,
     entry: Omit<EvidenceEntry, 'explorationId'>
   ): void {
-    const dir = this.getEvidenceDir();
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+    this.ensureSessionsDir();
 
     const filePath = this.getEvidencePath(sessionId);
     

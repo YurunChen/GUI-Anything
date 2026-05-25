@@ -1,10 +1,29 @@
-# 🎨 Flow Observer 主题系统
+# Flow Observer 主题系统
 
-Flow Observer 支持 **30 种**精美的配色主题：7 深色 + 4 浅色 + 3 彩色 + 16 莫兰迪（8 hue × light/dark）。
+Flow Observer 支持 **32 种**配色主题：推荐 **Apple System**（light/dark）+ 7 深色 + 4 浅色 + 3 彩色 + 16 莫兰迪（8 hue × light/dark）。
+
+## 推荐默认
+
+### **Apple System · Dark**（默认）
+macOS/iOS 语义色，低饱和 chrome + 系统蓝 accent
+```bash
+FLOW_THEME=apple-system-dark
+```
+
+### **Apple System · Light**
+```bash
+FLOW_THEME=apple-system-light
+```
+
+按 `l` 可在 Apple / Morandi 主题的 light↔dark 对之间切换。
+
+## 语义 Token
+
+组件应优先使用 `semantic.label.*` / `semantic.fill.*` / `semantic.tint`（见 `scheme/src/app/ui/theme.ts`），而非直接使用高饱和 `colors.status.*`。
 
 ## 深色主题 🌙
 
-### 1. **Tokyo Night**（默认）
+### 1. **Tokyo Night**
 深蓝灰色主题，低对比度，适合长时间使用
 ```bash
 FLOW_THEME=tokyo-night
@@ -151,15 +170,17 @@ FLOW_THEME=peach-dark
 
 ### 方法一：临时切换（仅当前会话）
 
-在 tmux 窗口中重启 Observer 时指定主题：
+在 Zellij 右栏（observer pane）重启时指定主题，或整会话用主题变量启动：
 
 ```bash
-# 停止当前 Observer
-tmux send-keys -t flow-main:1.2 C-c
+# 推荐：启动 flow 时带上主题
+FLOW_THEME=catppuccin ./scripts/flow-run.sh
 
-# 用新主题启动
-tmux send-keys -t flow-main:1.2 'FLOW_THEME=catppuccin bun run src/main.ts --live' Enter
+# 或在 observer 窗格内 Ctrl-C 后（仍在 scheme 目录）
+FLOW_THEME=catppuccin bun run src/main.ts --live
 ```
+
+日常入口为 `ga flow`（`scripts/flow-run.sh`），不再使用 tmux `flow-main` 分屏。
 
 ### 方法二：永久设置
 

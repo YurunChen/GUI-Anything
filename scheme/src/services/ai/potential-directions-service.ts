@@ -4,6 +4,7 @@ import {
   type PotentialDirectionsResult,
 } from './flow-summaries';
 import type { Exploration } from '../../data/protocol/observer-protocol';
+import { extractExplorationMetrics } from '../../utils/exploration-utils';
 
 export interface PotentialDirectionsService {
   suggest(input: {
@@ -58,11 +59,10 @@ export class DefaultPotentialDirectionsService implements PotentialDirectionsSer
     }
 
     const context = completed.slice(-5).map((e) => ({
+      ...extractExplorationMetrics(e.nodes),
       id: e.id,
       question: e.question,
       summary: input.summaries[e.id],
-      toolCount: e.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'tool').length,
-      errorCount: e.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'error' || n.status === 'error').length,
     }));
 
     return this.suggest({

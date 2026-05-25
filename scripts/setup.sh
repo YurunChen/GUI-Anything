@@ -162,25 +162,40 @@ verify_installation() {
   fi
 }
 
-# Install Claude Code skill
+# Install Claude Code skills
 install_claude_skill() {
-  log_info "Installing Claude Code skill..."
+  log_info "Installing Claude Code skills..."
 
-  SKILL_SOURCE="$ROOT_DIR/docs/skills/flow/SKILL.md"
-  SKILL_TARGET="${HOME}/.claude/skills/flow/SKILL.md"
+  install_one_skill "$ROOT_DIR/skills/llm-wiki" "llm-wiki"
+}
 
-  if [[ ! -f "$SKILL_SOURCE" ]]; then
-    log_warn "Skill source not found at $SKILL_SOURCE"
+install_one_skill() {
+  local source_dir="$1"
+  local skill_name="$2"
+  local project_link="${ROOT_DIR}/.claude/skills/${skill_name}"
+  local global_link="${HOME}/.claude/skills/${skill_name}"
+
+  if [[ ! -f "$source_dir/SKILL.md" ]]; then
+    log_warn "Skill source not found at $source_dir/SKILL.md"
     return 0
   fi
 
-  mkdir -p "$(dirname "$SKILL_TARGET")"
-  cp "$SKILL_SOURCE" "$SKILL_TARGET"
+  mkdir -p "${ROOT_DIR}/.claude/skills"
+  ln -sfn "${source_dir}" "${project_link}"
 
-  if [[ -f "$SKILL_TARGET" ]]; then
-    log_success "Claude Code skill installed to ~/.claude/skills/flow/"
+  mkdir -p "${HOME}/.claude/skills"
+  if [[ -e "${global_link}" && ! -L "${global_link}" ]]; then
+    log_warn "~/.claude/skills/${skill_name} exists and is not a symlink — skipped global link"
+    log_success "Project skill: ${project_link} → skills/${skill_name}/"
+    return 0
+  fi
+  ln -sfn "${project_link}" "${global_link}"
+
+  if [[ -f "${project_link}/SKILL.md" ]]; then
+    log_success "Skill symlinked: .claude/skills/${skill_name}/ → skills/${skill_name}/"
+    log_success "  (also ~/.claude/skills/${skill_name}/ → project link)"
   else
-    log_warn "Failed to copy skill file"
+    log_warn "Symlink broken for ${skill_name}"
   fi
 }
 
@@ -202,15 +217,10 @@ print_summary() {
   echo "  ./scripts/flow-run.sh"
   echo "  ./scripts/flow-run.sh -m sonnet \"Your prompt\""
   echo ""
-  if [[ -f "${HOME}/.claude/skills/flow/SKILL.md" ]]; then
-    echo "Claude Code skill installed to ~/.claude/skills/flow/"
-    echo ""
-    echo "The skill helps you:"
-    echo "  - Start flow (ask: 'start flow mode')"
-    echo "  - Continue session (ask: 'continue flow')"
-    echo "  - Clean sessions (ask: 'clean flow sessions')"
-    echo ""
-    echo "Note: Flow requires an interactive terminal."
+  if [[ -f "${ROOT_DIR}/.claude/skills/llm-wiki/SKILL.md" ]]; then
+    echo "Claude Code skills (symlink):"
+    echo "  ${ROOT_DIR}/.claude/skills/llm-wiki/ → skills/llm-wiki/ (Phase 1 ingest + Phase 2 maintain)"
+    echo "  Manual Phase 2: ./scripts/wiki/wiki-maintain.sh"
     echo ""
   fi
   echo "Architecture: Run / Capture / Guide layers"

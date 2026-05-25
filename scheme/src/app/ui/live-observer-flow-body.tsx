@@ -10,18 +10,31 @@ import type { ReactNode } from 'react';
 import { memo, useEffect, useMemo, useState } from 'react';
 import type {
   Exploration,
-  CacheLoadStatus,
-  PersistResult,
   FlowchartHint,
   FlowGraphSnapshot,
+  PersistResult,
+  SessionScopedId,
+  SummaryItem,
   WikiMatch,
 } from '../../data/protocol/observer-protocol';
+import { getSummaryItemForExploration } from '../../data/protocol/summary-contract';
+import { isExplorationSummarizing } from '../observer/view-model/presentation-summaries';
+import type { SessionPresentationMode } from '../../services/session/session-presentation-policy';
 import type { PotentialDirection } from '../../services/ai/flow-summaries';
-import { colors, pulseFrames, useThemeVersion } from './theme';
-import { CacheBadge } from './flow/StatusBadges';
+import { colors, pulseFrames, semantic, useThemeVersion } from './theme';
 import { ExplorationCard } from './flow/ExplorationCard';
 import { FlowGraphView } from './flow/graph/FlowGraphView';
-import { createCachedBuilder } from './flow/graph/snapshot-cache';
+import { createCachedBuilder } from '../observer/view-model/flow-graph-snapshot-cache';
+import { truncateFlowText } from '../../utils/flow-text';
+import { FlowSectionLabel } from './flow/flow-ui/FlowSectionLabel';
+import { flowSpacing } from './flow/flow-ui/flow-spacing';
+import { useWikiMatches } from '../observer/hooks/useWikiMatches';
+import { sortTimelineEntries } from '../observer/view-model/timeline';
+import type { WikiWriteChromeView } from '../observer/view-model/wiki-write-chrome';
+import { getObserverMessages } from './i18n/observer-messages';
+
+export { sortTimelineEntries } from '../observer/view-model/timeline';
+export type { TimelineEntry } from '../observer/view-model/timeline';
 
 /** Ref-stable cached snapshot builder — only rebuilds when ID-level state actually changes. */
 const snapshotCache = createCachedBuilder();
@@ -32,42 +45,25 @@ export type LiveObserverFlowBodyProps = {
   summaries: Record<string, string>;
   flowchartHints?: Record<string, FlowchartHint>;
   graphSnapshot?: FlowGraphSnapshot;
-  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  wikiPersistStatus?: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
+  wikiPersistResults?: Record<string, PersistResult>;
+  wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
   pendingSummaryCount: number;
   directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
   directionsMessage: string;
   potentialDirections: PotentialDirection[];
   /** Available width for content calculation */
   availableWidth?: number;
-  /** Cache status for session */
-  cacheStatus?: CacheLoadStatus | null;
-  /** Cache reason/description */
-  cacheReason?: string;
   /** Strict replay mode hint when regeneration is intentionally disabled. */
-  replayOnlyHint?: string;
-  persistResults?: Record<string, PersistResult>;
+  sessionPresentationMode?: SessionPresentationMode;
+  sessionBannerHint?: string;
+  summaryItems?: Record<SessionScopedId, SummaryItem>;
   mode?: 'exploration' | 'flowchart';
-  wikiMatch?: WikiMatch | null;
+  /** Calm mode: older cards collapse; only the latest shows full summary. */
+  calmMode?: boolean;
+  /** Spinner interval in ms (lower motion when FLOW_NO_ANIMATIONS=1). */
+  spinnerIntervalMs?: number;
 };
-
-export interface TimelineEntry {
-  exploration: Exploration;
-  originalIndex: number;
-}
-
-export function sortTimelineEntries(explorations: Exploration[]): TimelineEntry[] {
-  return explorations
-    .map((exploration, originalIndex) => ({ exploration, originalIndex }))
-    .sort((a, b) => {
-      const startDiff = a.exploration.startedAt - b.exploration.startedAt;
-      if (startDiff !== 0) return startDiff;
-      const endA = a.exploration.endedAt ?? Number.MAX_SAFE_INTEGER;
-      const endB = b.exploration.endedAt ?? Number.MAX_SAFE_INTEGER;
-      const endDiff = endA - endB;
-      if (endDiff !== 0) return endDiff;
-      return a.originalIndex - b.originalIndex;
-    });
-}
 
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   props: LiveObserverFlowBodyProps
@@ -84,18 +80,20 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     directionsMessage,
     potentialDirections,
     availableWidth = 80,
-    cacheStatus,
-    cacheReason,
-    replayOnlyHint,
-    persistResults,
+    sessionPresentationMode = 'live',
+    sessionBannerHint,
+    summaryItems,
     wikiPersistStatus,
+    wikiPersistResults,
+    wikiWriteChromeByExploration,
     pendingSummaryCount,
     mode = 'exploration',
-    wikiMatch,
+    calmMode = false,
+    spinnerIntervalMs = 160,
   } = props;
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const hasRunning = explorations.some((item) => item.status === 'running');
-  const showCacheBadge = Boolean(cacheStatus && cacheStatus !== 'miss');
+  const wikiMatchesByExploration = useWikiMatches(explorations, sessionId);
   const graphSnapshot = useMemo(() => {
     if (externalGraphSnapshot) return externalGraphSnapshot;
     return snapshotCache({
@@ -111,32 +109,37 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     if (!hasRunning) return;
     const timer = setInterval(() => {
       setSpinnerFrameIndex((prev) => (prev + 1) % pulseFrames.length);
-    }, 160);
+    }, spinnerIntervalMs);
     return () => clearInterval(timer);
-  }, [hasRunning]);
+  }, [hasRunning, spinnerIntervalMs]);
 
   if (explorations.length === 0) {
-    return <text fg={colors.fg.muted}>Waiting for explorations...</text>;
+    const m = getObserverMessages();
+    return (
+      <box style={{ flexDirection: 'column' }}>
+        <text fg={colors.fg.muted}>{m.waitingExplorations}</text>
+        <text fg={colors.fg.dim} style={{ marginTop: 1 }}>{m.onboardingHint}</text>
+      </box>
+    );
   }
-
-  const latestExplorationId = explorations[explorations.length - 1]?.id;
 
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
       <box style={{ width: '100%', flexDirection: 'column' }}>
-        {showCacheBadge && (
-          <text fg={colors.fg.dim}>
-            <span>{'['}</span>
-            <CacheBadge status={cacheStatus} reason={cacheReason} />
-            <span>{']'}</span>
-          </text>
-        )}
-        {replayOnlyHint && (
-          <text fg={colors.fg.dim}>{`[replay-only] ${replayOnlyHint}`}</text>
-        )}
+        {sessionBannerHint ? (
+          <text fg={colors.fg.dim}>{sessionBannerHint}</text>
+        ) : null}
         {mode === 'flowchart' ? (
-          <box style={{ width: '100%', flexDirection: 'column' }}>
-            <text fg={colors.accent.secondary}>{'flowchart view'}</text>
+          <box
+            style={{
+              width: '100%',
+              flexGrow: 1,
+              flexDirection: 'column',
+              justifyContent: 'center',
+              paddingTop: 1,
+              paddingBottom: 1,
+            }}
+          >
             <FlowGraphView
               snapshot={graphSnapshot}
               availableWidth={availableWidth}
@@ -144,86 +147,95 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
           </box>
         ) : (
           <ExplorationTimeline
+            sessionId={sessionId}
             explorations={explorations}
             summaries={summaries}
-            persistResults={persistResults}
-            wikiPersistStatus={wikiPersistStatus}
+            summaryItems={summaryItems}
             pendingSummaryCount={pendingSummaryCount}
             availableWidth={availableWidth}
             spinnerFrame={pulseFrames[spinnerFrameIndex]}
-            wikiMatch={wikiMatch}
-            latestExplorationId={latestExplorationId}
+            calmMode={calmMode}
+            wikiPersistStatus={wikiPersistStatus}
+            wikiPersistResults={wikiPersistResults}
+            wikiWriteChromeByExploration={wikiWriteChromeByExploration}
+            wikiMatchesByExploration={wikiMatchesByExploration}
           />
         )}
       </box>
 
-      <NextPanel
-        status={directionsStatus}
-        message={directionsMessage}
-        directions={potentialDirections}
-      />
+      {sessionPresentationMode !== 'replay' ? (
+        <NextPanel
+          status={directionsStatus}
+          message={directionsMessage}
+          directions={potentialDirections}
+        />
+      ) : null}
     </box>
   );
 });
 
 interface ExplorationTimelineProps {
+  sessionId: string;
   explorations: Exploration[];
   summaries: Record<string, string>;
-  persistResults?: Record<string, PersistResult>;
-  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   availableWidth: number;
   spinnerFrame: string;
-  wikiMatch?: WikiMatch | null;
-  latestExplorationId?: string;
+  calmMode: boolean;
+  summaryItems?: Record<SessionScopedId, SummaryItem>;
+  wikiPersistStatus?: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
+  wikiPersistResults?: Record<string, PersistResult>;
+  wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
+  wikiMatchesByExploration: Record<string, WikiMatch | null>;
 }
 
 function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
   const {
+    sessionId,
     explorations,
     summaries,
-    persistResults,
-    wikiPersistStatus,
     pendingSummaryCount,
     availableWidth,
     spinnerFrame,
-    wikiMatch,
-    latestExplorationId,
+    calmMode,
+    summaryItems,
+    wikiPersistStatus,
+    wikiPersistResults,
+    wikiWriteChromeByExploration,
+    wikiMatchesByExploration,
   } = props;
   const timelineEntries = sortTimelineEntries(explorations);
-  let latestRunningOriginalIdx = -1;
-  for (let i = timelineEntries.length - 1; i >= 0; i--) {
-    if (timelineEntries[i].exploration.status === 'running') {
-      latestRunningOriginalIdx = timelineEntries[i].originalIndex;
-      break;
-    }
-  }
-  const focusOriginalIdx = latestRunningOriginalIdx >= 0
-    ? latestRunningOriginalIdx
-    : timelineEntries[timelineEntries.length - 1]?.originalIndex ?? -1;
+  const latestExplorationId = timelineEntries[timelineEntries.length - 1]?.exploration.id;
 
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
-      {timelineEntries.map(({ exploration, originalIndex }, timelineIndex) => {
-        const isGenerating = !summaries[exploration.id]
-          && exploration.status === 'complete'
-          && pendingSummaryCount > 0;
-        const isActive = originalIndex === focusOriginalIdx;
-        const showWikiMatch = wikiMatch && exploration.id === latestExplorationId;
+      {timelineEntries.map(({ exploration }) => {
+        const summaryItem = getSummaryItemForExploration(summaryItems, exploration.id);
+        const isGenerating = isExplorationSummarizing(
+          exploration,
+          summaryItem,
+          pendingSummaryCount,
+        );
+        const wikiMatch = wikiMatchesByExploration[exploration.id] ?? null;
+
+        const wikiChrome = wikiWriteChromeByExploration?.[exploration.id];
 
         return (
           <ExplorationCard
             key={exploration.id}
             exploration={exploration}
-            showRailConnector={timelineIndex < timelineEntries.length - 1}
-            isActive={isActive}
+            calmMode={calmMode}
+            isLatestExploration={exploration.id === latestExplorationId}
             spinnerFrame={spinnerFrame}
             summary={summaries[exploration.id]}
-            persistStatus={wikiPersistStatus?.[exploration.id]}
-            persistResult={persistResults?.[exploration.id]}
+            summaryItem={summaryItem}
             isGenerating={isGenerating}
             availableWidth={availableWidth}
-            wikiMatch={showWikiMatch ? wikiMatch : undefined}
+            wikiMatch={wikiMatch ?? undefined}
+            wikiPersistStatus={wikiChrome?.showWriteBadge ? wikiChrome.status : undefined}
+            wikiPersistResult={wikiChrome?.result ?? wikiPersistResults?.[exploration.id]}
+            wikiTargetId={wikiChrome?.targetId}
+            wikiTurnCount={wikiChrome?.turnCount}
           />
         );
       })}
@@ -240,21 +252,23 @@ interface NextPanelProps {
 function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'idle') return null;
 
+  const m = getObserverMessages();
+
   const panelStyle = {
     width: '100%' as const,
     flexDirection: 'column' as const,
-    marginTop: 1,
-    paddingLeft: 1,
-    paddingRight: 1,
-    border: ['top'] as ['top'],
-    borderColor: colors.border.normal,
-    borderStyle: 'single' as const,
+    marginTop: flowSpacing.cardGap,
+    paddingLeft: flowSpacing.cardPadX,
+    paddingRight: flowSpacing.cardPadX,
+    backgroundColor: semantic.fill.grouped,
+    border: ['left'] as ['left'],
+    borderColor: semantic.tintMuted,
   };
 
   if (status === 'generating') {
     return (
       <box style={panelStyle}>
-        <text fg={colors.status.info}>Next: generating suggestions...</text>
+        <FlowSectionLabel>{m.nextGenerating}</FlowSectionLabel>
       </box>
     );
   }
@@ -262,8 +276,8 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'insufficient') {
     return (
       <box style={panelStyle}>
-        <text fg={colors.status.warning}>Next: insufficient evidence</text>
-        <text fg={colors.fg.secondary}>{message || 'Continue exploring to unlock suggestions.'}</text>
+        <FlowSectionLabel>{m.nextInsufficient}</FlowSectionLabel>
+        <text fg={semantic.label.secondary}>{message || m.nextInsufficientHint}</text>
       </box>
     );
   }
@@ -271,28 +285,42 @@ function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
   if (status === 'error') {
     return (
       <box style={panelStyle}>
-        <text fg={colors.status.error}>Next: failed to generate suggestions</text>
+        <text fg={semantic.destructive}>{m.nextError}</text>
       </box>
     );
   }
 
   return (
     <box style={panelStyle}>
-      <text fg={colors.status.success}>Next: Potential Directions</text>
+      <FlowSectionLabel>{m.nextDirections}</FlowSectionLabel>
       {directions.map((item, idx) => (
         <box key={`dir_${idx}`} style={{ width: '100%', flexDirection: 'column', marginTop: idx > 0 ? 1 : 0 }}>
-          <text fg={colors.accent.primary}>{`${idx + 1}. ${item.direction}`}</text>
-          <text fg={colors.fg.secondary}>{`   Why: ${truncate(item.why, 40)}`}</text>
-          <text fg={colors.fg.muted}>{`   → ${truncate(item.nextAction, 30)} (${item.confidence})`}</text>
+          <text fg={semantic.label.primary}>{`${idx + 1}. ${item.direction}`}</text>
+          <text fg={semantic.label.secondary}>{m.nextWhy(truncateFlowText(item.why, 40))}</text>
+          <text fg={semantic.label.tertiary}>
+            {m.nextAction(truncateFlowText(item.nextAction, 30), item.confidence)}
+          </text>
         </box>
       ))}
     </box>
   );
 }
 
-function truncate(str: string, maxLen: number): string {
-  if (str.length <= maxLen) return str;
-  return `${str.slice(0, maxLen - 1)}…`;
-}
-
-export { lineDisplayWidth, wrapDisplayLines } from './flow/summary-layout';
+export {
+  charDisplayWidth,
+  formatFlowText,
+  lineDisplayWidth,
+  truncateFlowText,
+} from '../../utils/flow-text';
+export {
+  contentTextColumns,
+  flowContentColumns,
+  summaryTextColumns,
+  summaryTextareaHeight,
+  wrapCharLines,
+  wrapDisplayLines,
+  wrapFlowText,
+  wrapFlowTextInPreset,
+} from './flow/summary-layout';
+export { FlowTextBlock } from './flow/FlowTextBlock';
+export type { FlowTextPreset } from './flow/summary-layout';

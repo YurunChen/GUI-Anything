@@ -1,24 +1,25 @@
 import type { ReactNode } from 'react';
-import { useState, useRef, useCallback, useMemo } from 'react';
-
-import {
-  type PotentialDirection,
-} from '../../services/ai/flow-summaries';
-import type { WikiMatch } from '../../data/protocol/observer-protocol';
-import { DefaultWikiMatchService } from '../../services/wiki/match-service';
-import { DefaultPotentialDirectionsService } from '../../services/ai/potential-directions-service';
+import { useMemo, useCallback } from 'react';
 
 import { FlowObserverShell } from '../ui/flow/FlowObserverShell';
-import { WIKI_SEARCH_THRESHOLD } from '../../constants/flow-constants';
-import { deriveSessionBindingState, deriveSessionSummaryPolicy } from '../../services/session/session-binding-policy';
+import { deriveSessionBindingState } from '../../services/session/session-binding-policy';
+import {
+  buildSessionBanner,
+  deriveSessionPresentationPolicy,
+} from '../../services/session/session-presentation-policy';
+import { getObserverMessages } from '../ui/i18n/observer-messages';
 
 import { useSessionPolling } from './hooks/useSessionPolling';
 import { useExplorationSummaries } from './hooks/useExplorationSummaries';
-import { useWikiPersistence } from './hooks/useWikiPersistence';
+import { useWikiCurator } from './hooks/useWikiCurator';
+import { usePotentialDirections } from './hooks/usePotentialDirections';
 import { useGraphSnapshot } from './hooks/useGraphSnapshot';
 import { useGraphConsolidation } from './hooks/useGraphConsolidation';
-import { buildFlowGraphSnapshot } from '../ui/flow/graph/graph-builder';
+import { buildFlowGraphSnapshot } from './view-model/flow-graph-builder';
 import { useNotification } from './hooks/useNotification';
+import { matchWikiForExploration } from './hooks/useWikiMatch';
+import { fileWikiAudit } from '../../services/wiki/audit-service';
+import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
 
 export function LiveObserverContainer(): ReactNode {
   const cwd = process.env.FLOW_PROJECT_DIR || process.cwd();
@@ -39,36 +40,34 @@ export function LiveObserverContainer(): ReactNode {
     explicitSessionId: explicitSessionId || undefined,
     resumeModeRaw: resumeModeRaw || undefined,
   });
-  const summaryPolicy = useMemo(
-    () => deriveSessionSummaryPolicy(bindingIntent),
+  const presentation = useMemo(
+    () => deriveSessionPresentationPolicy(bindingIntent),
     [bindingIntent],
   );
 
   const {
     summaries: explorationSummaries,
     flowchartHints,
-    persistMeta: explorationPersistMeta,
     pendingCount: pendingSummaryCount,
-    cacheStatus,
-    cacheReason,
-  } = useExplorationSummaries(explorations, sessionId, sessionPath, summaryModel, summaryPolicy);
-  const replayOnlyHint = useMemo(() => {
-    if (summaryPolicy.allowRegen) return '';
-    const missingCompleteSummaries = explorations.filter((item) => (
-      item.status === 'complete'
-      && item.nodes.length > 0
-      && !explorationSummaries[item.id]
-    )).length;
-    if (missingCompleteSummaries <= 0) return '';
-    return `${missingCompleteSummaries} summaries unavailable (strict replay)`;
-  }, [summaryPolicy.allowRegen, explorations, explorationSummaries]);
+    summaryItems,
+    sessionIntent,
+  } = useExplorationSummaries(explorations, sessionId, sessionPath, summaryModel, presentation);
+
+  const sessionBannerHint = useMemo(() => {
+    if (presentation.mode !== 'replay') return undefined;
+    const m = getObserverMessages();
+    const banner = buildSessionBanner({ presentation, explorations, summaryItems });
+    if (!banner.detailLine) return m.replayBannerBody;
+    return `${m.replayBannerBody} · ${banner.detailLine}`;
+  }, [presentation, explorations, summaryItems]);
   const {
     wikiExtractedCount,
     explorationPersistStatus,
     explorationPersistResults,
+    wikiWriteChromeByExploration,
     recentInspirations,
     saveInspiration,
-  } = useWikiPersistence(explorations, explorationSummaries, explorationPersistMeta, sessionId);
+  } = useWikiCurator(explorations, summaryItems, sessionId, sessionIntent);
   const completedExplorationCount = explorations.filter((item) => item.status === 'complete').length;
   const baseGraphSnapshot = useMemo(() => buildFlowGraphSnapshot({
     sessionId: sessionId || 'current',
@@ -105,94 +104,49 @@ export function LiveObserverContainer(): ReactNode {
   });
 
   const {
+    notificationEnabled,
     sendManualSnapshot,
     lastNotifyStatus,
   } = useNotification(sessionId, tree ?? undefined);
 
-  const wikiMatchServiceRef = useRef(new DefaultWikiMatchService());
-  const { wikiMatch, wikiDebugInfo } = useMemo(() => {
-    const latest = explorations[explorations.length - 1];
-    if (!latest) {
-      return { wikiMatch: null as WikiMatch | null, wikiDebugInfo: `no_exploration (count=${explorations.length})` };
-    }
+  const {
+    potentialDirections,
+    directionsStatus,
+    directionsMessage,
+  } = usePotentialDirections({
+    runtimeModel,
+    explorations,
+    summaries: explorationSummaries,
+    summaryModel: summaryModel || undefined,
+  });
 
-    let query = latest.question;
-    if (!query || query.trim() === '') {
-      const textNodes = latest.nodes?.filter((n) =>
-        n.rawText && n.rawText.length > 10
-        && (n.type === 'response' || !n.type),
-      ) || [];
-      if (textNodes.length > 0) {
-        query = textNodes[0].rawText || '';
-      }
-    }
-
-    if (!query || query.length < 5) {
-      return {
-        wikiMatch: null,
-        wikiDebugInfo: `query_too_short (len=${query?.length || 0})`,
-      };
-    }
-
-    try {
-      const match = wikiMatchServiceRef.current.searchByQuerySync(query, WIKI_SEARCH_THRESHOLD);
-      return {
-        wikiMatch: match,
-        wikiDebugInfo: match
-          ? `found: ${match.entry.request.slice(0, 30)} (${Math.round(match.score * 100)}%)`
-          : `no_match (q="${query.slice(0, 30)}" th=${WIKI_SEARCH_THRESHOLD})`,
-      };
-    } catch (error) {
-      return {
-        wikiMatch: null,
-        wikiDebugInfo: `error: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-  }, [explorations]);
-
-  const [potentialDirections, setPotentialDirections] = useState<PotentialDirection[]>([]);
-  const [directionsStatus, setDirectionsStatus] = useState<'idle' | 'generating' | 'ready' | 'insufficient' | 'error'>('idle');
-  const [directionsMessage, setDirectionsMessage] = useState('');
-  const potentialDirectionsServiceRef = useRef(new DefaultPotentialDirectionsService());
-
-  const handleTriggerDirections = useCallback(() => {
-    setDirectionsStatus('generating');
-    setDirectionsMessage('');
-    potentialDirectionsServiceRef.current.suggestFromExplorations({
-      runtimeModel,
-      explorations,
-      summaries: explorationSummaries,
-      summaryModel: summaryModel || undefined,
-    })
-      .then((result) => {
-        if (result.status === 'insufficient') {
-          setPotentialDirections([]);
-          setDirectionsStatus('insufficient');
-          setDirectionsMessage(result.message || '当前证据不足，请继续补充探索。');
-        } else {
-          setPotentialDirections(result.directions);
-          setDirectionsStatus('ready');
-          setDirectionsMessage('');
-        }
-      })
-      .catch(() => {
-        setPotentialDirections([]);
-        setDirectionsStatus('error');
-        setDirectionsMessage('方向建议生成失败，请稍后重试。');
+  const handleFileWikiAudit = useCallback((): { filed: boolean; targetId?: string } => {
+    if (!sessionId) return { filed: false };
+    for (const exploration of [...explorations].reverse()) {
+      if (exploration.status !== 'complete') continue;
+      const match = matchWikiForExploration(exploration, sessionId);
+      if (!match) continue;
+      fileWikiAudit({
+        targetId: match.entry.id,
+        anchor: formatKnowledgeExcerpt(match.entry.content),
+        sessionId,
+        explorationId: exploration.id,
+        request: exploration.question,
+        severity: 'medium',
       });
-  }, [explorations, explorationSummaries, runtimeModel, summaryModel]);
+      return { filed: true, targetId: match.entry.id };
+    }
+    return { filed: false };
+  }, [explorations, sessionId]);
 
   return (
     <FlowObserverShell
       explorations={explorations}
       tree={tree}
-      sessionPath={sessionPath}
       sessionId={sessionId}
       tokenDisplay={tokenDisplay}
       runtimeModel={runtimeModel}
       wikiExtractedCount={wikiExtractedCount}
-      wikiMatch={wikiMatch}
-      wikiDebugInfo={wikiDebugInfo}
       explorationSummaries={explorationSummaries}
       flowchartHints={mergedFlowchartHints}
       graphSnapshot={graphSnapshot}
@@ -204,11 +158,14 @@ export function LiveObserverContainer(): ReactNode {
       recentInspirations={recentInspirations}
       onSaveInspiration={saveInspiration}
       persistResults={explorationPersistResults}
-      cacheStatus={cacheStatus}
-      cacheReason={cacheReason}
-      replayOnlyHint={replayOnlyHint || undefined}
+      wikiWriteChromeByExploration={wikiWriteChromeByExploration}
+      sessionPresentationMode={presentation.mode}
+      sessionBannerHint={sessionBannerHint}
       flowBodyVisible={bindingState.visibility === 'show'}
-      onSendSnapshot={sendManualSnapshot}
+      summaryItems={summaryItems}
+      sessionIntent={sessionIntent}
+      onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
+      onFileWikiAudit={handleFileWikiAudit}
       notifyStatus={lastNotifyStatus}
     />
   );

@@ -45,6 +45,16 @@ export function resolveLayoutDir(): string {
   return path.join(resolveFlowDataDir(), 'layouts');
 }
 
+/** Stable project tag for wiki entries, e.g. `proj:gui-anything`. */
+export function resolveProjectTag(): string {
+  const rootDir = process.env.FLOW_ROOT_DIR || process.env.FLOW_PROJECT_DIR || process.cwd();
+  const slug = path.basename(rootDir)
+    .toLowerCase()
+    .replace(/[^\w]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `proj:${slug || 'unknown'}`;
+}
+
 export class ProcessFlowEnvRepository implements FlowEnvRepository {
   read(): FlowEnv {
     return {

@@ -4,11 +4,11 @@ import {
   lineDisplayWidth,
   summaryTextColumns,
   summaryTextareaHeight,
-  wrapDisplayLines,
+  wrapFlowText,
 } from './flow/summary-layout';
 import { sortTimelineEntries } from './live-observer-flow-body';
-import { buildFlowGraphSnapshot } from './flow/graph/graph-builder';
-import { buildInlineSummaryLines, shouldShowInlineSummary } from './flow/ExplorationCard';
+import { buildFlowGraphSnapshot } from '../observer/view-model/flow-graph-builder';
+import { shouldShowInlineSummary } from '../observer/view-model/exploration-card-view';
 
 function makeExploration(
   id: string,
@@ -38,7 +38,7 @@ describe('summary text wrapping', () => {
 
   it('wraps text without adding safety blank lines', () => {
     const text = '用户请我看 POCKETFLOW_INTEGRATION_PLAN.md 方案可行性。';
-    const lines = wrapDisplayLines(text, 20);
+    const lines = wrapFlowText(text, 20);
 
     expect(lines.length).toBeGreaterThan(1);
     expect(lines.at(-1)).not.toBe('');
@@ -73,25 +73,18 @@ describe('single rail timeline order', () => {
 });
 
 describe('summary dedup gating', () => {
-  it('shows inline summary only in collapsed complete state', () => {
-    expect(shouldShowInlineSummary('complete', false)).toBe(true);
-    expect(shouldShowInlineSummary('complete', true)).toBe(false);
-    expect(shouldShowInlineSummary('running', false)).toBe(false);
-    expect(shouldShowInlineSummary('interrupted', false)).toBe(false);
+  it('shows inline summary when complete or interrupted (even while generating)', () => {
+    expect(shouldShowInlineSummary('expanded', 'complete', false)).toBe(true);
+    expect(shouldShowInlineSummary('expanded', 'complete', true)).toBe(true);
+    expect(shouldShowInlineSummary('compact', 'complete', false)).toBe(false);
+    expect(shouldShowInlineSummary('expanded', 'running', false)).toBe(false);
+    expect(shouldShowInlineSummary('expanded', 'interrupted', false)).toBe(true);
   });
 });
 
-describe('inline summary wrapping', () => {
-  it('adapts wrapping to available width with stable continuation', () => {
-    const lines = buildInlineSummaryLines(
-      '用户打了个招呼，Claude Code 回复标准问候语。无技术问题或可复用内容。',
-      52,
-      '│ ',
-    );
-    expect(lines.length).toBeGreaterThan(1);
-    for (const line of lines) {
-      expect(lineDisplayWidth(line)).toBeLessThanOrEqual(34);
-    }
+describe('inline summary layout', () => {
+  it('uses native word wrap via FlowTextBlock (no manual line splitting)', () => {
+    expect(shouldShowInlineSummary('expanded', 'complete', false)).toBe(true);
   });
 });
 

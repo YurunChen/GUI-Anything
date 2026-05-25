@@ -5,6 +5,7 @@
 
 import type { KnowledgeRepository, KnowledgeEntry } from '../wiki/knowledge-repository';
 import type { EvidenceRepository } from '../wiki/evidence-repository';
+import { requestSimilarity } from '../../services/wiki/match-service';
 
 export interface DeduplicationResult {
   action: 'create' | 'update' | 'skip';
@@ -60,6 +61,14 @@ export async function deduplicateKnowledge(
   );
   
   if (existingBySource) {
+    // Agent or prior save already wrote this entry — not a duplicate of another row.
+    if (existingBySource.id === newEntry.id) {
+      return {
+        action: 'update',
+        targetId: existingBySource.id,
+        reason: 'same_entry_refresh',
+      };
+    }
     // 同一 exploration，比较置信度决定是否更新
     if (newEntry.confidence > existingBySource.confidence + confidenceGap) {
       return {
@@ -75,10 +84,28 @@ export async function deduplicateKnowledge(
     };
   }
   
-  // 2. 内容相似度检查
+  // 2. 同类型 + 相同/极相似 request（与检索命中一致）
   const candidates = await knowledgeRepo.listByType(newEntry.type);
-  
+
   for (const candidate of candidates) {
+    const reqSim = requestSimilarity(newEntry.request, candidate.request);
+    if (reqSim >= 0.85) {
+      if (newEntry.confidence > candidate.confidence + confidenceGap) {
+        return {
+          action: 'update',
+          targetId: candidate.id,
+          reason: 'similar_request_higher_confidence',
+          similarity: reqSim,
+        };
+      }
+      return {
+        action: 'skip',
+        targetId: candidate.id,
+        reason: 'similar_request_exists',
+        similarity: reqSim,
+      };
+    }
+
     const similarity = calculateSimilarity(
       newEntry.content,
       candidate.content

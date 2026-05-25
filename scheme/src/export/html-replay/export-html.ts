@@ -7,10 +7,12 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
   findLatestSession,
+} from '../../data/session/claude-project';
+import {
   extractExplorationsFromSession,
   extractSessionStats,
   extractLastPrompt,
-} from '../../services/session/posthoc';
+} from '../../data/session/jsonl-session';
 import { sanitizePath, redactSecrets, truncateDetail } from '../shared/sanitize';
 import { generateReplayHtml } from './template';
 import type {
@@ -20,7 +22,7 @@ import type {
   ReplaySessionStats,
   ExportHtmlOptions,
 } from './types';
-import type { Exploration, ExplorationNode } from '../../services/session/posthoc';
+import type { Exploration, ExplorationNode } from '../../data/session/jsonl-session';
 
 /** 默认详情最大长度 */
 const DEFAULT_MAX_DETAIL_LENGTH = 2000;

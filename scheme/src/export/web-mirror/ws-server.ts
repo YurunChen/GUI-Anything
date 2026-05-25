@@ -5,14 +5,14 @@
 
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { findLatestSession } from '../../data/session/claude-project';
 import {
-  findLatestSession,
   extractExplorationsFromSession,
   extractSessionStats,
-} from '../../services/session/posthoc';
+} from '../../data/session/jsonl-session';
 import { getWebMirrorClientPage } from './client-page';
 import type { ServerMessage, MirrorState, MirrorExploration, MirrorNode, MirrorStats } from './protocol';
-import type { Exploration, ExplorationNode } from '../../services/session/posthoc';
+import type { Exploration, ExplorationNode } from '../../data/session/jsonl-session';
 
 interface WebMirrorOptions {
   port?: number;

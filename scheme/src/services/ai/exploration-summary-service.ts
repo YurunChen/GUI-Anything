@@ -1,4 +1,13 @@
 import { generateExplorationSummaryAI } from './flow-summaries';
+import { mergeIntentTitleState } from './intent-title-merge';
+import {
+  defaultSessionIntentRepository,
+  type SessionIntentRepository,
+} from '../../data/wiki/session-intent-repository';
+import {
+  finalizeExplorationSummaryItem,
+  finalizeSummaryFromTimelineOnly,
+} from './summary-display';
 import {
   FileSummaryRepository,
   type SummaryRepository,
@@ -7,9 +16,16 @@ import {
 import {
   makeSessionScopedId,
   type Exploration,
+  type SessionIntentState,
   type SessionScopedId,
   type SummaryItem,
 } from '../../data/protocol/observer-protocol';
+import { toExplorationFlowchartHintMap, toExplorationSummaryTextMap } from '../../data/protocol/summary-contract';
+import {
+  DefaultSessionFlowStore,
+  jsonlMtimeMs,
+  type SessionFlowStore,
+} from '../session/session-flow-store';
 import {
   KnowledgeRepository,
   type KnowledgeEntry,
@@ -53,6 +69,7 @@ type SummaryGenerator = (
   nodes: Exploration['nodes'],
   history: Array<{ question: string; summary?: string; toolCount: number; errorCount: number; status: 'complete' | 'interrupted' }>,
   model?: string,
+  sessionIntent?: SessionIntentState | null,
 ) => Promise<Awaited<ReturnType<typeof generateExplorationSummaryAI>>>;
 
 interface SummaryServiceOptions {
@@ -60,6 +77,8 @@ interface SummaryServiceOptions {
   maxAttempts?: number;
   generateSummary?: SummaryGenerator;
   summaryRepository?: SummaryRepository;
+  intentRepository?: SessionIntentRepository;
+  sessionFlowStore?: SessionFlowStore;
 }
 
 export class DefaultExplorationSummaryService implements ExplorationSummaryService {
@@ -70,6 +89,8 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   private readonly maxAttempts: number;
   private readonly generateSummary: SummaryGenerator;
   private readonly summaryRepo: SummaryRepository;
+  private readonly intentRepo: SessionIntentRepository;
+  private readonly sessionFlowStore: SessionFlowStore;
   private stats: SummaryRuntimeStats = {
     queued: 0,
     active: 0,
@@ -83,6 +104,9 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   constructor(knowledgeRepo?: KnowledgeRepository, options?: SummaryServiceOptions) {
     this.knowledgeRepo = knowledgeRepo || new KnowledgeRepository();
     this.summaryRepo = options?.summaryRepository ?? new FileSummaryRepository();
+    this.intentRepo = options?.intentRepository ?? defaultSessionIntentRepository;
+    this.sessionFlowStore = options?.sessionFlowStore ?? new DefaultSessionFlowStore();
+    // Summaries run sequentially for session continuity; option kept for API compat.
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 3);
     this.maxAttempts = Math.max(1, options?.maxAttempts ?? 2);
     this.generateSummary = options?.generateSummary ?? generateExplorationSummaryAI;
@@ -140,11 +164,23 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
    * Load summaries from cache if available and not expired.
    * Returns null if no cache exists or cache is expired.
    */
-  hydrateFromCache(sessionId: string, jsonlPath: string): CacheHydrateResult {
+  hydrateFromCache(
+    sessionId: string,
+    jsonlPath: string,
+    options?: { preserveStale?: boolean },
+  ): CacheHydrateResult {
     this.resetSession(sessionId);
-    const result = this.summaryRepo.loadWithStatus(sessionId, jsonlPath);
+    const result = this.summaryRepo.loadWithStatus(sessionId, jsonlPath, {
+      onExpired: options?.preserveStale ? 'stale' : 'clear',
+    });
+    const items = result.data ? this.summaryRepo.toSummaryItems(sessionId, result.data) : {};
+    if (result.status === 'stale') {
+      for (const item of Object.values(items)) {
+        item.reason = 'jsonl_modified_since_cache';
+      }
+    }
     return {
-      items: result.data ? this.summaryRepo.toSummaryItems(sessionId, result.data) : {},
+      items,
       cacheStatus: result.status,
       cacheReason: result.reason,
     };
@@ -159,72 +195,97 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   }): Promise<Record<SessionScopedId, SummaryItem>> {
     this.resetSession(input.sessionId);
     const generated: Record<SessionScopedId, SummaryItem> = {};
-    const tasks: Array<() => Promise<void>> = [];
+    /** Same-session prior summaries — updated after each exploration (sequential 心流). */
+    const accumulated: Record<SessionScopedId, SummaryItem> = { ...input.existing };
+    let sessionIntent = this.intentRepo.load(input.sessionId);
 
     for (const exploration of input.explorations) {
       if (exploration.status !== 'complete' || exploration.nodes.length === 0) continue;
       const id = makeSessionScopedId(input.sessionId, exploration.id);
-      if (input.existing[id] || this.pending.has(id)) continue;
+      if (accumulated[id]?.status === 'ready' || this.pending.has(id)) continue;
 
       this.pending.add(id);
-      const history = buildHistoryContext(input.explorations, exploration.id, input.existing);
       this.stats.queued += 1;
-      tasks.push(async () => {
-        this.stats.queued = Math.max(0, this.stats.queued - 1);
-        this.stats.active += 1;
-        this.stats.maxConcurrentObserved = Math.max(this.stats.maxConcurrentObserved, this.stats.active);
-        const startedAt = Date.now();
-        try {
-          const payload = await this.generateWithRetry(
-            exploration.question,
-            exploration.nodes,
-            history,
-            input.summaryModel || undefined,
-          );
-          const hasValidationError = 'validationError' in payload && payload.validationError;
-          const item: SummaryItem = {
-            id,
-            sessionId: input.sessionId,
+      const history = buildHistoryContext(
+        input.sessionId,
+        input.explorations,
+        exploration.id,
+        accumulated,
+      );
+      this.stats.queued = Math.max(0, this.stats.queued - 1);
+      this.stats.active += 1;
+      this.stats.maxConcurrentObserved = Math.max(this.stats.maxConcurrentObserved, this.stats.active);
+      const startedAt = Date.now();
+      try {
+        const payload = await this.generateWithRetry(
+          exploration.question,
+          exploration.nodes,
+          history,
+          input.summaryModel || undefined,
+          sessionIntent,
+        );
+        const finalized = finalizeExplorationSummaryItem({
+          question: exploration.question,
+          nodes: exploration.nodes,
+          payload,
+        });
+        const item: SummaryItem = {
+          id,
+          sessionId: input.sessionId,
+          explorationId: exploration.id,
+          text: finalized.text,
+          source: finalized.source,
+          status: finalized.status,
+          persistMeta: finalized.persistMeta,
+          flowchart: finalized.flowchart,
+          reason: finalized.reason,
+        };
+        generated[id] = item;
+        accumulated[id] = item;
+        this.stats.completed += 1;
+        this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
+        if (item.flowchart) {
+          sessionIntent = mergeIntentTitleState(sessionIntent, input.sessionId, {
             explorationId: exploration.id,
-            text: payload.displaySummary,
-            source: hasValidationError ? 'fallback' : 'ai',
-            status: 'ready',
-            persistMeta: payload.persist,
-            flowchart: payload.flowchart,
-            reason: hasValidationError ? `structured_output_${payload.validationError}` : undefined,
-          };
-          generated[id] = item;
-          this.stats.completed += 1;
-          this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
-        } catch (error) {
-          const errorReason = error instanceof Error ? error.message : 'ai_generation_failed';
-          const item: SummaryItem = {
-            id,
-            sessionId: input.sessionId,
-            explorationId: exploration.id,
-            text: '（摘要生成失败）',
-            source: 'fallback',
-            status: 'failed',
-            persistMeta: null,
-            flowchart: undefined,
-            reason: errorReason,
-          };
-          generated[id] = item;
-          this.stats.failed += 1;
-          this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
-        } finally {
-          const durationMs = Date.now() - startedAt;
-          const totalRuns = this.stats.completed + this.stats.failed;
-          this.stats.avgDurationMs = totalRuns <= 1
-            ? durationMs
-            : Math.round(((this.stats.avgDurationMs * (totalRuns - 1)) + durationMs) / totalRuns);
-          this.stats.active = Math.max(0, this.stats.active - 1);
-          this.pending.delete(id);
+            hint: item.flowchart,
+          });
+          this.intentRepo.save(sessionIntent);
         }
-      });
+        this.persistSessionFlow(input, accumulated);
+      } catch (error) {
+        const errorReason = error instanceof Error ? error.message : 'ai_generation_failed';
+        const finalized = finalizeSummaryFromTimelineOnly({
+          question: exploration.question,
+          nodes: exploration.nodes,
+          errorReason,
+        });
+        const item: SummaryItem = {
+          id,
+          sessionId: input.sessionId,
+          explorationId: exploration.id,
+          text: finalized.text,
+          source: finalized.source,
+          status: finalized.status,
+          persistMeta: finalized.persistMeta,
+          flowchart: undefined,
+          reason: finalized.reason,
+        };
+        generated[id] = item;
+        accumulated[id] = item;
+        this.stats.completed += 1;
+        this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
+        this.persistSessionFlow(input, accumulated);
+      } finally {
+        const durationMs = Date.now() - startedAt;
+        const totalRuns = this.stats.completed + this.stats.failed;
+        this.stats.avgDurationMs = totalRuns <= 1
+          ? durationMs
+          : Math.round(((this.stats.avgDurationMs * (totalRuns - 1)) + durationMs) / totalRuns);
+        this.stats.active = Math.max(0, this.stats.active - 1);
+        this.pending.delete(id);
+      }
     }
 
-    await runTasksWithLimit(tasks, this.maxConcurrency);
     this.stats.queued = 0;
     return generated;
   }
@@ -234,11 +295,12 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     nodes: Exploration['nodes'],
     history: Array<{ question: string; summary?: string; toolCount: number; errorCount: number; status: 'complete' | 'interrupted' }>,
     model?: string,
+    sessionIntent?: SessionIntentState | null,
   ): Promise<Awaited<ReturnType<typeof generateExplorationSummaryAI>>> {
     let lastError: unknown = null;
     for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
       try {
-        return await this.generateSummary(question, nodes, history, model);
+        return await this.generateSummary(question, nodes, history, model, sessionIntent);
       } catch (error) {
         lastError = error;
         if (attempt < this.maxAttempts) {
@@ -248,9 +310,34 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     }
     throw lastError instanceof Error ? lastError : new Error('ai_generation_failed');
   }
+
+  private persistSessionFlow(
+    input: {
+      sessionId: string;
+      explorations: Exploration[];
+      jsonlPath: string;
+    },
+    accumulated: Record<SessionScopedId, SummaryItem>,
+  ): void {
+    if (!input.sessionId || !input.jsonlPath) return;
+    const mtime = jsonlMtimeMs(input.jsonlPath);
+    if (mtime <= 0) return;
+    try {
+      this.sessionFlowStore.persist({
+        sessionId: input.sessionId,
+        jsonlMtime: mtime,
+        explorations: input.explorations,
+        summaries: toExplorationSummaryTextMap(accumulated),
+        flowchartHints: toExplorationFlowchartHintMap(accumulated),
+      });
+    } catch {
+      // Non-fatal: observer can rebuild from summaries on next load.
+    }
+  }
 }
 
 function buildHistoryContext(
+  sessionId: string,
   explorations: Exploration[],
   currentId: string,
   summaries: Record<SessionScopedId, SummaryItem>,
@@ -259,32 +346,15 @@ function buildHistoryContext(
   return explorations
     .slice(Math.max(0, idx - 3), idx)
     .filter((item) => item.status === 'complete' || item.status === 'interrupted')
-    .map((item) => ({
-      question: item.question,
-      summary: Object.values(summaries).find((summary) => summary.explorationId === item.id)?.text,
-      toolCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'tool').length,
-      errorCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'error' || n.status === 'error').length,
-      status: item.status === 'interrupted' ? 'interrupted' : ('complete' as const),
-    }));
-}
-
-async function runTasksWithLimit(
-  tasks: Array<() => Promise<void>>,
-  limit: number,
-): Promise<void> {
-  if (tasks.length === 0) return;
-  const concurrency = Math.max(1, Math.min(limit, tasks.length));
-  let index = 0;
-  const workers: Array<Promise<void>> = [];
-  const runWorker = async () => {
-    while (index < tasks.length) {
-      const taskIndex = index;
-      index += 1;
-      await tasks[taskIndex]();
-    }
-  };
-  for (let i = 0; i < concurrency; i++) {
-    workers.push(runWorker());
-  }
-  await Promise.all(workers);
+    .map((item) => {
+      const scopedId = makeSessionScopedId(sessionId, item.id);
+      const prior = summaries[scopedId];
+      return {
+        question: item.question,
+        summary: prior?.status === 'ready' ? prior.text : undefined,
+        toolCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'tool').length,
+        errorCount: item.nodes.filter((n: Exploration['nodes'][number]) => n.type === 'error' || n.status === 'error').length,
+        status: item.status === 'interrupted' ? 'interrupted' : ('complete' as const),
+      };
+    });
 }

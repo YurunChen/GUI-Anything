@@ -11,13 +11,12 @@
 │  └── 生命周期: 由 Claude 管理，我们不修改                       │
 ├─────────────────────────────────────────────────────────────────┤
 │  Derived Layer (派生数据)                                       │
-│  ├── wiki/runtime/            ← AI Summary 缓存                 │
-│  ├── wiki/evidence/          ← 原始 exploration 数据            │
+│  ├── wiki/sessions/          ← 摘要、图、evidence（json）       │
 │  └── 生命周期: 临时/短期，可重建                               │
 ├─────────────────────────────────────────────────────────────────┤
 │  Knowledge Layer (知识层)                                       │
-│  ├── wiki/knowledge-base/    ← 有价值的知识条目                │
-│  └── wiki/daily-notes/       ← 灵感笔记                        │
+│  ├── wiki/knowledge/         ← 有价值的知识条目                │
+│  └── wiki/notes/             ← 灵感笔记                        │
 │  └── 生命周期: 长期，人工审核后保留                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -33,15 +32,15 @@
 
 | 数据类型 | 存储位置 | TTL | 重建成本 | 清理策略 |
 |---------|---------|-----|---------|---------|
-| AI Summary 缓存 | `wiki/runtime/{session}-summaries.json` | JSONL mtime 变化 | 低（重新调用AI） | 默认过期自动重建；`resume` 模式仅回放不重建 |
-| Evidence 数据 | `wiki/evidence/{session}.json` | 无/长期 | 中（需重新解析） | 孤儿检测后清理 |
+| AI Summary 缓存 | `wiki/sessions/{session}-summaries.json` | JSONL mtime 变化 | 低（重新调用AI） | 默认过期自动重建；`resume` 模式仅回放不重建 |
+| Evidence 数据 | `wiki/sessions/{session}-evidence.json` | 无/长期 | 中（需重新解析） | 孤儿检测后清理 |
 
 ### 2.3 Knowledge Layer (长期)
 
 | 数据类型 | 存储位置 | TTL | 更新策略 | 去重策略 |
 |---------|---------|-----|---------|---------|
-| 知识条目 | `wiki/knowledge-base/{type}/{id}-{slug}.md` | 永久 | 置信度更高时覆盖 | 相似度>0.8时合并 |
-| 灵感笔记 | `wiki/daily-notes/{date}.md` | 永久 | `FileNoteRepository` CRUD | 同日多条不合并 |
+| 知识条目 | `wiki/knowledge/{type}/{id}-{slug}.md` | 永久 | 置信度更高时覆盖 | 相似度>0.8时合并 |
+| 灵感笔记 | `wiki/notes/{date}.md` | 永久 | `FileNoteRepository` CRUD | 同日多条不合并 |
 
 ## 3. 分层数据访问接口
 
@@ -56,9 +55,9 @@ interface SessionRepository {
 }
 
 // 2. 派生缓存（实现分散，按职责拆分）
-// data/wiki/summary-repository.ts — SummaryRepository CRUD → wiki/runtime/{id}-summaries.json
-// data/session/graph-cache-repository.ts — GraphCacheRepository → wiki/runtime/{id}-graph.json
-// data/wiki/evidence-repository.ts — EvidenceRepository → wiki/evidence/{id}.json
+// data/wiki/summary-repository.ts — SummaryRepository CRUD → wiki/sessions/{id}-summaries.json
+// data/session/session-flow-repository.ts — SessionFlowRecord → wiki/sessions/{id}.json
+// data/wiki/evidence-repository.ts — EvidenceRepository → wiki/sessions/{id}-evidence.json
 
 // 3. KnowledgeRepository - 管理知识库
 interface KnowledgeRepository {
@@ -154,7 +153,7 @@ services/ (服务层)
   │   └── graph-cache-service.ts → graph-cache-repository.ts
   ├── ai/
   │   ├── exploration-summary-service.ts
-  │   └── summary-cache.ts → wiki/runtime/{id}-summaries.json
+  │   └── summary-cache.ts → wiki/sessions/{id}-summaries.json
   └── wiki/
       ├── persistence-service.ts → knowledge + evidence repositories
       ├── inspiration-note-service.ts → note-repository
@@ -168,13 +167,14 @@ data/ (数据层)
   │   ├── jsonl-session.ts (JSONL 解析 / exploration)
   │   ├── session-types.ts
   │   ├── repository.ts (FileSessionRepository)
-  │   ├── graph-cache-repository.ts (runtime 图快照)
+  │   ├── graph-cache-repository.ts (sessions 图快照)
   │   └── graph-patch-repository.ts (图合并补丁)
   ├── wiki/
+  │   ├── wiki-data-layout.ts (路径常量)
   │   ├── knowledge-repository.ts (知识库 CRUD)
   │   ├── evidence-repository.ts (evidence 聚合)
-  │   ├── note-repository.ts (daily-notes 灵感笔记)
-  │   └── summary-repository.ts (runtime 摘要缓存)
+  │   ├── note-repository.ts (notes 灵感笔记)
+  │   └── summary-repository.ts (sessions 摘要缓存)
   └── management/
       └── data-governance.ts (去重、清理、一致性检查)
 ```

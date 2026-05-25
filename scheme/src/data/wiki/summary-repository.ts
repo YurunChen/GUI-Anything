@@ -1,5 +1,5 @@
 /**
- * AI exploration summary cache — CRUD for wiki/runtime/{sessionId}-summaries.json
+ * AI exploration summary cache — CRUD for wiki/sessions/{sessionId}-summaries.json
  */
 
 import * as fs from 'node:fs';
@@ -13,6 +13,11 @@ import type {
 } from '../protocol/observer-protocol';
 import type { WikiPersistMeta } from '../protocol/wiki-types';
 import { resolveWikiRoot } from '../env';
+import {
+  ensureDir,
+  sessionSummariesPath,
+  wikiSessionsDir,
+} from './wiki-data-layout';
 
 export interface CachedSummary {
   text: string;
@@ -37,9 +42,15 @@ export interface CacheLoadResult {
   reason: string;
 }
 
+export type SummaryCacheExpiredPolicy = 'clear' | 'stale';
+
 export interface SummaryRepository {
   load(sessionId: SessionId, jsonlPath: string): SummaryCacheData | null;
-  loadWithStatus(sessionId: SessionId, jsonlPath: string): CacheLoadResult;
+  loadWithStatus(
+    sessionId: SessionId,
+    jsonlPath: string,
+    options?: { onExpired?: SummaryCacheExpiredPolicy },
+  ): CacheLoadResult;
   saveOne(
     sessionId: SessionId,
     jsonlPath: string,
@@ -75,26 +86,23 @@ export class FileSummaryRepository implements SummaryRepository {
     this.wikiRoot = options.wikiRoot ?? resolveWikiRoot();
   }
 
-  private runtimeDir(): string {
-    return path.join(this.wikiRoot, 'runtime');
-  }
-
   private cachePath(sessionId: SessionId): string {
-    return path.join(this.runtimeDir(), `${sessionId}-summaries.json`);
+    return sessionSummariesPath(sessionId, this.wikiRoot);
   }
 
-  private ensureRuntimeDir(): void {
-    const dir = this.runtimeDir();
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
+  private ensureSessionsDir(): void {
+    ensureDir(wikiSessionsDir(this.wikiRoot));
   }
 
   load(sessionId: SessionId, jsonlPath: string): SummaryCacheData | null {
     return this.loadWithStatus(sessionId, jsonlPath).data;
   }
 
-  loadWithStatus(sessionId: SessionId, jsonlPath: string): CacheLoadResult {
+  loadWithStatus(
+    sessionId: SessionId,
+    jsonlPath: string,
+    options?: { onExpired?: SummaryCacheExpiredPolicy },
+  ): CacheLoadResult {
     const cachePath = this.cachePath(sessionId);
 
     if (!fs.existsSync(cachePath)) {
@@ -116,6 +124,13 @@ export class FileSummaryRepository implements SummaryRepository {
       }
 
       if (cache.jsonlMtime < currentJsonlMtime) {
+        if (options?.onExpired === 'stale') {
+          return {
+            status: 'stale',
+            data: cache,
+            reason: 'jsonl_modified_since_cache',
+          };
+        }
         this.clear(sessionId);
         return { status: 'expired', data: null, reason: 'jsonl_modified_since_cache' };
       }
@@ -141,7 +156,7 @@ export class FileSummaryRepository implements SummaryRepository {
     explorationId: ExplorationId,
     summary: SummaryItem,
   ): void {
-    this.ensureRuntimeDir();
+    this.ensureSessionsDir();
 
     const cachePath = this.cachePath(sessionId);
     const jsonlMtime = fs.existsSync(jsonlPath) ? fs.statSync(jsonlPath).mtimeMs : Date.now();
@@ -178,7 +193,7 @@ export class FileSummaryRepository implements SummaryRepository {
     jsonlPath: string,
     summaries: Record<ExplorationId, SummaryItem>,
   ): void {
-    this.ensureRuntimeDir();
+    this.ensureSessionsDir();
 
     const jsonlMtime = fs.existsSync(jsonlPath) ? fs.statSync(jsonlPath).mtimeMs : Date.now();
     const cache: SummaryCacheData = {
@@ -231,7 +246,7 @@ export class FileSummaryRepository implements SummaryRepository {
   }
 
   clearAll(): void {
-    const dir = this.runtimeDir();
+    const dir = wikiSessionsDir(this.wikiRoot);
     if (!fs.existsSync(dir)) return;
 
     for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {

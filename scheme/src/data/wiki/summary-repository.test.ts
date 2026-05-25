@@ -17,7 +17,7 @@ describe('FileSummaryRepository', () => {
   beforeEach(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'summary-repo-test-'));
     wikiRoot = path.join(tempDir, 'wiki');
-    fs.mkdirSync(path.join(wikiRoot, 'runtime'), { recursive: true });
+    fs.mkdirSync(path.join(wikiRoot, 'sessions'), { recursive: true });
     jsonlPath = path.join(tempDir, 'test-session.jsonl');
     fs.writeFileSync(jsonlPath, 'test content');
     repo = new FileSummaryRepository({ wikiRoot });
@@ -51,7 +51,27 @@ describe('FileSummaryRepository', () => {
     expect(cache?.summaries[explorationId].text).toBe('Test summary');
   });
 
-  it('expires when jsonl mtime advances', () => {
+  it('returns stale data when jsonl mtime advances and onExpired is stale', () => {
+    const sessionId = 'test-session';
+    repo.saveOne(sessionId, jsonlPath, 'exp_1', {
+      id: `${sessionId}:exp_1`,
+      sessionId,
+      explorationId: 'exp_1',
+      text: 'Test summary',
+      source: 'ai',
+      status: 'ready',
+      persistMeta: null,
+    });
+
+    fs.utimesSync(jsonlPath, Date.now() / 1000 + 10, Date.now() / 1000 + 10);
+    const stale = repo.loadWithStatus(sessionId, jsonlPath, { onExpired: 'stale' });
+    expect(stale.status).toBe('stale');
+    expect(stale.data?.summaries.exp_1.text).toBe('Test summary');
+    const reload = repo.loadWithStatus(sessionId, jsonlPath, { onExpired: 'stale' });
+    expect(reload.data?.summaries.exp_1.text).toBe('Test summary');
+  });
+
+  it('expires when jsonl mtime advances with default clear policy', () => {
     const sessionId = 'test-session';
     repo.saveOne(sessionId, jsonlPath, 'exp_1', {
       id: `${sessionId}:exp_1`,
@@ -114,7 +134,7 @@ describe('FileSummaryRepository', () => {
     expect(repo.load(sessionId, jsonlPath)).toBeNull();
   });
 
-  it('writes under wiki/runtime', () => {
+  it('writes under wiki/sessions', () => {
     const sessionId = 'runtime-session';
     repo.saveOne(sessionId, jsonlPath, 'exp_1', {
       id: `${sessionId}:exp_1`,
@@ -125,7 +145,7 @@ describe('FileSummaryRepository', () => {
       status: 'ready',
       persistMeta: null,
     });
-    const cachePath = path.join(wikiRoot, 'runtime', `${sessionId}-summaries.json`);
+    const cachePath = path.join(wikiRoot, 'sessions', `${sessionId}-summaries.json`);
     expect(fs.existsSync(cachePath)).toBe(true);
   });
 });

@@ -17,7 +17,7 @@ export type SessionScopedId = `${SessionId}:${ExplorationId}`;
 
 export type { ActivityTree, Exploration, ExplorationNode, SessionStats };
 export type { WikiExtractionResult, WikiMatch, WikiPersistMeta };
-/** User inspiration notes stored under wiki/daily-notes/ */
+/** User inspiration notes stored under wiki/notes/ */
 export type InspirationRecord = DailyNoteRecord;
 
 export interface ObserverSessionSnapshot {
@@ -32,11 +32,11 @@ export interface ObserverSessionSnapshot {
   updatedAt: number;
 }
 
-export type SummarySource = 'cache' | 'wiki' | 'ai' | 'fallback';
+export type SummarySource = 'cache' | 'wiki' | 'ai' | 'fallback' | 'excerpt';
 export type SummaryStatus = 'ready' | 'pending' | 'failed';
 
 /** Cache load status for provenance tracking */
-export type CacheLoadStatus = 'hit' | 'miss' | 'expired' | 'corrupted';
+export type CacheLoadStatus = 'hit' | 'miss' | 'expired' | 'stale' | 'corrupted';
 
 export interface ExplorationSummaryRecord {
   sessionId: SessionId;
@@ -69,6 +69,9 @@ export interface SummaryItem {
 export type FlowchartBranchType = 'trunk' | 'parallel' | 'repair' | 'merge';
 export type FlowchartImportance = 'high' | 'medium' | 'low';
 
+/** How this round changed the session intent title (flowchart.node_title). */
+export type TitleDelta = 'idle' | 'continue' | 'refine' | 'pivot' | 'blocked' | 'done';
+
 export interface FlowchartHint {
   nodeId: string;
   nodeTitle: string;
@@ -77,9 +80,48 @@ export interface FlowchartHint {
   importance: FlowchartImportance;
   dropFromChart: boolean;
   intentKey: string;
+  titleDelta?: TitleDelta;
+  titleDeltaNote?: string;
 }
 
-export type PersistResultStatus = 'saved' | 'skipped' | 'failed';
+export interface IntentTitleRevision {
+  explorationId: ExplorationId;
+  at: number;
+  intentKey: string;
+  nodeTitle: string;
+  titleDelta: TitleDelta;
+  titleDeltaNote?: string;
+}
+
+export interface SessionIntentState {
+  sessionId: SessionId;
+  revision: number;
+  intentKey: string;
+  nodeTitle: string;
+  parentIntentKey: string | null;
+  phase: 'idle' | 'active' | 'blocked' | 'done';
+  history: IntentTitleRevision[];
+  updatedAt: number;
+}
+
+/** Per-intent exploration bucket for wiki curation — wiki/sessions/{id}-intent-buckets.json */
+export interface IntentBucket {
+  intentKey: string;
+  nodeTitle: string;
+  explorationIds: ExplorationId[];
+  curatedAt?: number;
+  anchorExplorationId?: ExplorationId;
+  persistResult?: PersistResult;
+}
+
+export interface IntentBucketLedger {
+  sessionId: SessionId;
+  openIntentKey: string;
+  buckets: Record<string, IntentBucket>;
+  updatedAt: number;
+}
+
+export type PersistResultStatus = 'saved' | 'updated' | 'skipped' | 'failed';
 export type PersistSkipReason =
   | 'model_opt_out'
   | 'low_value'
@@ -106,12 +148,14 @@ export type FlowGraphEdgeKind = 'trunk' | 'fork_repair' | 'fork_alternative' | '
 export interface FlowGraphMetaBadges {
   tools: number;
   errors: number;
-  wiki: 'saved' | 'skipped' | 'failed' | 'pending' | 'none';
+  wiki: 'saved' | 'updated' | 'skipped' | 'failed' | 'pending' | 'none';
 }
 
 export interface FlowGraphNode {
   id: SessionScopedId;
   explorationId: ExplorationId;
+  /** Session intent_key (normalized catalog key) */
+  intentKey: string;
   label: string;
   status: FlowGraphNodeStatus;
   startedAt: number;
@@ -131,6 +175,29 @@ export interface FlowGraphSnapshot {
   edges: FlowGraphEdge[];
   focusNodeId?: SessionScopedId;
   updatedAt: number;
+}
+
+/** Canonical session derived state — wiki/sessions/{sessionId}.json */
+export const SESSION_FLOW_RECORD_VERSION = 1 as const;
+
+export interface SessionFlowRecord {
+  version: typeof SESSION_FLOW_RECORD_VERSION;
+  sessionId: SessionId;
+  jsonlMtime: number;
+  fingerprint: string;
+  revision: number;
+  updatedAt: number;
+  flowGraph: FlowGraphSnapshot;
+  flowchartHints: Record<ExplorationId, FlowchartHint>;
+}
+
+/** @deprecated Use SessionFlowRecord; kept for legacy -graph.json migration. */
+export interface GraphCacheRecord {
+  sessionId: SessionId;
+  jsonlMtime: number;
+  savedAt: number;
+  fingerprint: string;
+  snapshot: FlowGraphSnapshot;
 }
 
 export type GraphPatchOp = 'merge_intents' | 'rename_intent' | 'reparent_intent' | 'drop_intent';

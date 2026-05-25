@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import type { FlowGraphSnapshot, SessionId } from '../../data/protocol/observer-protocol';
+import type { FlowGraphSnapshot, SessionFlowRecord, SessionId } from '../../data/protocol/observer-protocol';
 import {
   DefaultGraphCacheService,
   buildGraphInputFingerprint,
@@ -17,6 +17,7 @@ function makeSnapshot(sessionId: string): FlowGraphSnapshot {
         endedAt: 2,
         summaryPreview: 's1',
         metaBadges: { tools: 1, errors: 0, wiki: 'none' },
+        intentKey: 'general',
       },
     ],
     edges: [],
@@ -25,26 +26,14 @@ function makeSnapshot(sessionId: string): FlowGraphSnapshot {
   };
 }
 
-class InMemoryGraphCacheRepository {
-  private data = new Map<SessionId, {
-    sessionId: SessionId;
-    jsonlMtime: number;
-    savedAt: number;
-    fingerprint: string;
-    snapshot: FlowGraphSnapshot;
-  }>();
+class InMemorySessionFlowRepository {
+  private data = new Map<SessionId, SessionFlowRecord>();
 
   load(sessionId: SessionId) {
     return this.data.get(sessionId) ?? null;
   }
 
-  save(record: {
-    sessionId: SessionId;
-    jsonlMtime: number;
-    savedAt: number;
-    fingerprint: string;
-    snapshot: FlowGraphSnapshot;
-  }) {
+  save(record: SessionFlowRecord) {
     this.data.set(record.sessionId, record);
   }
 
@@ -54,25 +43,27 @@ class InMemoryGraphCacheRepository {
 }
 
 describe('graph cache service', () => {
-  it('returns miss when cache not found', () => {
-    const service = new DefaultGraphCacheService(new InMemoryGraphCacheRepository());
+  it('returns miss when session record not found', () => {
+    const service = new DefaultGraphCacheService(new InMemorySessionFlowRepository());
     const result = service.loadGraphSnapshotWithStatus({
       sessionId: 's1',
       jsonlMtime: 1,
       fingerprint: 'fp',
     });
     expect(result.status).toBe('miss');
+    expect(result.reason).toBe('session_record_not_found');
   });
 
   it('returns hit when session/mtime/fingerprint all match', () => {
-    const repository = new InMemoryGraphCacheRepository();
+    const repository = new InMemorySessionFlowRepository();
     const service = new DefaultGraphCacheService(repository);
     const snapshot = makeSnapshot('s2');
-    service.saveGraphSnapshot({
+    service.saveSessionFlow({
       sessionId: 's2',
       jsonlMtime: 20,
       fingerprint: 'fp2',
       snapshot,
+      flowchartHints: { exp_1: { nodeId: 'n1', nodeTitle: 'T', parentId: null, branchType: 'trunk', importance: 'medium', dropFromChart: false, intentKey: 'n1' } },
     });
 
     const result = service.loadGraphSnapshotWithStatus({
@@ -82,10 +73,12 @@ describe('graph cache service', () => {
     });
     expect(result.status).toBe('hit');
     expect(result.snapshot).toEqual(snapshot);
+    expect(result.flowchartHints?.exp_1?.nodeTitle).toBe('T');
+    expect(result.revision).toBe(1);
   });
 
   it('returns stale when mtime differs', () => {
-    const service = new DefaultGraphCacheService(new InMemoryGraphCacheRepository());
+    const service = new DefaultGraphCacheService(new InMemorySessionFlowRepository());
     service.saveGraphSnapshot({
       sessionId: 's3',
       jsonlMtime: 100,
@@ -102,7 +95,7 @@ describe('graph cache service', () => {
   });
 
   it('returns stale when fingerprint differs', () => {
-    const service = new DefaultGraphCacheService(new InMemoryGraphCacheRepository());
+    const service = new DefaultGraphCacheService(new InMemorySessionFlowRepository());
     service.saveGraphSnapshot({
       sessionId: 's4',
       jsonlMtime: 100,

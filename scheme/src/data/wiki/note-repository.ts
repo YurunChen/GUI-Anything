@@ -1,11 +1,17 @@
 /**
- * Daily note repository — CRUD for wiki/daily-notes/{YYYY-MM-DD}.md
+ * Daily note repository — CRUD for wiki/notes/{YYYY-MM-DD}.md
  * Append-only file format; update/delete rewrite the daily file.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { resolveWikiRoot } from '../env';
+import { allocateSequentialId } from './id-allocation';
+import {
+  ensureDir,
+  notesDailyFilePath,
+  wikiNotesDir,
+} from './wiki-data-layout';
 
 export interface DailyNoteRecord {
   id: string;
@@ -39,19 +45,14 @@ export interface NoteRepository {
   delete(id: string): boolean;
 }
 
-const NOTE_BASE_DIR = 'daily-notes';
 const NOTE_ID_PREFIX = 'N';
 
 export interface NoteRepositoryOptions {
   wikiRoot?: string;
 }
 
-function noteDir(wikiRoot: string): string {
-  return path.join(wikiRoot, NOTE_BASE_DIR);
-}
-
 function dailyFilePath(wikiRoot: string, dateKey: string): string {
-  return path.join(noteDir(wikiRoot), `${dateKey}.md`);
+  return notesDailyFilePath(dateKey, wikiRoot);
 }
 
 function todayDateKey(): string {
@@ -101,15 +102,12 @@ ${content}
 }
 
 function collectNoteIds(wikiRoot: string): string[] {
-  const dir = noteDir(wikiRoot);
-  if (!fs.existsSync(dir)) return [];
-
   const ids: string[] = [];
-  const files = fs.readdirSync(dir).filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
-  for (const fileName of files) {
+  for (const fileName of listDailyFiles(wikiRoot)) {
     let text = '';
     try {
-      text = fs.readFileSync(path.join(dir, fileName), 'utf-8');
+      const fullPath = dailyFilePath(wikiRoot, fileName.replace(/\.md$/, ''));
+      text = fs.readFileSync(fullPath, 'utf-8');
     } catch {
       continue;
     }
@@ -123,13 +121,7 @@ function collectNoteIds(wikiRoot: string): string[] {
 
 function generateNoteId(wikiRoot: string): string {
   const existingIds = collectNoteIds(wikiRoot);
-  let num = 1;
-  for (const id of existingIds) {
-    if (!id.startsWith(NOTE_ID_PREFIX)) continue;
-    const n = parseInt(id.slice(1), 10);
-    if (!Number.isNaN(n) && n >= num) num = n + 1;
-  }
-  return `${NOTE_ID_PREFIX}${String(num).padStart(3, '0')}`;
+  return allocateSequentialId(NOTE_ID_PREFIX, existingIds);
 }
 
 function parseEntriesFromFile(fullPath: string, dateKey: string): DailyNoteRecord[] {
@@ -179,7 +171,7 @@ function parseEntriesFromFile(fullPath: string, dateKey: string): DailyNoteRecor
 }
 
 function listDailyFiles(wikiRoot: string): string[] {
-  const dir = noteDir(wikiRoot);
+  const dir = wikiNotesDir(wikiRoot);
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
@@ -192,7 +184,7 @@ function rewriteDailyFile(
   dateKey: string,
   entries: DailyNoteRecord[],
 ): boolean {
-  const dir = noteDir(wikiRoot);
+  const dir = wikiNotesDir(wikiRoot);
   const filePath = dailyFilePath(wikiRoot, dateKey);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -241,7 +233,8 @@ export class FileNoteRepository implements NoteRepository {
     const now = new Date();
     const dateKey = todayDateKey();
     const sessionId = input.sessionId?.trim() || process.env.FLOW_SESSION_ID || 'unknown';
-    const dir = noteDir(this.wikiRoot);
+    ensureDir(wikiNotesDir(this.wikiRoot));
+    const dir = wikiNotesDir(this.wikiRoot);
     const filePath = dailyFilePath(this.wikiRoot, dateKey);
 
     if (!fs.existsSync(dir)) {
@@ -266,7 +259,7 @@ export class FileNoteRepository implements NoteRepository {
 
     for (const fileName of listDailyFiles(this.wikiRoot)) {
       const dateKey = fileName.replace(/\.md$/, '');
-      const fullPath = path.join(noteDir(this.wikiRoot), fileName);
+      const fullPath = path.join(wikiNotesDir(this.wikiRoot), fileName);
       const entries = parseEntriesFromFile(fullPath, dateKey);
       const hit = entries.find((entry) => entry.id === needle);
       if (hit) return hit;
@@ -279,7 +272,7 @@ export class FileNoteRepository implements NoteRepository {
     for (const fileName of listDailyFiles(this.wikiRoot)) {
       if (output.length >= limit) break;
       const dateKey = fileName.replace(/\.md$/, '');
-      const fullPath = path.join(noteDir(this.wikiRoot), fileName);
+      const fullPath = path.join(wikiNotesDir(this.wikiRoot), fileName);
       const entries = parseEntriesFromFile(fullPath, dateKey);
       entries.reverse();
       for (const entry of entries) {

@@ -4,7 +4,7 @@ export interface GraphFingerprintInput {
   explorations: Exploration[];
   summaries: Record<string, string>;
   flowchartHints?: Record<string, FlowchartHint>;
-  wikiPersistStatus?: Record<string, 'saved' | 'skipped' | 'failed' | 'pending'>;
+  wikiPersistStatus?: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
 }
 
 export function buildGraphFingerprint(input: GraphFingerprintInput): string {
