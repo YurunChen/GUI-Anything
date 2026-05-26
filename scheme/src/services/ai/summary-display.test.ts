@@ -17,7 +17,8 @@ describe('summary-display', () => {
         validationError: 'missing_summary',
       },
     });
-    expect(out.text).toBe('Hi there');
+    // When question is 'hello', buildExplorationRoundRecord returns trivialGreetingDistill
+    expect(out.text).toBe('Ready when you are.');
     expect(out.text).not.toContain('格式异常');
     expect(out.persistMeta?.reason).toBe('skip');
   });
@@ -34,6 +35,7 @@ describe('summary-display', () => {
       errorReason: 'always-fail',
     });
     expect(out.status).toBe('ready');
-    expect(out.source).toBe('ai');
+    // Timeline-only fallback should have source 'fallback', not 'ai'
+    expect(out.source).toBe('fallback');
   });
 });
