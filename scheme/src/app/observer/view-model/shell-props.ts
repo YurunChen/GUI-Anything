@@ -6,7 +6,7 @@ import type {
   SessionScopedId,
   SummaryItem,
 } from '../../../data/protocol/observer-protocol';
-import type { SessionPresentationMode } from '../../../services/session/session-presentation-policy';
+import type { SessionPresentationMode } from '../../../services/session/session-runtime-policy';
 import type { ObserverStatusBarViewProps } from './shell-chrome.types';
 import { buildLiveIntentChrome } from './intent-chrome';
 import { buildSessionArc } from './session-arc';
@@ -22,7 +22,6 @@ export interface ShellChromeInput {
   notifyStatus?: string;
   themeNotification?: string;
   pendingSummaryCount: number;
-  directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
   explorationSummaries: Record<string, string>;
   explorationPersistStatus: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
   explorationPersistResults?: Record<string, PersistResult>;

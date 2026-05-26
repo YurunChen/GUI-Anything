@@ -1,10 +1,9 @@
+import * as path from 'node:path';
 import type { GraphPatch, SessionId } from '../protocol/observer-protocol';
 import {
-  ensureDir,
-  sessionGraphPatchesPath,
-  wikiSessionsDir,
-} from '../wiki/wiki-data-layout';
-import { deleteJsonFile, readJsonFile, writeJsonFile } from './json-io';
+  defaultSessionBundleRepository,
+  type SessionBundleRepository,
+} from '../wiki/session-bundle-repository';
 
 export interface GraphPatchLedger {
   sessionId: SessionId;
@@ -18,31 +17,30 @@ export interface GraphPatchRepository {
   clear(sessionId: SessionId): void;
 }
 
-function getLedgerPath(sessionId: SessionId): string {
-  return sessionGraphPatchesPath(sessionId);
-}
+export class BundleGraphPatchRepository implements GraphPatchRepository {
+  constructor(private readonly bundleRepo: SessionBundleRepository = defaultSessionBundleRepository()) {}
 
-function ensureSessionsDir(): void {
-  ensureDir(wikiSessionsDir());
-}
-
-export class FileGraphPatchRepository implements GraphPatchRepository {
   load(sessionId: SessionId): GraphPatchLedger | null {
-    const result = readJsonFile<GraphPatchLedger>(getLedgerPath(sessionId));
-    if (result === null) return null;
-    if (result === Symbol.for('corrupted') as unknown as GraphPatchLedger) {
-      deleteJsonFile(getLedgerPath(sessionId));
-      return null;
-    }
-    return result;
+    const bundle = this.bundleRepo.load(sessionId);
+    if (!bundle) return null;
+    return {
+      sessionId,
+      updatedAt: bundle.meta.updatedAt,
+      patches: bundle.session.flow.graphPatchLedger ?? [],
+    };
   }
 
   save(sessionId: SessionId, ledger: GraphPatchLedger): void {
-    ensureSessionsDir();
-    writeJsonFile(getLedgerPath(sessionId), ledger);
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      bundle.session.flow.graphPatchLedger = ledger.patches;
+    });
   }
 
   clear(sessionId: SessionId): void {
-    deleteJsonFile(getLedgerPath(sessionId));
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      bundle.session.flow.graphPatchLedger = [];
+    });
   }
 }
+
+export class FileGraphPatchRepository extends BundleGraphPatchRepository {}

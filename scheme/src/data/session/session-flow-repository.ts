@@ -5,88 +5,60 @@ import type {
 } from '../protocol/observer-protocol';
 import { SESSION_FLOW_RECORD_VERSION } from '../protocol/observer-protocol';
 import {
-  ensureDir,
-  sessionGraphCachePath,
-  sessionRecordPath,
-  wikiSessionsDir,
-} from '../wiki/wiki-data-layout';
-import { deleteJsonFile, readJsonFile, writeJsonFile } from './json-io';
+  defaultSessionBundleRepository,
+  type SessionBundleRepository,
+} from '../wiki/session-bundle-repository';
 
 export interface SessionFlowRepository {
   load(sessionId: SessionId): SessionFlowRecord | null;
-  save(record: SessionFlowRecord): void;
+  save(record: SessionFlowRecord, jsonlPath?: string): void;
   clear(sessionId: SessionId): void;
 }
 
-function ensureSessionsDir(): void {
-  ensureDir(wikiSessionsDir());
-}
-
-function migrateLegacyGraphCache(legacy: GraphCacheRecord): SessionFlowRecord {
+function bundleToFlowRecord(sessionId: SessionId, bundle: NonNullable<ReturnType<SessionBundleRepository['load']>>): SessionFlowRecord {
   return {
     version: SESSION_FLOW_RECORD_VERSION,
-    sessionId: legacy.sessionId,
-    jsonlMtime: legacy.jsonlMtime,
-    fingerprint: legacy.fingerprint,
-    revision: 1,
-    updatedAt: legacy.savedAt || Date.now(),
-    flowGraph: legacy.snapshot,
-    flowchartHints: {},
+    sessionId,
+    jsonlMtime: bundle.meta.jsonlMtime,
+    fingerprint: bundle.session.flow.fingerprint,
+    revision: bundle.session.flow.revision,
+    updatedAt: bundle.meta.updatedAt,
+    flowGraph: bundle.session.flow.flowGraph,
+    flowchartHints: bundle.session.flow.flowchartHints,
+    workspaceRoot: bundle.meta.workspaceRoot,
   };
 }
 
-function normalizeLoadedRecord(raw: SessionFlowRecord | GraphCacheRecord): SessionFlowRecord | null {
-  if ('flowGraph' in raw && raw.flowGraph) {
-    const record = raw as SessionFlowRecord;
-    if (!record.version) {
-      record.version = SESSION_FLOW_RECORD_VERSION;
-    }
-    if (!record.flowchartHints) {
-      record.flowchartHints = {};
-    }
-    return record;
-  }
-  if ('snapshot' in raw && (raw as GraphCacheRecord).snapshot) {
-    return migrateLegacyGraphCache(raw as GraphCacheRecord);
-  }
-  return null;
-}
-
 export class FileSessionFlowRepository implements SessionFlowRepository {
-  load(sessionId: SessionId): SessionFlowRecord | null {
-    const primary = readJsonFile<SessionFlowRecord | GraphCacheRecord>(sessionRecordPath(sessionId));
-    if (primary && primary !== (Symbol.for('corrupted') as unknown as SessionFlowRecord)) {
-      const normalized = normalizeLoadedRecord(primary);
-      if (normalized) return normalized;
-    }
-    if (primary === (Symbol.for('corrupted') as unknown as SessionFlowRecord)) {
-      deleteJsonFile(sessionRecordPath(sessionId));
-    }
+  constructor(private readonly bundleRepo: SessionBundleRepository = defaultSessionBundleRepository()) {}
 
-    const legacyPath = sessionGraphCachePath(sessionId);
-    const legacy = readJsonFile<GraphCacheRecord>(legacyPath);
-    if (!legacy || legacy === (Symbol.for('corrupted') as unknown as GraphCacheRecord)) {
-      if (legacy === (Symbol.for('corrupted') as unknown as GraphCacheRecord)) {
-        deleteJsonFile(legacyPath);
-      }
-      return null;
-    }
-    const migrated = migrateLegacyGraphCache(legacy);
-    if (migrated.sessionId !== sessionId) {
-      return null;
-    }
-    this.save(migrated);
-    deleteJsonFile(legacyPath);
-    return migrated;
+  load(sessionId: SessionId): SessionFlowRecord | null {
+    const bundle = this.bundleRepo.load(sessionId);
+    if (!bundle) return null;
+    return bundleToFlowRecord(sessionId, bundle);
   }
 
-  save(record: SessionFlowRecord): void {
-    ensureSessionsDir();
-    writeJsonFile(sessionRecordPath(record.sessionId), record);
+  save(record: SessionFlowRecord, jsonlPath?: string): void {
+    this.bundleRepo.patch(record.sessionId, (bundle) => {
+      bundle.meta.jsonlMtime = record.jsonlMtime;
+      bundle.meta.workspaceRoot = record.workspaceRoot ?? bundle.meta.workspaceRoot;
+      bundle.meta.updatedAt = record.updatedAt;
+      bundle.session.flow = {
+        revision: record.revision,
+        fingerprint: record.fingerprint,
+        flowGraph: record.flowGraph,
+        flowchartHints: record.flowchartHints ?? {},
+        graphPatchLedger: bundle.session.flow.graphPatchLedger ?? [],
+      };
+    }, jsonlPath);
   }
 
   clear(sessionId: SessionId): void {
-    deleteJsonFile(sessionRecordPath(sessionId));
-    deleteJsonFile(sessionGraphCachePath(sessionId));
+    this.bundleRepo.clear(sessionId);
   }
 }
+
+/** @deprecated Use FileSessionFlowRepository */
+export class FileGraphCacheRepository extends FileSessionFlowRepository {}
+
+export type { GraphCacheRecord };

@@ -34,39 +34,32 @@ export function ensureDir(dir: string): void {
   }
 }
 
-export function sessionSummariesPath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-summaries.json`);
+/** wiki/sessions/_index.json — workspace registry + continue pointer */
+export function sessionIndexPath(wikiRoot?: string): string {
+  return path.join(wikiSessionsDir(wikiRoot), '_index.json');
 }
 
-export function sessionIntentPath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-intent.json`);
+/** wiki/sessions/{sessionId}/ */
+export function sessionDir(sessionId: string, wikiRoot?: string): string {
+  return path.join(wikiSessionsDir(wikiRoot), sessionId);
 }
 
-export function sessionIntentBucketsPath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-intent-buckets.json`);
+/** wiki/sessions/{sessionId}/bundle.json */
+export function sessionBundlePath(sessionId: string, wikiRoot?: string): string {
+  return path.join(sessionDir(sessionId, wikiRoot), 'bundle.json');
 }
 
-/** Session flow graph + flowchart hints (Plan A single source of truth). */
-export function sessionRecordPath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}.json`);
-}
-
-/** @deprecated Migrated into sessionRecordPath on load. */
-export function sessionGraphCachePath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-graph.json`);
-}
-
-/** @deprecated Alias for sessionRecordPath. */
-export function sessionGraphPath(sessionId: string, wikiRoot?: string): string {
-  return sessionRecordPath(sessionId, wikiRoot);
-}
-
-export function sessionGraphPatchesPath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-graph-patches.json`);
-}
-
-export function sessionEvidencePath(sessionId: string, wikiRoot?: string): string {
-  return path.join(wikiSessionsDir(wikiRoot), `${sessionId}-evidence.json`);
+/** List session ids that have a bundle.json on disk. */
+export function listSessionBundleIds(wikiRoot?: string): string[] {
+  const root = wikiSessionsDir(wikiRoot);
+  if (!fs.existsSync(root)) return [];
+  const ids: string[] = [];
+  for (const ent of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!ent.isDirectory() || ent.name.startsWith('_')) continue;
+    const bundle = path.join(root, ent.name, 'bundle.json');
+    if (fs.existsSync(bundle)) ids.push(ent.name);
+  }
+  return ids;
 }
 
 export function knowledgeTypeDir(

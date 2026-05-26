@@ -53,8 +53,8 @@ export function buildLiveFootnote(input: LiveFootnoteInput): LiveFootnoteView {
 
   if (input.isGenerating) {
     return {
-      statusBadge: m.summarizing,
-      statusTone: 'complete',
+      statusBadge: `${input.spinnerFrame} ${m.summarizing}`,
+      statusTone: 'running',
       toolCount: input.toolCount,
       errorCount: input.errorCount,
       toolSummary: input.toolSummary,
@@ -105,7 +105,7 @@ function compactStatusLabel(input: CompactLineInput): string {
     return `${input.spinnerFrame} ${m.active}`;
   }
   if (input.isGenerating) {
-    return m.summarizing;
+    return `${input.spinnerFrame} ${m.summarizing}`;
   }
   if (input.status === 'interrupted') {
     return m.interrupted;

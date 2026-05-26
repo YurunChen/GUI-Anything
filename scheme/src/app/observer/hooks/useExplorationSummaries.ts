@@ -1,51 +1,39 @@
 /**
- * useExplorationSummaries - application adapter for summary generation.
+ * useExplorationSummaries — hydrate bundle → derive runtime phase → generate gaps (live).
  */
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type {
   Exploration,
-  SessionIntentState,
   SessionScopedId,
   SummaryItem,
-  CacheLoadStatus,
 } from '../../../data/protocol/observer-protocol';
-import { defaultSessionIntentRepository } from '../../../data/wiki/session-intent-repository';
+import { makeSessionScopedId } from '../../../data/protocol/observer-protocol';
+import type { ExplorationId } from '../../../data/protocol/observer-protocol';
+import type { SessionBindingIntent } from '../../../services/session/session-binding-policy';
+import type { SessionRuntime } from '../../../services/session/session-runtime-policy';
 import {
-  DefaultExplorationSummaryService,
-  type CacheHydrateResult,
-} from '../../../services/ai/exploration-summary-service';
-import type { SessionPresentationPolicy } from '../../../services/session/session-presentation-policy';
+  buildGenerateTriggerKey,
+  getSummaryOrchestrator,
+  shouldGenerateMissingSummaries,
+} from '../../../services/ai/summary-orchestrator';
+import { createLogger } from '../../../utils/logger';
 import { applyExcerptFallback, applyLiveSummaryPreview } from '../view-model/presentation-summaries';
 import {
   toExplorationFlowchartHintMap,
   toExplorationPersistMetaMap,
   toExplorationSummaryTextMap,
 } from '../../../data/protocol/summary-contract';
+import { useSessionIntent } from './useSessionIntent';
+
+const log = createLogger('summary');
+const runtimeLog = createLogger('runtime');
 
 interface SummaryState {
   items: Record<SessionScopedId, SummaryItem>;
   pendingCount: number;
-  wikiHydratedSessionId: string;
-  cacheStatus: CacheLoadStatus | null;
-  cacheReason: string;
-}
-
-/** @deprecated Use SessionPresentationPolicy from session-presentation-policy.ts */
-export interface SummaryGenerationPolicy {
-  allowRegen: boolean;
-  preserveStaleCache?: boolean;
-  fillExcerptFallback?: boolean;
-}
-
-export function presentationToSummaryPolicy(
-  presentation: SessionPresentationPolicy,
-): SummaryGenerationPolicy {
-  return {
-    allowRegen: presentation.allowSummaryRegen,
-    preserveStaleCache: presentation.preserveStaleCache,
-    fillExcerptFallback: presentation.fillExcerptFallback,
-  };
+  summariesReadyKey: string;
+  bundleSummaryByExplorationId: Record<string, boolean>;
 }
 
 export function useExplorationSummaries(
@@ -53,16 +41,15 @@ export function useExplorationSummaries(
   sessionId: string,
   sessionPath: string,
   summaryModel: string | undefined,
-  presentation: SessionPresentationPolicy,
+  bindingIntent: SessionBindingIntent,
+  wikiBundleHasData: boolean,
+  sessionBound: boolean,
 ) {
-  const summaryPolicy = presentationToSummaryPolicy(presentation);
-
   const [state, setState] = useState<SummaryState>({
     items: {},
     pendingCount: 0,
-    wikiHydratedSessionId: '',
-    cacheStatus: null,
-    cacheReason: '',
+    summariesReadyKey: '',
+    bundleSummaryByExplorationId: {},
   });
 
   const summaryModelRef = useRef(summaryModel);
@@ -70,12 +57,14 @@ export function useExplorationSummaries(
 
   const itemsRef = useRef(state.items);
   itemsRef.current = state.items;
-  const summaryServiceRef = useRef<DefaultExplorationSummaryService | null>(null);
-  if (!summaryServiceRef.current) {
-    summaryServiceRef.current = new DefaultExplorationSummaryService();
-  }
-  const lastSessionRef = useRef<string>('');
+  const bundleSummaryRef = useRef(state.bundleSummaryByExplorationId);
+  bundleSummaryRef.current = state.bundleSummaryByExplorationId;
+
+  const orchestratorRef = useRef(getSummaryOrchestrator());
+  const lastSessionRef = useRef('');
+  const lastHydrateKeyRef = useRef('');
   const mountedRef = useRef(true);
+  const lastRuntimeKeyRef = useRef('');
 
   useEffect(() => {
     return () => {
@@ -85,115 +74,221 @@ export function useExplorationSummaries(
 
   useEffect(() => {
     const sid = (sessionId || '').trim();
-    if (sid === lastSessionRef.current) return;
-    lastSessionRef.current = sid;
-    summaryServiceRef.current!.resetSession(sid);
-    setState({
-      items: {},
-      pendingCount: 0,
-      wikiHydratedSessionId: '',
-      cacheStatus: null,
-      cacheReason: '',
-    });
+    const path = (sessionPath || '').trim();
+    const hydrateKey = sid && path ? `${sid}|${path}` : '';
 
-    if (sid && sessionPath) {
-      const cached = summaryServiceRef.current!.hydrateFromCache(sid, sessionPath, {
-        preserveStale: summaryPolicy.preserveStaleCache,
+    if (sid !== lastSessionRef.current) {
+      lastSessionRef.current = sid;
+      lastHydrateKeyRef.current = '';
+      const reset = orchestratorRef.current.resetSession(sid);
+      itemsRef.current = reset.items;
+      bundleSummaryRef.current = reset.bundleSummaryByExplorationId;
+      setState(reset);
+    }
+
+    if (!hydrateKey || hydrateKey === lastHydrateKeyRef.current) return;
+
+    let cancelled = false;
+    const orchestrator = orchestratorRef.current;
+
+    void (async () => {
+      log.debug('hydrate started', { sessionId: sid, sessionPath: path });
+      const hydrated = orchestrator.hydrate(sid, path);
+      if (cancelled) return;
+
+      lastHydrateKeyRef.current = hydrateKey;
+      log.info('bundle hydrated', {
+        sessionId: sid,
+        itemCount: Object.keys(hydrated.items).length,
       });
+      itemsRef.current = hydrated.items;
+      bundleSummaryRef.current = hydrated.bundleSummaryByExplorationId;
       setState((prev) => ({
         ...prev,
-        items: Object.keys(cached.items).length > 0
-          ? { ...prev.items, ...cached.items }
-          : prev.items,
-        cacheStatus: cached.cacheStatus,
-        cacheReason: cached.cacheReason,
+        items: hydrated.items,
+        summariesReadyKey: hydrated.summariesReadyKey,
+        bundleSummaryByExplorationId: hydrated.bundleSummaryByExplorationId,
       }));
-    }
-  }, [sessionId, sessionPath, summaryPolicy.preserveStaleCache]);
-
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    summaryServiceRef.current!
-      .hydrateFromWiki(sessionId)
-      .then((wikiItems) => {
-        if (cancelled) return;
-        setState((prev) => ({
-          ...prev,
-          items: Object.keys(wikiItems).length > 0
-            ? { ...prev.items, ...wikiItems }
-            : prev.items,
-          wikiHydratedSessionId: sessionId,
-        }));
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        console.error('[useExplorationSummaries] Hydrate error:', error);
-        setState((prev) => ({
-          ...prev,
-          wikiHydratedSessionId: sessionId,
-        }));
+    })().catch((error) => {
+      if (cancelled) return;
+      log.error('hydrate failed', {
+        sessionId: sid,
+        error: error instanceof Error ? error.message : String(error),
       });
+      lastHydrateKeyRef.current = hydrateKey;
+      setState((prev) => ({ ...prev, summariesReadyKey: hydrateKey }));
+    });
+
     return () => {
       cancelled = true;
     };
-  }, [sessionId]);
+  }, [sessionId, sessionPath]);
+
+  const runtime = useMemo((): SessionRuntime => {
+    return orchestratorRef.current.deriveRuntime({
+      intent: bindingIntent,
+      sessionId,
+      sessionBound,
+      explorations,
+      summaryItems: state.items,
+      wikiBundleHasData,
+    });
+  }, [
+    bindingIntent,
+    sessionId,
+    sessionBound,
+    explorations,
+    state.items,
+    wikiBundleHasData,
+  ]);
 
   useEffect(() => {
+    const sid = sessionId.trim();
+    if (!sid) return;
+    const runtimeKey = `${runtime.phase}:${runtime.visibility}:${runtime.hasMissingSummaries}:${bindingIntent.mode}`;
+    if (runtimeKey === lastRuntimeKeyRef.current) return;
+    lastRuntimeKeyRef.current = runtimeKey;
+    runtimeLog.info('runtime updated', {
+      sessionId: sid,
+      phase: runtime.phase,
+      visibility: runtime.visibility,
+      needSummary: runtime.hasMissingSummaries,
+      bindingMode: bindingIntent.mode,
+      bundleData: wikiBundleHasData,
+      explorations: explorations.length,
+    });
+  }, [
+    sessionId,
+    runtime.phase,
+    runtime.visibility,
+    runtime.hasMissingSummaries,
+    bindingIntent.mode,
+    wikiBundleHasData,
+    explorations.length,
+  ]);
+
+  const { presentation } = runtime;
+
+  const generateTriggerKey = useMemo(
+    () => buildGenerateTriggerKey(explorations),
+    [explorations],
+  );
+
+  useEffect(() => {
+    const orchestrator = orchestratorRef.current;
+    const service = orchestrator.service;
+
     if (!shouldGenerateMissingSummaries({
-      allowRegen: summaryPolicy.allowRegen,
+      allowRegen: presentation.allowSummaryRegen,
       sessionId,
-      wikiHydratedSessionId: state.wikiHydratedSessionId,
+      summariesReadyKey: state.summariesReadyKey,
       sessionPath,
     })) {
-      setState((prev) => ({
-        ...prev,
-        pendingCount: 0,
-      }));
+      setState((prev) => ({ ...prev, pendingCount: 0 }));
       return;
     }
-    const runSessionId = sessionId;
-    const service = summaryServiceRef.current!;
-    const pending = service.generateMissing({
+
+    const pendingInFlight = service.pendingCount();
+    if (pendingInFlight > 0) {
+      setState((prev) => (
+        prev.pendingCount === pendingInFlight ? prev : { ...prev, pendingCount: pendingInFlight }
+      ));
+      return;
+    }
+
+    if (!orchestrator.shouldRunGenerate({
+      allowRegen: presentation.allowSummaryRegen,
       sessionId,
+      summariesReadyKey: state.summariesReadyKey,
+      sessionPath,
       explorations,
-      jsonlPath: sessionPath,
-      existing: itemsRef.current,
-      summaryModel: summaryModelRef.current,
+      items: itemsRef.current,
+    })) {
+      setState((prev) => ({ ...prev, pendingCount: 0 }));
+      return;
+    }
+
+    log.info('generate started', {
+      sessionId,
+      explorations: explorations.length,
+      trigger: generateTriggerKey || 'none',
     });
+    const runSessionId = sessionId;
+    const runSessionPath = sessionPath;
+    const existingSnapshot = { ...itemsRef.current };
+    const priorFlags = { ...bundleSummaryRef.current };
+
     setState((prev) => ({
       ...prev,
       pendingCount: service.pendingCount(),
     }));
-    pending
-      .then((generatedItems) => {
+
+    void service.generateMissing({
+      sessionId,
+      explorations,
+      jsonlPath: sessionPath,
+      existing: existingSnapshot,
+      summaryModel: summaryModelRef.current,
+    })
+      .then(async (generatedItems) => {
         if (!mountedRef.current) return;
         if (runSessionId !== lastSessionRef.current) return;
+
+        const finished = await orchestrator.finishGenerate({
+          sessionId: runSessionId,
+          sessionPath: runSessionPath,
+          existing: existingSnapshot,
+          generatedItems,
+          priorBundleSummaryFlags: priorFlags,
+        });
+
+        itemsRef.current = finished.items;
+        bundleSummaryRef.current = finished.bundleSummaryByExplorationId;
+        log.info('generate finished', {
+          sessionId: runSessionId,
+          generated: Object.keys(generatedItems).length,
+          pending: finished.pendingCount,
+          items: Object.keys(finished.items).length,
+        });
         setState((prev) => ({
           ...prev,
-          items: Object.keys(generatedItems).length > 0
-            ? { ...prev.items, ...generatedItems }
-            : prev.items,
-          pendingCount: service.pendingCount(),
+          items: finished.items,
+          pendingCount: finished.pendingCount,
+          bundleSummaryByExplorationId: finished.bundleSummaryByExplorationId,
         }));
       })
       .catch((error) => {
         if (!mountedRef.current) return;
         if (runSessionId !== lastSessionRef.current) return;
-        console.error('[useExplorationSummaries] Generate error:', error);
+        log.error('generate missing summaries failed', {
+          sessionId: runSessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
         setState((prev) => ({
           ...prev,
-          pendingCount: summaryServiceRef.current!.pendingCount(),
+          pendingCount: orchestrator.service.pendingCount(),
         }));
       });
-  }, [explorations, sessionId, state.wikiHydratedSessionId, sessionPath, summaryPolicy.allowRegen]);
+  }, [
+    generateTriggerKey,
+    sessionId,
+    state.summariesReadyKey,
+    sessionPath,
+    presentation.allowSummaryRegen,
+    explorations,
+  ]);
 
   const displayItems = useMemo(() => {
     let items = state.items;
-    if (summaryPolicy.allowRegen) {
-      items = applyLiveSummaryPreview(sessionId, explorations, items);
+    if (presentation.allowSummaryRegen) {
+      items = applyLiveSummaryPreview(
+        sessionId,
+        explorations,
+        items,
+        state.bundleSummaryByExplorationId,
+      );
     }
-    if (summaryPolicy.fillExcerptFallback) {
+    if (presentation.fillExcerptFallback) {
       items = applyExcerptFallback(sessionId, explorations, items);
     }
     return items;
@@ -201,35 +296,36 @@ export function useExplorationSummaries(
     sessionId,
     explorations,
     state.items,
-    summaryPolicy.allowRegen,
-    summaryPolicy.fillExcerptFallback,
+    state.bundleSummaryByExplorationId,
+    presentation.allowSummaryRegen,
+    presentation.fillExcerptFallback,
   ]);
 
-  const sessionIntent = useMemo((): SessionIntentState | null => {
-    if (!sessionId.trim()) return null;
-    return defaultSessionIntentRepository.load(sessionId);
-  }, [sessionId, displayItems]);
+  const sessionIntent = useSessionIntent(sessionId, displayItems);
+
+  const pendingByExplorationId = useMemo((): Record<ExplorationId, boolean> => {
+    const service = orchestratorRef.current.service;
+    const sid = sessionId.trim();
+    if (!sid) return {};
+    const out: Record<ExplorationId, boolean> = {};
+    for (const exploration of explorations) {
+      const scopedId = makeSessionScopedId(sid, exploration.id);
+      out[exploration.id] = service.isExplorationPending(scopedId);
+    }
+    return out;
+  }, [sessionId, explorations, state.pendingCount]);
 
   return {
     summaries: toExplorationSummaryTextMap(displayItems),
     flowchartHints: toExplorationFlowchartHintMap(displayItems),
     persistMeta: toExplorationPersistMetaMap(displayItems),
     pendingCount: state.pendingCount,
-    cacheStatus: state.cacheStatus,
-    cacheReason: state.cacheReason,
+    pendingByExplorationId,
     summaryItems: displayItems,
     sessionIntent,
+    runtime,
   };
 }
 
-export function shouldGenerateMissingSummaries(input: {
-  allowRegen: boolean;
-  sessionId: string;
-  wikiHydratedSessionId: string;
-  sessionPath: string;
-}): boolean {
-  if (!input.allowRegen) return false;
-  if (!input.sessionId) return false;
-  if (!input.sessionPath) return false;
-  return input.wikiHydratedSessionId === input.sessionId;
-}
+export { buildGenerateTriggerKey, shouldGenerateMissingSummaries };
+export { hasMissingSummaries } from '../../../services/ai/summary-orchestrator';

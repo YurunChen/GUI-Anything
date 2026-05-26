@@ -1,18 +1,9 @@
 import { generateExplorationSummaryAI } from './flow-summaries';
 import { mergeIntentTitleState } from './intent-title-merge';
 import {
-  defaultSessionIntentRepository,
-  type SessionIntentRepository,
-} from '../../data/wiki/session-intent-repository';
-import {
   finalizeExplorationSummaryItem,
   finalizeSummaryFromTimelineOnly,
 } from './summary-display';
-import {
-  FileSummaryRepository,
-  type SummaryRepository,
-  type CacheLoadResult,
-} from '../../data/wiki/summary-repository';
 import {
   makeSessionScopedId,
   type Exploration,
@@ -20,28 +11,37 @@ import {
   type SessionScopedId,
   type SummaryItem,
 } from '../../data/protocol/observer-protocol';
-import { toExplorationFlowchartHintMap, toExplorationSummaryTextMap } from '../../data/protocol/summary-contract';
 import {
-  DefaultSessionFlowStore,
-  jsonlMtimeMs,
-  type SessionFlowStore,
-} from '../session/session-flow-store';
+  buildCardMetaFromExploration,
+  bundleToSummaryItems,
+  cardSummaryToSummaryItem,
+  ensureExplorationRecord,
+  summaryItemToCardSummary,
+} from '../../data/wiki/session-bundle-mappers';
+import { SUMMARY_REASON_FROM_SESSION_BUNDLE } from '../../data/protocol/summary-provenance';
 import {
-  KnowledgeRepository,
-  type KnowledgeEntry,
-} from '../../data/wiki/knowledge-repository';
+  type SessionBundleRepository,
+} from '../../data/wiki/session-bundle-repository';
+import type { BundleLoadResult } from '../../data/wiki/session-bundle-types';
+import { getSessionIndexService } from '../session/session-index-service';
+import { getSessionBundleRepository } from '../session/session-bundle-service';
+import { jsonlMtimeMs } from '../session/session-flow-store';
+import { createLogger } from '../../utils/logger';
+import {
+  ensureExplorationCardRetrieval,
+  isExplorationRetrievalResolved,
+} from '../session/exploration-card-pipeline';
+
+const log = createLogger('summary');
 
 export interface CacheHydrateResult {
   items: Record<SessionScopedId, SummaryItem>;
-  /** Cache load status for provenance display */
-  cacheStatus: CacheLoadResult['status'];
-  /** Human-readable cache state description */
+  cacheStatus: BundleLoadResult['status'];
   cacheReason: string;
 }
 
 export interface ExplorationSummaryService {
-  hydrateFromWiki(sessionId: string): Promise<Record<SessionScopedId, SummaryItem>>;
-  hydrateFromCache(sessionId: string, jsonlPath: string): CacheHydrateResult;
+  hydrateFromBundle(sessionId: string, jsonlPath: string): CacheHydrateResult;
   generateMissing(input: {
     sessionId: string;
     explorations: Exploration[];
@@ -51,6 +51,7 @@ export interface ExplorationSummaryService {
   }): Promise<Record<SessionScopedId, SummaryItem>>;
   resetSession(sessionId: string): void;
   pendingCount(): number;
+  isExplorationPending(scopedId: SessionScopedId): boolean;
   getRuntimeStats(): SummaryRuntimeStats;
 }
 
@@ -76,21 +77,16 @@ interface SummaryServiceOptions {
   maxConcurrency?: number;
   maxAttempts?: number;
   generateSummary?: SummaryGenerator;
-  summaryRepository?: SummaryRepository;
-  intentRepository?: SessionIntentRepository;
-  sessionFlowStore?: SessionFlowStore;
+  bundleRepository?: SessionBundleRepository;
 }
 
 export class DefaultExplorationSummaryService implements ExplorationSummaryService {
   private pending = new Set<SessionScopedId>();
   private sessionId = '';
-  private knowledgeRepo: KnowledgeRepository;
   private readonly maxConcurrency: number;
   private readonly maxAttempts: number;
   private readonly generateSummary: SummaryGenerator;
-  private readonly summaryRepo: SummaryRepository;
-  private readonly intentRepo: SessionIntentRepository;
-  private readonly sessionFlowStore: SessionFlowStore;
+  private readonly bundleRepo: SessionBundleRepository;
   private stats: SummaryRuntimeStats = {
     queued: 0,
     active: 0,
@@ -101,12 +97,8 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     maxConcurrentObserved: 0,
   };
 
-  constructor(knowledgeRepo?: KnowledgeRepository, options?: SummaryServiceOptions) {
-    this.knowledgeRepo = knowledgeRepo || new KnowledgeRepository();
-    this.summaryRepo = options?.summaryRepository ?? new FileSummaryRepository();
-    this.intentRepo = options?.intentRepository ?? defaultSessionIntentRepository;
-    this.sessionFlowStore = options?.sessionFlowStore ?? new DefaultSessionFlowStore();
-    // Summaries run sequentially for session continuity; option kept for API compat.
+  constructor(options?: SummaryServiceOptions) {
+    this.bundleRepo = options?.bundleRepository ?? getSessionBundleRepository();
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 3);
     this.maxAttempts = Math.max(1, options?.maxAttempts ?? 2);
     this.generateSummary = options?.generateSummary ?? generateExplorationSummaryAI;
@@ -114,6 +106,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
 
   resetSession(sessionId: string): void {
     if (sessionId === this.sessionId) return;
+    log.debug('summary service reset session', { sessionId, previousSessionId: this.sessionId || undefined });
     this.sessionId = sessionId;
     this.pending.clear();
     this.stats = {
@@ -131,54 +124,23 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     return this.pending.size;
   }
 
+  isExplorationPending(scopedId: SessionScopedId): boolean {
+    return this.pending.has(scopedId);
+  }
+
   getRuntimeStats(): SummaryRuntimeStats {
     return { ...this.stats };
   }
 
-  async hydrateFromWiki(sessionId: string): Promise<Record<SessionScopedId, SummaryItem>> {
-    this.resetSession(sessionId);
-    const entries = await this.knowledgeRepo.listAll();
-    const items: Record<SessionScopedId, SummaryItem> = {};
-    
-    for (const entry of entries) {
-      if (entry.sessionId !== sessionId) continue;
-      const id = makeSessionScopedId(sessionId, entry.explorationId);
-      // 从内容中提取摘要（简化处理，取第一段）
-      const text = entry.content.match(/## 摘要\s*\n([\s\S]*?)\n##/)?.[1]?.trim() || 
-                   entry.request;
-      items[id] = {
-        id,
-        sessionId,
-        explorationId: entry.explorationId,
-        text,
-        source: 'wiki',
-        status: 'ready',
-        persistMeta: null,
-        flowchart: undefined,
-      };
-    }
-    return items;
-  }
-
-  /**
-   * Load summaries from cache if available and not expired.
-   * Returns null if no cache exists or cache is expired.
-   */
-  hydrateFromCache(
-    sessionId: string,
-    jsonlPath: string,
-    options?: { preserveStale?: boolean },
-  ): CacheHydrateResult {
-    this.resetSession(sessionId);
-    const result = this.summaryRepo.loadWithStatus(sessionId, jsonlPath, {
-      onExpired: options?.preserveStale ? 'stale' : 'clear',
+  hydrateFromBundle(sessionId: string, jsonlPath: string): CacheHydrateResult {
+    const result = this.bundleRepo.loadWithStatus(sessionId, jsonlPath);
+    const items = result.bundle ? bundleToSummaryItems(sessionId, result.bundle) : {};
+    log.debug('bundle hydrated', {
+      sessionId,
+      cacheStatus: result.status,
+      cacheReason: result.reason,
+      itemCount: Object.keys(items).length,
     });
-    const items = result.data ? this.summaryRepo.toSummaryItems(sessionId, result.data) : {};
-    if (result.status === 'stale') {
-      for (const item of Object.values(items)) {
-        item.reason = 'jsonl_modified_since_cache';
-      }
-    }
     return {
       items,
       cacheStatus: result.status,
@@ -193,17 +155,46 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     existing: Record<SessionScopedId, SummaryItem>;
     summaryModel?: string;
   }): Promise<Record<SessionScopedId, SummaryItem>> {
-    this.resetSession(input.sessionId);
     const generated: Record<SessionScopedId, SummaryItem> = {};
-    /** Same-session prior summaries — updated after each exploration (sequential 心流). */
     const accumulated: Record<SessionScopedId, SummaryItem> = { ...input.existing };
-    let sessionIntent = this.intentRepo.load(input.sessionId);
+    const bundle = this.bundleRepo.ensure(input.sessionId, input.jsonlPath);
+    let sessionIntent = bundle.session.intent;
 
     for (const exploration of input.explorations) {
       if (exploration.status !== 'complete' || exploration.nodes.length === 0) continue;
       const id = makeSessionScopedId(input.sessionId, exploration.id);
-      if (accumulated[id]?.status === 'ready' || this.pending.has(id)) continue;
+      if (accumulated[id]?.status === 'ready' && accumulated[id]?.text?.trim()) continue;
+      if (this.pending.has(id)) continue;
 
+      const bundleCard = bundle.explorations?.[exploration.id];
+      if (bundleCard?.summary?.status === 'ready' && bundleCard.summary.text?.trim()) {
+        if (!accumulated[id]) {
+          accumulated[id] = {
+            ...cardSummaryToSummaryItem(input.sessionId, exploration.id, bundleCard.summary),
+            reason: SUMMARY_REASON_FROM_SESSION_BUNDLE,
+          };
+        }
+        log.debug('reuse bundle summary', {
+          sessionId: input.sessionId,
+          explorationId: exploration.id,
+        });
+        continue;
+      }
+
+      if (!isExplorationRetrievalResolved(bundleCard)) {
+        ensureExplorationCardRetrieval({
+          sessionId: input.sessionId,
+          exploration,
+          jsonlPath: input.jsonlPath,
+          allowLiveSearch: true,
+          bundleRepository: this.bundleRepo,
+        });
+      }
+
+      log.info('AI summary queued', {
+        sessionId: input.sessionId,
+        explorationId: exploration.id,
+      });
       this.pending.add(id);
       this.stats.queued += 1;
       const history = buildHistoryContext(
@@ -243,15 +234,22 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
         generated[id] = item;
         accumulated[id] = item;
         this.stats.completed += 1;
-        this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
+        const durationMs = Date.now() - startedAt;
+        log.info('AI summary ready', {
+          sessionId: input.sessionId,
+          explorationId: exploration.id,
+          status: item.status,
+          source: item.source,
+          durationMs,
+          durationSec: Math.round(durationMs / 100) / 10,
+        });
+        this.saveExplorationCard(input.sessionId, input.jsonlPath, exploration, item, sessionIntent);
         if (item.flowchart) {
           sessionIntent = mergeIntentTitleState(sessionIntent, input.sessionId, {
             explorationId: exploration.id,
             hint: item.flowchart,
           });
-          this.intentRepo.save(sessionIntent);
         }
-        this.persistSessionFlow(input, accumulated);
       } catch (error) {
         const errorReason = error instanceof Error ? error.message : 'ai_generation_failed';
         const finalized = finalizeSummaryFromTimelineOnly({
@@ -273,8 +271,13 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
         generated[id] = item;
         accumulated[id] = item;
         this.stats.completed += 1;
-        this.summaryRepo.saveOne(input.sessionId, input.jsonlPath, exploration.id, item);
-        this.persistSessionFlow(input, accumulated);
+        log.warn('AI summary failed → timeline fallback', {
+          sessionId: input.sessionId,
+          explorationId: exploration.id,
+          errorReason,
+          durationMs: Date.now() - startedAt,
+        });
+        this.saveExplorationCard(input.sessionId, input.jsonlPath, exploration, item, sessionIntent);
       } finally {
         const durationMs = Date.now() - startedAt;
         const totalRuns = this.stats.completed + this.stats.failed;
@@ -287,7 +290,37 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     }
 
     this.stats.queued = 0;
+    if (sessionIntent !== bundle.session.intent) {
+      this.bundleRepo.patch(input.sessionId, (b) => {
+        b.session.intent = sessionIntent;
+      }, input.jsonlPath);
+    }
+    try {
+      getSessionIndexService().touchLastSession({
+        sessionId: input.sessionId,
+        cwd: process.cwd(),
+        jsonlMtime: jsonlMtimeMs(input.jsonlPath),
+        bundleUpdatedAt: Date.now(),
+      });
+    } catch {
+      // non-fatal
+    }
     return generated;
+  }
+
+  private saveExplorationCard(
+    sessionId: string,
+    jsonlPath: string,
+    exploration: Exploration,
+    item: SummaryItem,
+    sessionIntent: SessionIntentState | null,
+  ): void {
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      const record = ensureExplorationRecord(bundle, exploration.id, exploration.question);
+      record.meta = buildCardMetaFromExploration(exploration);
+      record.summary = summaryItemToCardSummary(item);
+      bundle.session.intent = sessionIntent;
+    }, jsonlPath);
   }
 
   private async generateWithRetry(
@@ -309,30 +342,6 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
       }
     }
     throw lastError instanceof Error ? lastError : new Error('ai_generation_failed');
-  }
-
-  private persistSessionFlow(
-    input: {
-      sessionId: string;
-      explorations: Exploration[];
-      jsonlPath: string;
-    },
-    accumulated: Record<SessionScopedId, SummaryItem>,
-  ): void {
-    if (!input.sessionId || !input.jsonlPath) return;
-    const mtime = jsonlMtimeMs(input.jsonlPath);
-    if (mtime <= 0) return;
-    try {
-      this.sessionFlowStore.persist({
-        sessionId: input.sessionId,
-        jsonlMtime: mtime,
-        explorations: input.explorations,
-        summaries: toExplorationSummaryTextMap(accumulated),
-        flowchartHints: toExplorationFlowchartHintMap(accumulated),
-      });
-    } catch {
-      // Non-fatal: observer can rebuild from summaries on next load.
-    }
   }
 }
 

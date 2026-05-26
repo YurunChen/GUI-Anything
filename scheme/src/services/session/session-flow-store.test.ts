@@ -73,6 +73,7 @@ describe('session flow store', () => {
       flowchartHints: {},
     });
     expect(record.revision).toBe(0);
-    expect(record.version).toBe(1);
+    expect(record.version).toBe(2);
+    expect(record.workspaceRoot).toBeTruthy();
   });
 });

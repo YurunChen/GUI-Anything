@@ -8,7 +8,6 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTerminalDimensions, useKeyboard } from '@opentui/react';
 
 import type { ActivityTree } from '../../../domain/types';
-import type { PotentialDirection } from '../../../services/ai/flow-summaries';
 import type {
   Exploration,
   PersistResult,
@@ -17,8 +16,9 @@ import type {
   SessionScopedId,
   SummaryItem,
   SessionIntentState,
+  InspirationRecord,
 } from '../../../data/protocol/observer-protocol';
-import type { SessionPresentationMode } from '../../../services/session/session-presentation-policy';
+import type { SessionPresentationMode } from '../../../services/session/session-runtime-policy';
 import type { WikiWriteChromeView } from '../../observer/view-model/wiki-write-chrome';
 
 import { semantic, themeManager, applyTheme, useThemeVersion } from '../theme';
@@ -42,6 +42,8 @@ interface FlowObserverShellProps {
   explorations: Exploration[];
   tree: ActivityTree | null;
   sessionId: string;
+  sessionPath?: string;
+  allowWikiLiveSearch?: boolean;
   tokenDisplay: string;
   runtimeModel: string;
   wikiExtractedCount: number;
@@ -50,6 +52,7 @@ interface FlowObserverShellProps {
   graphSnapshot: FlowGraphSnapshot;
   explorationPersistStatus: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
+  pendingByExplorationId?: Record<string, boolean>;
   persistResults?: Record<string, PersistResult>;
   wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
   sessionPresentationMode?: SessionPresentationMode;
@@ -57,9 +60,6 @@ interface FlowObserverShellProps {
   summaryItems?: Record<SessionScopedId, SummaryItem>;
   sessionIntent?: SessionIntentState | null;
   flowBodyVisible?: boolean;
-  potentialDirections: PotentialDirection[];
-  directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
-  directionsMessage: string;
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
   onSendSnapshot?: (note?: string) => void;
@@ -138,7 +138,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     themeNotification: showThemeNotification ? themeManager.getThemeDisplayName() : undefined,
     terminalWidth,
     pendingSummaryCount: props.pendingSummaryCount,
-    directionsStatus: props.directionsStatus,
     explorationSummaries: props.explorationSummaries,
     explorationPersistStatus: props.explorationPersistStatus,
     explorationPersistResults: props.persistResults,
@@ -289,6 +288,8 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
             ) : (
               <LiveObserverFlowBody
                 sessionId={props.sessionId}
+                sessionPath={props.sessionPath}
+                allowWikiLiveSearch={props.allowWikiLiveSearch}
                 explorations={props.explorations}
                 summaries={props.explorationSummaries}
                 summaryItems={props.summaryItems}
@@ -298,11 +299,8 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
                 wikiPersistResults={props.persistResults}
                 wikiWriteChromeByExploration={props.wikiWriteChromeByExploration}
                 pendingSummaryCount={props.pendingSummaryCount}
-                directionsStatus={props.directionsStatus}
-                directionsMessage={props.directionsMessage}
-                potentialDirections={props.potentialDirections}
+                pendingByExplorationId={props.pendingByExplorationId}
                 availableWidth={timelineWidth}
-                sessionPresentationMode={props.sessionPresentationMode ?? 'live'}
                 sessionBannerHint={props.sessionBannerHint}
                 mode={observerMode}
                 calmMode={calmMode}

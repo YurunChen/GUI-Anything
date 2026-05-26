@@ -1,5 +1,5 @@
 import type { LiveIntentChromeView } from './intent-chrome';
-import type { SessionPresentationMode } from '../../../services/session/session-presentation-policy';
+import type { SessionPresentationMode } from '../../../services/session/session-runtime-policy';
 
 /** View-model chrome props — UI components implement these shapes. */
 export interface ObserverStatusBarViewProps {

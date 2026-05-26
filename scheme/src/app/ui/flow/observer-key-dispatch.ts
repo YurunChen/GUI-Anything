@@ -30,10 +30,27 @@ export type ObserverKeyAction =
   | { type: 'file_wiki_audit' }
   | { type: 'theme'; kind: 'morandi' | 'prev' | 'next' };
 
+/** OpenTUI emits punctuation as literal chars (`/` `?`), not readline-style `slash`. */
+function isSlashKeyName(name: string): boolean {
+  return name === '/' || name === 'slash';
+}
+
+/** Plain `/` — OpenTUI parse.keypress sets `name` to the character itself. */
+export function isPlainSlashKey(key: ObserverKeyEvent): boolean {
+  return isSlashKeyName(key.name) && !key.shift && !key.ctrl && !key.meta;
+}
+
+/** `?` or Shift+/ (US layout). */
+export function isQuestionMarkKey(key: ObserverKeyEvent): boolean {
+  return key.name === '?' || key.name === 'question'
+    || (isSlashKeyName(key.name) && !!key.shift);
+}
+
 export function isHelpKey(key: ObserverKeyEvent): boolean {
   if (key.name === 'f1') return true;
-  if (key.ctrl && (key.name === 'slash' || key.name === '/')) return true;
-  return key.name === '?' || key.name === 'question' || (key.name === 'slash' && !!key.shift);
+  if (key.ctrl && isSlashKeyName(key.name)) return true;
+  if (key.ctrl && (key.name === 'k' || key.name === 'K')) return true;
+  return isPlainSlashKey(key) || isQuestionMarkKey(key);
 }
 
 export function dispatchObserverKey(
@@ -71,14 +88,6 @@ export function dispatchObserverKey(
       return { type: 'close_notes' };
     }
     return null;
-  }
-
-  if (key.name === 'slash' && !key.shift) {
-    return { type: 'toggle_help' };
-  }
-
-  if (key.ctrl && (key.name === 'k' || key.name === 'K')) {
-    return { type: 'toggle_help' };
   }
 
   if (key.name === 'c' && !key.ctrl && !key.meta) {

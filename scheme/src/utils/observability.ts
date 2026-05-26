@@ -1,7 +1,11 @@
 /**
  * Observability utilities for error tracking and metrics.
- * Lightweight logging with categorization for production debugging.
+ * Errors are logged via the unified Flow logger (observer module).
  */
+
+import { createLogger } from './logger';
+
+const observerLog = createLogger('observer');
 
 export type ErrorCategory =
   | 'parse'       // JSON/schema parsing errors
@@ -54,9 +58,7 @@ export function reportError(
     recentErrors.shift();
   }
 
-  // Log to stderr for visibility
-  const ctx = context ? ` | ${JSON.stringify(context)}` : '';
-  console.error(`[${category}] ${message}${ctx}`);
+  observerLog.error(message, { category, ...context });
 }
 
 /**

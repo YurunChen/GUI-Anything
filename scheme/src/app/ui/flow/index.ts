@@ -11,7 +11,6 @@ export { CommandBar } from './CommandBar';
 // State Machine
 export type {
   SessionState,
-  DirectionsState,
   WikiSearchState,
 } from './flow-observer-state';
 export { deriveSessionState } from './flow-observer-state';

@@ -1,558 +1,215 @@
 # GUI-Anything
 
-A Claude Code Flow Observer with dual-pane terminal UI — designed for **心流 (flow state)**, **按需知识 (knowledge on-demand)**, and **无感使用 (seamless UX)**.
+**Claude Code on the left. Your project's living memory on the right.**
 
-## Design Principles
+A dual-pane terminal observer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — watch explorations unfold, compound wiki knowledge across sessions, and stay in flow without alt-tabbing into log files.
 
-Three core principles guide every design decision:
+```text
+┌─ Claude Code ────────────────┐┌─ Flow Observer ──────────────┐
+│  You: refactor auth layer    ││  ● Implement · pivot         │
+│  ▸ Read src/auth/*.ts        ││  ├─ exploration timeline     │
+│  ▸ Edit middleware.ts        ││  ├─ flowchart (rail/stack)   │
+│  …                           ││  ├─ KNOWLEDGE: C012 hit      │
+│                              ││  └─ wiki C001 saved ✓        │
+└──────────────────────────────┘└──────────────────────────────┘
+         ga flow — one command, both panes
+```
 
-| Principle | What it means | In Practice |
-|-----------|---------------|-------------|
-| **心流 (Flow State)** | Don't interrupt the left pane (Claude) | Observer stays a single timeline; notes/help open only on explicit keys; wiki matches inline per exploration card |
-| **按需知识 (On-Demand)** | Retrieve and persist knowledge only when needed | Wiki search has thresholds; auto-extract only when model signals persist; quiet mode available |
-| **无感使用 (Seamless)** | One command to start; failures don't block; no manual path hunting | `FLOW_PROJECT_DIR` + `FLOW_SESSION_ID` auto-bound; loading states neutral (not error-like) |
+---
 
-## Directory Structure
+## Why this exists
 
-| Directory | Purpose |
-|-----------|---------|
-| `cli/` | **Public CLI entrypoint** — `ga flow` and `ga doctor` |
-| `scheme/` | **Flow observer implementation** — OpenTUI-based real-time observer for Claude Code sessions |
-| `scripts/` | **Runtime scripts** — Zellij flow launcher (`flow-run.sh`) and setup |
-| `reference/` | **Reference implementations** — OpenTUI, tail-claude, and other UI patterns |
-| `docs/` | **Documentation** — protocol specs, design docs, release checklist |
-| `wiki/` | **Local runtime knowledge data** — knowledge base, evidence, runtime cache, notes (gitignored) |
+Claude Code is excellent at **doing** — less excellent at showing you *where you are* in a long session.
 
-## 🔔 Flow Notification Harness (New!)
+After an hour you might wonder:
 
-Push critical Flow events to **WeChat / Feishu / DingTalk** — stay informed anywhere:
+- Which explorations already happened?
+- What did we learn that’s worth keeping?
+- Can I resume yesterday’s session **without** re-summarizing everything?
 
-| Feature | What you get |
-|---------|-------------|
-| 🚨 **Error Alerts** | Instant notification when errors detected |
-| ✅ **Completion Notices** | Know when long-running tasks finish |
-| 💡 **Knowledge Extraction** | Auto-push important discoveries |
-| 📊 **Progress Reports** | Periodic updates or manual snapshots (press `s`) |
+**GUI-Anything** is a **sidecar observer**: it reads Claude’s JSONL, renders a live timeline + flowchart, and writes durable notes into a local `wiki/` — without hijacking the left pane.
 
-**Quick start**: 
-1. Start WeChat service: `./scripts/start-weixin-service.sh`
-2. Login: `./scripts/weixin-login.sh` 
-3. Set `FLOW_NOTIFY_WECHAT_USER_ID` and run `./scripts/flow-run.sh`
+Built around three ideas:
 
-See [Notification Guide](docs/NOTIFICATION.md) | [WeChat Setup](docs/NOTIFICATION_WECHAT.md) for full setup.
+| | Principle | In practice |
+|---|-----------|-------------|
+| 🧘 | **心流 Flow** | One timeline; help & notes only on hotkeys |
+| 🧠 | **按需知识 On-demand** | Wiki search when useful; curate on intent pivot — not every turn |
+| ✨ | **无感 Seamless** | `ga flow` binds project + session; failures don’t block Claude |
 
-## 🎬 HTML Integration (New!)
+---
 
-GUI-Anything now exports rich HTML artifacts from Flow sessions:
+## Quick start
 
-| Feature | Command | Output |
-|---------|---------|--------|
-| 🎬 **Session Replay** | `--export-html -o replay.html` | Interactive timeline replay (single HTML, ~63KB) |
-| 🌐 **Web Mirror** | `--web-mirror` | Real-time browser viewer via WebSocket |
-| 📊 **Knowledge Graph** | `--knowledge-graph -o graph.html` | Force-directed graph of Wiki entries |
-| 🎨 **30 Theme Support** | `--theme catppuccin` | All 30 themes available in exported HTML |
+**Requirements:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) · [Bun](https://bun.sh) · [Zellij](https://zellij.dev)
 
-### Session Replay
+```bash
+git clone https://github.com/YurunChen/GUI-Anything.git
+cd GUI-Anything
+./scripts/setup.sh
+
+ga doctor    # sanity check
+ga flow      # dual pane: Claude | Observer
+```
+
+Or without cloning:
+
+```bash
+npx gui-anything@latest doctor
+npm i -g gui-anything && ga flow
+```
+
+**Common commands**
+
+```bash
+ga flow                              # new session
+ga flow --continue                   # pick up latest work
+ga flow --resume <session-id>        # strict replay (no AI re-summary)
+ga flow --model sonnet "your task"   # pass a model + prompt
+./scripts/flow-run.sh --cleanup      # kill stale zellij / orphan processes
+```
+
+---
+
+## What makes it fun
+
+| | Feature | Why you’ll care |
+|---|---------|-----------------|
+| 🪟 | **Dual-pane Flow** | Claude stays native; observer watches in real time |
+| 🗺️ | **Live flowchart** | Tree with connectors — rail / stack / grid by terminal width |
+| 📇 | **Inline wiki hits** | Prior knowledge surfaces on each exploration card |
+| 🪣 | **Intent-aware wiki** | Same task compounds in a bucket; pivot closes it → `/llm-wiki` agent writes `contexts/` |
+| 🎨 | **32 themes** | Hot-swap in observer — `[` `]` · Apple System default · morandi cycle · light/dark |
+| 📱 | **Web Mirror** | Watch progress in the browser (phone-friendly WebSocket) |
+| 🎬 | **Session Replay HTML** | Export one self-contained HTML file to share or review offline |
+| 🔔 | **Push notifications** | WeChat / Feishu / DingTalk when errors or milestones hit |
+| ⏪ | **Honest resume** | `-r` replays cache — won’t silently re-run summary AI |
+| ↩️ | **Continue** | `-c` reloads `wiki/sessions/{id}/bundle.json`; only new explorations trigger summary AI |
+
+---
+
+## Observer at a glance
+
+**Run → Capture → Guide**
+
+```text
+Run      JSONL → explorations, tools, errors, phases
+Capture  AI summaries, flowchart hints, intent buckets, wiki
+Guide    prior wiki matches, flowchart, hotkeys
+```
+
+Focus the **right pane** first, then:
+
+| Key | Action |
+|-----|--------|
+| `g` | Timeline ↔ flowchart |
+| `i` | Notes sidebar |
+| `?` / `/` / `Ctrl-K` | Keyboard help |
+| `c` | Calm mode (collapse older cards) |
+| `[` `]` | Prev / next theme |
+| `k` | Flag wrong wiki match → audit |
+| `q` | Quit observer |
+
+Full list: help overlay inside `ga flow`. Chinese chrome: `FLOW_LOCALE=zh-Hans`.
+
+---
+
+## Optional superpowers
+
+<details>
+<summary><b>HTML export</b> — replay, mirror, knowledge graph</summary>
+
 ```bash
 cd scheme
 
-# Export latest session as interactive HTML (uses findLatestSession — see below)
+# Single-file interactive replay
 bun run src/main.ts --export-html -o replay.html
 
-# With options
-bun run src/main.ts --export-html --strip-thinking --max-detail-length 500 --theme nord
-```
-Features: Play/Pause/Speed control, timeline navigation, full-text search, keyboard shortcuts, theme switcher.
+# Real-time browser view (align session with FLOW_SESSION_ID)
+FLOW_PROJECT_DIR=/path/to/repo FLOW_SESSION_ID=<uuid> \
+  bun run src/main.ts --web-mirror --port 3001
 
-**Which session?** `findLatestSession` in `data/session/claude-project.ts`: set `FLOW_PROJECT_DIR` (repo root) and optionally `FLOW_SESSION_ID` (same UUID as `flow-run.sh`); otherwise picks the **most recently modified** `.jsonl` under `~/.claude/projects/<encoded-project>/`.
-
-### Web Mirror
-```bash
-cd scheme
-
-# Start real-time mirror server (default port 3000, or FLOW_MIRROR_PORT)
-bun run src/main.ts --web-mirror --port 3001
-
-# Open on phone: http://<your-ip>:3001
-```
-Features: WebSocket real-time updates, phase indicator, live stats, auto-reconnect, mobile-friendly.
-
-**Align with flow observer:** Web Mirror runs in a **separate terminal** and does not inherit `FLOW_SESSION_ID` from `flow-run.sh`. Export the same env when starting mirror:
-
-```bash
-FLOW_PROJECT_DIR=/path/to/repo FLOW_SESSION_ID=<uuid> bun run src/main.ts --web-mirror --port 3001
+# Force-directed graph from local wiki
+bun run src/main.ts --knowledge-graph -o graph.html
 ```
 
-### Knowledge Graph
-```bash
-cd scheme
+See [docs/IDEAS_HTML_INTEGRATION.md](docs/IDEAS_HTML_INTEGRATION.md) · [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md)
 
-# Generate interactive graph from Wiki entries (reads resolveWikiRoot() knowledge/)
-bun run src/main.ts --knowledge-graph -o graph.html --since 7d
-```
-Features: Canvas force-directed layout, type-based coloring, shared-tag edges, hover tooltips, search.
+</details>
 
-See [Implementation Plan](docs/IMPLEMENTATION_PLAN.md) and [Ideas](docs/IDEAS_HTML_INTEGRATION.md) for full roadmap.
+<details>
+<summary><b>Notifications</b> — WeChat / Feishu / DingTalk</summary>
 
-## Mental Model: Run / Capture / Guide
+1. `./scripts/start-weixin-service.sh` (WeChat)  
+2. `./scripts/weixin-login.sh`  
+3. Set `FLOW_NOTIFY_WECHAT_USER_ID` and run `ga flow`
 
-Flow Observer organizes work into three layers:
+[Notification guide](docs/NOTIFICATION.md) · [WeChat setup](docs/NOTIFICATION_WECHAT.md)
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│  Run (执行态)                                                │
-│  ├── Current session / exploration                           │
-│  ├── Phase indicators                                        │
-│  └── Tool/error signals                                      │
-├─────────────────────────────────────────────────────────────┤
-│  Capture (沉淀态)                                            │
-│  ├── Summary JSON (AI-generated)                              │
-│  ├── Wiki staging (auto-extract)                            │
-│  └── Inspiration notes (manual capture)                     │
-├─────────────────────────────────────────────────────────────┤
-│  Guide (导航态)                                              │
-│  ├── Potential directions (AI suggestions)                  │
-│  ├── Wiki matches (search results)                          │
-│  └── Command bar (available actions)                        │
-└─────────────────────────────────────────────────────────────┘
-```
+</details>
 
-Each layer has clear boundaries and contracts — see [Architecture Boundaries](#architecture-boundaries).
+<details>
+<summary><b>llm-wiki</b> — agentic knowledge ingest</summary>
 
-## Commercial CLI (ga)
-
-Use `ga` as the only public entrypoint for flow sessions.
-
-### Install
+Wiki curation uses the `/llm-wiki` skill (`skills/llm-wiki/`). Setup symlinks it for Claude:
 
 ```bash
-# one-off
-npx gui-anything@latest doctor
-
-# global
-npm i -g gui-anything
+./scripts/setup.sh   # → .claude/skills/llm-wiki/
+./scripts/wiki/wiki-maintain.sh   # Phase 2 maintenance
 ```
 
-### Quickstart
+[scripts/wiki/README.md](scripts/wiki/README.md)
+
+</details>
+
+---
+
+## Project layout
+
+| Path | What |
+|------|------|
+| `cli/` | Public **`ga`** command |
+| `scheme/` | Observer app (OpenTUI + Bun) |
+| `scripts/flow-run.sh` | Zellij dual-pane launcher |
+| `skills/` | Wiki agent skills |
+| `docs/` | Design docs & runbooks |
+| `wiki/` | Local knowledge (gitignored) |
+
+---
+
+## Docs & development
+
+| Doc | For |
+|-----|-----|
+| **[docs/development.md](docs/development.md)** | Architecture, collaboration, extension guide |
+| [AGENTS.md](AGENTS.md) | Coding-agent principles & red lines |
+| [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md) | Wiki & session data flow |
+| [docs/THEMES.md](docs/THEMES.md) | Theme catalog |
+| [docs/release-checklist.md](docs/release-checklist.md) | Release process |
+
+**Contributors**
 
 ```bash
-ga doctor
-ga flow
+cd scheme && bun test && bunx tsc --noEmit
 ```
 
-Supported external commands:
-- `ga flow`
-- `ga flow --continue`
-- `ga flow --resume`
-- `ga flow --resume <sessionId>`
-- `ga flow --model <model>`
-- `ga doctor`
-
-## Installation
-
-### One-Command Setup (Recommended)
-
-```bash
-./scripts/setup.sh
-```
-
-This automatically:
-1. Checks and installs **Bun** (if not found)
-2. Checks **Zellij** (required for `ga flow`)
-3. Installs project dependencies (`bun install`)
-4. Sets executable permissions
-5. Symlinks **llm-wiki** to `.claude/skills/llm-wiki/` (and optionally `~/.claude/skills/llm-wiki/`)
-
-After setup, run:
-```bash
-ga doctor
-ga flow
-```
-
-## Running Flow Observer
-
-Flow needs an **interactive terminal** (Zellij). Start from the repo root:
-
-```bash
-ga flow
-ga flow --continue
-ga flow --model sonnet "Your prompt"
-# or: ./scripts/flow-run.sh -m sonnet "Your prompt"
-```
-
-Cleanup stale sessions: `./scripts/flow-run.sh --cleanup`
-
-### Manual Setup
-
-If you prefer manual installation:
-
-#### Zellij (required)
-
-```bash
-brew install zellij   # macOS
-zellij --version
-```
-
-#### Bun Runtime
-
-```bash
-# Install via official installer
-curl -fsSL https://bun.sh/install | bash
-
-# Or upgrade if already installed
-bun upgrade
-
-# Verify installation
-bun --version
-```
-
-### 2. Install Project Dependencies
-
-From the repository root:
-
-```bash
-cd scheme
-bun install
-```
-
-This installs:
-- `@opentui/core` & `@opentui/react` — Terminal UI framework
-- `react` — React 19 for component rendering
-- TypeScript types and dev dependencies
-
-**Verify dependencies are installed:**
-```bash
-ls node_modules/@opentui  # Should show core and react
-```
-
-### 3. Verify Installation
-
-Verify CLI entrypoint is available:
-
-```bash
-ga doctor
-```
-
-If checks pass (or only non-blocking warnings appear), installation is successful.
-
-## Flow launcher (Zellij)
-
-All flow sessions use **`scripts/flow-run.sh`** (invoked by `ga flow`): dual-pane Zellij in the current terminal.
-
-| Aspect | Behavior |
-|--------|----------|
-| Session name | Unique (`f-mmdd-HHMMSS-xxxx`) unless `FLOW_ZELLIJ_SESSION` is set |
-| Layout | `.flow-runtime/layouts/zellij-layout-{sessionId}.kdl` (generated per launch) |
-| Inject to Claude | Clipboard (`pbcopy` on macOS); see `FLOW_INJECT_BACKEND` |
-| Cleanup | `--cleanup`; on start kills **other** stale launchers; on exit TERM→KILL for zellij/claude/observer; panes use `setsid` / `setpgrp` |
-
-### Session lifecycle modes
-
-| Mode | Flag | Left pane (Claude) | Observer binding | Summary policy |
-|------|------|-------------------|------------------|----------------|
-| **new** | (none) | `claude --session-id <uuid>` | `bind_specific` + same UUID | Hydrate + regen missing |
-| **continue** | `-c` / `--continue` | `claude --resume <id>` if ID recovered from layout, else `claude -c` | `bind_specific` if ID known, else `auto_latest` | Hydrate + regen missing |
-| **resume** | `-r` / `--resume [id]` | `claude --resume` / picker | `resume_specific` / `resume_picker` | Strict replay only |
-
-Binding and summary policy are implemented in `scheme/src/services/session/session-binding-policy.ts` — do not duplicate this logic in shell or UI.
-
-Summary generation policy by mode:
-
-| Mode | Observer behavior |
-|------|-------------------|
-| **new** / **continue** | Hydrate from cache/wiki, then generate missing summaries when needed |
-| **resume** (`--resume <id>` or picker) | Strict replay: hydrate from cache/wiki only, do not regenerate missing summaries |
-
-**Resume UI**: replay mode shows the timeline when explorations exist; summaries load from cache/wiki or fall back to rule-based excerpts (no AI regen). Stale cache is shown read-only. See [docs/data-governance/display-policy.md](docs/data-governance/display-policy.md).
-
-## Quick Start
-
-### Start Flow Mode (Recommended)
-
-From repo root:
-
-```bash
-ga doctor
-ga flow
-```
-
-This launches the dual-pane flow session:
-- **Left pane**: Native Claude Code interactive TUI
-- **Right pane**: Flow timeline UI
-
-### Continue Previous Session
-
-```bash
-ga flow --continue
-```
-
-Resumes your latest Claude Code session in the current project context.
-
-### Resume Specific Session
-
-```bash
-ga flow --resume <session-id>
-```
-
-### Resume via Native Picker
-
-```bash
-ga flow --resume
-```
-
-### Specify Model
-
-```bash
-ga flow --model sonnet
-ga flow --model opus "Analyze codebase structure"
-```
-
-### Script entrypoint (maintainers)
-
-```bash
-./scripts/flow-run.sh [--cleanup] [-c|-r] [-m MODEL] [prompt...]
-```
-
-### Controls
-
-#### Zellij
-
-| Key | Action |
-|-----|--------|
-| `Ctrl+O` then `d` | Detach (session keeps running if configured) |
-| `zellij attach <name>` | Reattach to a named session |
-
-#### Observer (right pane)
-
-**Focus this pane first** (click the right pane or switch Zellij focus) — shortcuts do not run while Claude has keyboard focus.
-
-| Key | Action |
-|-----|--------|
-| `g` | Toggle exploration ↔ flowchart |
-| `i` | Toggle notes sidebar (inspiration capture; needs enough terminal width) |
-| `/` or `Ctrl-K` | Toggle keyboard help (same list as `?`) |
-| `?` / `F1` / `Ctrl+/` | Toggle keyboard help overlay |
-| `c` | Toggle calm layout (off by default): latest card shows summary; older cards collapse to one line |
-| `s` | Send notification snapshot (only when notify is configured) |
-| `[` / `]` | Previous / next theme |
-| `J` | Cycle morandi themes |
-| `l` | Toggle light ↔ dark pair |
-| `Enter` | Save note (when notes input is focused) |
-| `Esc` | Close help or notes sidebar / cancel note input — does not quit |
-| `q` / `Ctrl+Q` | Quit observer |
-
-Wiki knowledge appears **inline** on each exploration card when a match is found. Default is full expanded detail; press `c` for calm mode (latest summary only; older turns fold to one line).
-
-While the help overlay is open, the bottom hotkey bar is hidden. Set `FLOW_LOCALE=zh-Hans` for Chinese chrome strings.
-
-### Usage Examples
-
-**Basic start:**
-```bash
-ga flow
-```
-
-**With initial prompt:**
-```bash
-ga flow "Refactor auth middleware to use JWT"
-```
-
-**Specify model:**
-```bash
-ga flow --model sonnet
-ga flow --model opus "Analyze codebase structure"
-ga flow --model qwen3.6-plus "Summarize this project"
-```
-
-**Debug (skip auto-cleanup on exit):**
-```bash
-FLOW_ZELLIJ_AUTOCLEANUP=0 ./scripts/flow-run.sh
-```
-
-## llm-wiki skill (Wiki Agent)
-
-Skill source: `skills/llm-wiki/`. Claude loads `.claude/skills/llm-wiki/` (committed symlink). `./scripts/setup.sh` refreshes links.
-
-```bash
-ls .claude/skills/llm-wiki/SKILL.md
-ls skills/llm-wiki/SKILL.md
-```
-
-See `gui-anything-layout.md` for the knowledge layout contract.
-
-## Environment Variables & Contracts
-
-### Core Flow Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `FLOW_PROJECT_DIR` | auto | Project directory (Claude JSONL discovery) |
-| `FLOW_ROOT_DIR` | repo root | Wiki and runtime data root |
-| `FLOW_DATA_DIR` | `.flow-runtime` | Layouts and local runtime artifacts |
-| `FLOW_WIKI_DIR` | `{FLOW_ROOT_DIR}/wiki` | Override wiki root (see `data/env.ts`) |
-| `FLOW_LAYOUT_DIR` | `{FLOW_DATA_DIR}/layouts` | Override Zellij layout directory |
-| `FLOW_RESUME_MODE` | set by launcher | `bind_specific` / `auto_latest` / `resume_*` |
-| `FLOW_SESSION_ID` | auto | Pin observer to Claude session UUID |
-| `FLOW_ZELLIJ_SESSION` | auto-generated | Zellij session name |
-| `FLOW_ZELLIJ_REUSE` | `0` | Set `1` to reuse existing Zellij session |
-| `FLOW_ZELLIJ_OBSERVER_WIDTH` | auto | Right pane width (%) |
-| `FLOW_ZELLIJ_AUTOCLEANUP` | `1` | Set `0` to skip cleanup on exit |
-| `FLOW_ZELLIJ_ON_FORCE_CLOSE` | `quit` | `quit` kills session on terminal close; `detach` leaves it |
-| `ZELLIJ_SOCKET_DIR` | `/tmp/zellij` | Short socket path (macOS TMPDIR fix) |
-
-### UX Tuning Variables
-
-| Variable | Values | Purpose |
-|----------|--------|---------|
-| `FLOW_QUIET` | `0` (default), `1` | Quiet mode: suppress Wiki banners, minimal status |
-| `FLOW_INJECT_BACKEND` | `clipboard`, `none` | How to send text to Claude pane (macOS: `pbcopy`) |
-| `FLOW_NO_ANIMATIONS` | `0`, `1` | Low-motion: slower spinner interval |
-| `FLOW_LOCALE` | `zh-Hans`, … | Localized observer chrome strings |
-
-Default: `clipboard` when `pbcopy` is available, otherwise `none`.
-
-## Modes (scheme/)
-
-| Mode | Command | Description |
-|------|---------|-------------|
-| **Direct** | `bun run src/main.ts "<prompt>"` | One-shot TUI run |
-| **Flow** | `bun run src/main.ts --flow "<prompt>"` | Flow observer mode |
-| **Live observer** | `bun run src/main.ts --live` | Right pane in `ga flow` (replaces legacy `--posthoc` tree UI) |
-| **Web API** | `bun run src/main.ts --web` | HTTP server at `:3000` |
-
-## Architecture Boundaries
-
-Flow is organized into layers with strict dependency directions (single source of truth per concern):
-
-```
-┌────────────────────────────────────────────────────────────┐
-│  Shell Scripts (scripts/)                                    │
-│  ├── Process orchestration                                   │
-│  ├── Set FLOW_PROJECT_DIR / FLOW_RESUME_MODE / FLOW_SESSION_ID │
-│  └── Map CLI flags → env only (binding rules in TypeScript)   │
-├────────────────────────────────────────────────────────────┤
-│  scheme/src/                                                 │
-│  ├── app/        → UI and app composition                    │
-│  ├── services/   → AI/session/wiki orchestration logic       │
-│  ├── data/       → repository + protocol + env adapters      │
-│  ├── domain/     → pure domain models and tree logic         │
-│  ├── constants/  → stable config/constants                   │
-│  └── utils/      → shared pure utilities                     │
-├────────────────────────────────────────────────────────────┤
-│  External Truth Sources                                      │
-│  ├── Claude session JSONL (Claude Code writes)               │
-│  ├── wiki/ file system                                       │
-│  └── zellij / clipboard binaries                             │
-└────────────────────────────────────────────────────────────┘
-```
-
-### Layer Rules
-
-| Layer | Can Import | Cannot |
-|-------|------------|--------|
-| `app/` | `services/*`, `data/protocol/*`, `domain/*`, `constants/*`, `utils/*`, UI libs | direct file persistence logic |
-| `services/` | `data/*`, `domain/*`, `constants/*`, `utils/*` | UI component code |
-| `data/` | `domain/*`, `constants/*`, `utils/*`, `node:*` | React/OpenTUI imports |
-| `domain/` | `constants/*`, `utils/*` | `app/*`, `services/*`, `data/*` |
-| Shell scripts | N/A (bash) | duplicate parser/repository logic already in TS layers |
-
-### Contracts (Source of Truth)
-
-| Contract | Location | Consumers |
-|----------|----------|-----------|
-| Summary JSON shape | `scheme/src/services/ai/flow-summaries.ts` | summary generation, UI rendering, wiki persistence |
-| Wiki storage structure | `docs/data-governance/data-flow.md` | `services/wiki/*`, `services/ai/summary-cache.ts`, observer hooks |
-| Environment vars | This README + `docs/development.md` | `flow-run.sh`, observer |
-
-Changes to contracts must update all consumers and this documentation.
-
-## Code and Data Governance Rules
-
-### Code Classification Rules
-
-- UI rendering and keyboard behavior stay in `scheme/src/app/`.
-- Business orchestration stays in `scheme/src/services/`.
-- File/protocol/env adapters stay in `scheme/src/data/`.
-- Pure models and flow logic stay in `scheme/src/domain/`.
-- Cross-cutting constants and helpers stay in `scheme/src/constants/` and `scheme/src/utils/`.
-- Avoid cross-layer shortcuts (for example, app code writing wiki files directly).
-
-### Data Management Rules
-
-- `wiki/sessions/{sessionId}-evidence.json` is the session evidence source.
-- `wiki/sessions/{sessionId}-summaries.json` is transient AI summary cache.
-- `wiki/knowledge/{type}/` holds long-lived knowledge entries.
-- `wiki/notes/{YYYY-MM-DD}.md` holds user daily notes.
-- `.flow-runtime/` is for runtime layout/snapshot artifacts, not wiki knowledge.
-- `wiki/` and `.flow-runtime/` are local runtime data and should stay out of Git.
+---
 
 ## Troubleshooting
 
-### "Cannot find module" errors
+| Problem | Fix |
+|---------|-----|
+| `zellij: command not found` | `brew install zellij` then `ga doctor` |
+| Stale sessions / orphan processes | `./scripts/flow-run.sh --cleanup` |
+| Module errors in scheme | `cd scheme && rm -rf node_modules && bun install` |
+| Observer shortcuts don’t work | Click the **right pane** first |
 
-```bash
-cd scheme
-rm -rf node_modules bun.lock
-bun install
-```
+More: [docs/development.md §5](docs/development.md) · `ga doctor` output
 
-### "zellij: command not found"
+---
 
-```bash
-brew install zellij   # macOS
-ga doctor
-```
+## License
 
-### `ga doctor` failure matrix
+See repository license file. Claude Code and third-party tools are subject to their own terms.
 
-| Check | Meaning | How to fix |
-|------|---------|------------|
-| Claude CLI | `claude` is missing from `PATH` | Install Claude Code CLI and confirm `claude --version` works |
-| Claude auth readiness | Login artifacts are missing | Run `claude` once and finish authentication |
-| Bun runtime | `bun` is missing from `PATH` | Install Bun from [bun.sh](https://bun.sh) |
-| Zellij | `zellij` is missing from `PATH` | Install zellij (e.g. `brew install zellij`) |
-| Writable wiki directory | `wiki/` is not writable | Fix directory permissions |
-| Writable flow runtime directory | `.flow-runtime/` is not writable | Fix directory permissions |
-
-### Stale Zellij / orphan processes
-
-```bash
-./scripts/flow-run.sh --cleanup
-zellij list-sessions
-ps aux | awk '/claude --session-id|flow-run\.sh|zellij/ && !/awk/'
-```
-
-### Scrollback glitches in the left pane
-
-Press `Ctrl+L` or run `clear`, then relaunch `ga flow`.
-
-### Permission denied on scripts
-
-```bash
-chmod +x scripts/flow-run.sh
-```
-
-## Development
-
-Architecture, data layout, and how to extend the observer: **[docs/development.md](docs/development.md)**.
-
-### Running Tests
-
-```bash
-cd scheme
-bun test
-```
-
-### Building
-
-```bash
-cd scheme
-bun run build
-```
-
-### Type Checking
-
-```bash
-cd scheme
-bunx tsc --noEmit
-```
+**Star ⭐ if a sidecar observer beats parsing JSONL by hand.**

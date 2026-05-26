@@ -5,11 +5,15 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import type { ActivityTree } from '../../../domain/types';
 import type { Exploration } from '../../../data/protocol/observer-protocol';
+import { getSessionIndexService } from '../../../services/session/session-index-service';
 import { PollingObserverSessionService } from '../../../services/session/observer-session-service';
 import {
   resolveSessionBindingIntent,
 } from '../../../services/session/session-binding-policy';
+import { createLogger } from '../../../utils/logger';
 import { reportError } from '../../../utils/observability';
+
+const log = createLogger('observer');
 
 interface SessionData {
   sessionPath: string;
@@ -19,6 +23,7 @@ interface SessionData {
   tree: ActivityTree | null;
   tokenDisplay: string;
   runtimeModel: string;
+  awaitingPickerSelection: boolean;
 }
 
 interface SessionIdentitySnapshot {
@@ -50,37 +55,80 @@ export function useSessionPolling(cwd: string, input?: {
     }),
     [input?.explicitSessionId, input?.resumeModeRaw],
   );
-  const boundSessionId = bindingIntent.mode === 'resume_specific' || bindingIntent.mode === 'bind_specific'
-    ? bindingIntent.explicitSessionId
-    : undefined;
+
   const [data, setData] = useState<SessionData>({
     sessionPath: '',
-    sessionId: boundSessionId || '',
+    sessionId: bindingIntent.explicitSessionId || '',
     sourceMtimeMs: 0,
     explorations: [],
     tree: null,
     tokenDisplay: 'Tok --',
     runtimeModel: 'unknown',
+    awaitingPickerSelection: bindingIntent.mode === 'continue_picker',
   });
 
   const sessionServiceRef = useRef<PollingObserverSessionService | null>(null);
   if (!sessionServiceRef.current) {
     sessionServiceRef.current = new PollingObserverSessionService();
   }
+  const manifestWrittenRef = useRef(false);
+  const bindingKeyRef = useRef('');
+  const bindingKey = `${bindingIntent.mode}:${bindingIntent.explicitSessionId || ''}`;
+  if (bindingKeyRef.current !== bindingKey) {
+    bindingKeyRef.current = bindingKey;
+    sessionServiceRef.current.resetForBindingChange();
+    manifestWrittenRef.current = false;
+  }
   const pollingRef = useRef(false);
   const dataRef = useRef(data);
   dataRef.current = data;
+  const lastLoggedExplorationKeyRef = useRef('');
+
   const tick = useCallback(async () => {
     if (pollingRef.current) return;
     pollingRef.current = true;
     try {
       const snapshot = await sessionServiceRef.current!.poll({
         cwd,
-        explicitSessionId: boundSessionId,
+        bindingMode: bindingIntent.mode,
+        explicitSessionId: bindingIntent.explicitSessionId,
       });
-      if (!snapshot) return;
+      if (!snapshot) {
+        if (bindingIntent.mode === 'continue_picker' || bindingIntent.explicitSessionId) {
+          setData((prev) => ({
+            ...prev,
+            sessionPath: '',
+            sessionId: bindingIntent.explicitSessionId || prev.sessionId,
+            sourceMtimeMs: 0,
+            explorations: [],
+            tree: null,
+            awaitingPickerSelection: bindingIntent.mode === 'continue_picker'
+              && sessionServiceRef.current!.isAwaitingPickerSelection(),
+          }));
+        }
+        return;
+      }
 
-      // Trigger state updates when session identity, source freshness, or exploration identity changes.
+      if (snapshot.sessionId && !manifestWrittenRef.current) {
+        try {
+          getSessionIndexService().touchLastSession({
+            sessionId: snapshot.sessionId,
+            cwd,
+            jsonlMtime: snapshot.sourceMtimeMs,
+          });
+          manifestWrittenRef.current = true;
+          log.debug('session index touched', {
+            sessionId: snapshot.sessionId,
+            jsonlMtime: snapshot.sourceMtimeMs,
+          });
+        } catch (error) {
+          reportError('io', 'failed to write session index', {
+            sessionId: snapshot.sessionId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
       const currentExplorations = dataRef.current.explorations;
       const newDataChanged = shouldUpdateSessionData(
         {
@@ -92,7 +140,38 @@ export function useSessionPolling(cwd: string, input?: {
         snapshot,
       );
 
-      if (newDataChanged) {
+      const awaitingPickerSelection = bindingIntent.mode === 'continue_picker'
+        && sessionServiceRef.current!.isAwaitingPickerSelection()
+        && !dataRef.current.sessionPath;
+
+      if (newDataChanged || awaitingPickerSelection !== dataRef.current.awaitingPickerSelection) {
+        const prevSnap = dataRef.current;
+        const explorationKey = snapshot.explorations
+          .map((e) => `${e.id}:${e.status}`)
+          .join(',');
+        const identityChanged = prevSnap.sessionPath !== snapshot.sessionPath
+          || prevSnap.sessionId !== snapshot.sessionId
+          || prevSnap.sourceMtimeMs !== snapshot.sourceMtimeMs;
+        if (identityChanged && explorationKey === lastLoggedExplorationKeyRef.current) {
+          log.debug('jsonl updated', {
+            sessionId: snapshot.sessionId,
+            mtime: snapshot.sourceMtimeMs,
+          });
+        } else if (identityChanged) {
+          log.info('session bound', {
+            sessionId: snapshot.sessionId,
+            mtime: snapshot.sourceMtimeMs,
+            explorations: snapshot.explorations.length,
+          });
+          lastLoggedExplorationKeyRef.current = explorationKey;
+        } else if (explorationKey !== lastLoggedExplorationKeyRef.current) {
+          log.info('explorations changed', {
+            sessionId: snapshot.sessionId,
+            explorations: snapshot.explorations.length,
+            snapshot: explorationKey,
+          });
+          lastLoggedExplorationKeyRef.current = explorationKey;
+        }
         setData({
           sessionPath: snapshot.sessionPath,
           sessionId: snapshot.sessionId,
@@ -101,19 +180,20 @@ export function useSessionPolling(cwd: string, input?: {
           tree: snapshot.tree,
           tokenDisplay: snapshot.tokenDisplay,
           runtimeModel: snapshot.runtimeModel,
+          awaitingPickerSelection,
         });
       }
     } catch (error) {
-      // Silently ignore polling errors (e.g., session file not yet created)
       reportError('io', 'observer polling failed', {
         cwd,
-        explicitSessionId: boundSessionId,
+        mode: bindingIntent.mode,
+        explicitSessionId: bindingIntent.explicitSessionId,
         error: error instanceof Error ? error.message : String(error),
       });
     } finally {
       pollingRef.current = false;
     }
-  }, [bindingIntent, boundSessionId, cwd]);
+  }, [bindingIntent, cwd]);
 
   useEffect(() => {
     tick();

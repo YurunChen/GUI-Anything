@@ -8,7 +8,7 @@ import type {
   SessionIntentState,
 } from '../../data/protocol/observer-protocol';
 import {
-  FileIntentBucketRepository,
+  BundleIntentBucketRepository as FileIntentBucketRepository,
   type IntentBucketRepository,
 } from '../../data/wiki/intent-bucket-repository';
 import { resolveTitleDelta } from '../ai/intent-title-merge';

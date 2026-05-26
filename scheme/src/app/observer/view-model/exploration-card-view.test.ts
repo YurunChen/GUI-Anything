@@ -33,7 +33,8 @@ describe('buildLiveFootnote', () => {
       errorCount: 0,
       isGenerating: true,
     });
-    expect(view.statusBadge).toBe('Summarizing');
+    expect(view.statusBadge).toBe('◷ Summarizing');
+    expect(view.statusTone).toBe('running');
   });
 
   it('keeps active badge while running', () => {

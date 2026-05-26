@@ -15,7 +15,7 @@ FLOW_THEME=apple-system-dark
 FLOW_THEME=apple-system-light
 ```
 
-按 `l` 可在 Apple / Morandi 主题的 light↔dark 对之间切换。
+按 `[` `]` 在全部 32 种主题间循环；按 `J` 仅在莫兰迪 16 主题内循环（同 hue 的 light/dark 相邻）。
 
 ## 语义 Token
 
@@ -114,7 +114,7 @@ FLOW_THEME=ocean
 ## 莫兰迪色系 🌸（柔和但有辨识度）
 
 > 每个 hue 都提供 **light**（浅色淡雅，深色文字）和 **dark**（中深柔和，浅色文字）两个版本。
-> 在 TUI 内可以按 `[l]` 直接切换当前主题的 light↔dark，色调保持不变。
+> 在 TUI 内按 `[` `]` 切换主题；莫兰迪系列用 `J` 在同 hue 的 light/dark 对之间快速切换。
 >
 > 旧的不带 `-light/-dark` 后缀的名字（例如 `sakura-pink`）仍然能用，自动等价于对应的 `-light` 版本。
 
@@ -217,10 +217,9 @@ source ~/.bashrc  # 或 source ~/.zshrc
 
 | 按键 | 动作 |
 | --- | --- |
-| `j` | 切换到下一个主题（30 种全循环） |
-| `k` | 切换到上一个主题 |
+| `[` | 上一个主题 |
+| `]` | 下一个主题（32 种全循环） |
 | `J` | 仅在莫兰迪 16 主题内循环（同色调 light/dark 相邻） |
-| `l` | 切换当前 morandi 主题的 light↔dark 变体（保持色调） |
 
 切换是即时的，并会自动写入 `~/.flow-observer/theme.json` 持久化。
 

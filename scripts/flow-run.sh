@@ -16,8 +16,7 @@ set -euo pipefail
 
 ROOT_DIR="${FLOW_ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCHEME_DIR="$ROOT_DIR/scheme"
-FLOW_DATA_DIR="${FLOW_DATA_DIR:-$ROOT_DIR/.flow-runtime}"
-LAYOUT_DIR="${FLOW_DATA_DIR}/layouts"
+LAYOUT_DIR="${FLOW_LAYOUT_DIR:-${TMPDIR:-/tmp}/gui-anything-flow/layouts}"
 MODEL=""
 CONTINUE=0
 RESUME=0
@@ -51,18 +50,23 @@ while [[ $# -gt 0 ]]; do
       echo ""
       echo "Session modes:"
       echo "  (none)               New session (default)"
-      echo "  -c, --continue       Continue last Claude session (observer may regen summaries)"
-      echo "  -r, --resume         Resume via Claude native picker (strict replay)"
-      echo "  -r ID, --resume ID   Resume specific session (strict replay)"
+      echo "  -c, --continue       Continue Claude session (replay wiki if saved, else live sync)"
+      echo "  -r, --resume         Resume via Claude picker (sync observer to picked session)"
+      echo "  -r ID, --resume ID   Resume specific Claude session"
       echo ""
       echo "Options:"
       echo "  -m, --model MODEL    Claude model (sonnet, opus, ...)"
       echo "      --cleanup        Kill/delete stale flow zellij sessions and exit"
       echo ""
       echo "Environment:"
-      echo "  FLOW_PROJECT_DIR / FLOW_ROOT_DIR / FLOW_DATA_DIR"
-      echo "  FLOW_RESUME_MODE     Set by launcher; consumed in scheme/"
-      echo "  FLOW_SESSION_ID      Pin observer to Claude session UUID"
+      echo "  FLOW_PROJECT_DIR / FLOW_ROOT_DIR / FLOW_WIKI_DIR"
+      echo "  FLOW_RESUME_MODE       bind_specific | auto_latest | continue | continue_picker"
+      echo "  FLOW_LOG_LEVEL         debug | info | warn | error (default: info)"
+      echo "  FLOW_LOG_MODULES       Comma filter, e.g. binding,session,summary,runtime"
+      echo "  FLOW_LOG_FILE          Log file (default: \$ROOT_DIR/logs/observer.log)"
+      echo "  FLOW_LOG_DISABLED      1 = stderr only, no file"
+      echo "  FLOW_SESSION_ID        Pin observer to Claude session UUID"
+      echo "  wiki/sessions/_index.json  Continue binding (workspace-scoped)"
       echo "  FLOW_ZELLIJ_SESSION  Zellij session name (default: unique)"
       echo "  FLOW_ZELLIJ_AUTOCLEANUP   1=cleanup on exit (default)"
       echo "  FLOW_ZELLIJ_ON_FORCE_CLOSE quit|detach (default: quit; quit kills panes)"
@@ -101,6 +105,34 @@ kdl_quote() {
   value="${value//\\/\\\\}"
   value="${value//\"/\\\"}"
   printf '"%s"' "$value"
+}
+
+is_session_uuid() {
+  [[ "$1" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]
+}
+
+read_session_index() {
+  (cd "$SCHEME_DIR" && bun run src/data/session/session-index-cli.ts read --cwd "$ROOT_DIR" 2>/dev/null) || return 1
+}
+
+write_session_index() {
+  [[ -n "${SESSION_ID:-}" ]] || return 0
+  (cd "$SCHEME_DIR" && bun run src/data/session/session-index-cli.ts write --cwd "$ROOT_DIR" --session-id "$SESSION_ID") \
+    || echo "[flow-run] Warning: failed to write session index" >&2
+}
+
+resolve_resume_id_arg() {
+  local arg="$1"
+  if is_session_uuid "$arg"; then
+    printf '%s' "$arg"
+    return 0
+  fi
+  local resolved=""
+  resolved="$(cd "$SCHEME_DIR" && bun run src/data/session/session-index-cli.ts resolve-prefix --cwd "$ROOT_DIR" --prefix "$arg" 2>&1)" || {
+    echo "$resolved" >&2
+    return 1
+  }
+  printf '%s' "$resolved"
 }
 
 if [[ -z "$OBSERVER_WIDTH" ]]; then
@@ -163,7 +195,7 @@ cleanup_flow_sessions() {
   zellij delete-all-sessions -y >/dev/null 2>&1 || true
   pkill_patterns_graceful \
     "scripts/flow-run\.sh" \
-    "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" \
+    "zellij --layout .*gui-anything-flow/layouts" \
     "zellij --layout .*zellij-layout-" \
     "FLOW_ZELLIJ_SESSION=" \
     "FLOW_SESSION_ID=" \
@@ -189,9 +221,9 @@ cleanup_stale_launchers() {
     kill -KILL "${stale_pids[@]}" 2>/dev/null || true
   fi
 
-  pkill_pattern TERM "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" || true
+  pkill_pattern TERM "zellij --layout .*gui-anything-flow/layouts" || true
   sleep 0.3
-  pkill_pattern KILL "zellij --layout .*${ROOT_DIR}/.flow-runtime/layouts" || true
+  pkill_pattern KILL "zellij --layout .*gui-anything-flow/layouts" || true
 }
 
 preflight_cleanup_session() {
@@ -231,13 +263,23 @@ build_observer_cmd() {
   local cmd=(
     "FLOW_PROJECT_DIR=\"$ROOT_DIR\""
     "FLOW_ROOT_DIR=\"$ROOT_DIR\""
-    "FLOW_DATA_DIR=\"${FLOW_DATA_DIR}\""
     "FLOW_RESUME_MODE=\"$mode\""
     "FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\""
     "FLOW_THEME=\"${FLOW_THEME:-tokyo-night}\""
   )
   if [[ -n "${SESSION_ID:-}" ]]; then
     cmd+=("FLOW_SESSION_ID=\"$SESSION_ID\"")
+  fi
+  local log_file="${FLOW_LOG_FILE:-$ROOT_DIR/logs/observer.log}"
+  cmd+=("FLOW_LOG_FILE=\"$log_file\"")
+  if [[ -n "${FLOW_LOG_LEVEL:-}" ]]; then
+    cmd+=("FLOW_LOG_LEVEL=\"$FLOW_LOG_LEVEL\"")
+  fi
+  if [[ -n "${FLOW_LOG_MODULES:-}" ]]; then
+    cmd+=("FLOW_LOG_MODULES=\"$FLOW_LOG_MODULES\"")
+  fi
+  if [[ -n "${FLOW_LOG_DISABLED:-}" ]]; then
+    cmd+=("FLOW_LOG_DISABLED=\"$FLOW_LOG_DISABLED\"")
   fi
   local prefix="${cmd[*]}"
   printf '%s bun run src/main.ts --live' "$prefix"
@@ -252,6 +294,9 @@ fi
 cleanup_stale_launchers
 
 if [[ -n "$RESUME_ID" ]]; then
+  if ! is_session_uuid "$RESUME_ID"; then
+    RESUME_ID="$(resolve_resume_id_arg "$RESUME_ID")" || exit 1
+  fi
   SESSION_ID="$RESUME_ID"
   echo "[flow-run] Resume specific Claude session: $SESSION_ID (zellij: $SESSION_NAME)"
 elif [[ "$RESUME" == "1" ]]; then
@@ -260,25 +305,14 @@ elif [[ "$RESUME" == "1" ]]; then
   SESSION_ID=""
   echo "[flow-run] Resume picker (zellij: $SESSION_NAME)"
 elif [[ "$CONTINUE" == "1" ]]; then
-  LAST_NAME="$(latest_exited_session_name)"
-  if [[ -z "$LAST_NAME" ]]; then
-    LAST_NAME="$(latest_session_name)"
-  fi
-  if [[ -n "$LAST_NAME" ]]; then
-    SESSION_NAME="$LAST_NAME"
-    EXTRACTED_ID="$(extract_session_id_from_layout "$LAST_NAME" "$LAYOUT_DIR" || true)"
-    if [[ -n "$EXTRACTED_ID" ]]; then
-      SESSION_ID="$EXTRACTED_ID"
-      echo "[flow-run] Continue with session id $SESSION_ID (zellij: $SESSION_NAME)"
-    else
-      SESSION_ID=""
-      echo "[flow-run] Continue zellij session $SESSION_NAME (Claude --continue)"
-    fi
+  if SESSION_ID="$(read_session_index)"; then
+    echo "[flow-run] Continue session: $SESSION_ID (index → bundle → Claude jsonl)"
+    REUSE_SESSION=0
   else
     SESSION_ID=""
-    echo "[flow-run] Continue: no prior session, starting fresh"
+    echo "[flow-run] Continue: Claude --continue; observer will sync and bootstrap wiki if needed"
+    REUSE_SESSION=0
   fi
-  REUSE_SESSION=1
 else
   SESSION_ID="$(uuidgen | tr 'A-Z' 'a-z')"
 fi
@@ -323,14 +357,15 @@ printf -v CLAUDE_CMD '%q ' claude "${claude_args[@]}"
 CLAUDE_CMD="${CLAUDE_CMD% }"
 
 # Observer binding (scheme/src/services/session/session-binding-policy.ts):
-# - resume_specific / resume_picker: strict replay (no summary regen)
-# - bind_specific: new session OR continue with known SESSION_ID (regen allowed)
-# - auto_latest: continue without pinned id (mtime discovery)
+# - continue: -c / -r <id> — wiki 有数据 replay，无数据 live 同步 Claude jsonl
+# - continue_picker: -r — Claude picker 选中后同上
+# - bind_specific: new session (live)
+# - auto_latest: plain ga flow only
 OBSERVER_RESUME_MODE="auto_latest"
-if [[ -n "$RESUME_ID" ]]; then
-  OBSERVER_RESUME_MODE="resume_specific"
+if [[ -n "$RESUME_ID" ]] || [[ "$CONTINUE" == "1" ]]; then
+  OBSERVER_RESUME_MODE="continue"
 elif [[ "$RESUME" == "1" ]]; then
-  OBSERVER_RESUME_MODE="resume_picker"
+  OBSERVER_RESUME_MODE="continue_picker"
 elif [[ -n "$SESSION_ID" ]]; then
   OBSERVER_RESUME_MODE="bind_specific"
 fi
@@ -375,6 +410,8 @@ fi
 echo "Observer mode: $OBSERVER_RESUME_MODE"
 echo "Layout: $LAYOUT_FILE"
 echo ""
+
+write_session_index
 
 FLOW_WATCHDOG_PID=""
 FLOW_CLEANUP_DONE=0

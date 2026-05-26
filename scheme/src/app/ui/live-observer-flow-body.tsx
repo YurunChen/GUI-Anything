@@ -1,9 +1,7 @@
 /**
  * LiveObserverFlowBody - chronological single-rail flow panel.
  *
- * Layout:
- *   Timeline - exploration list in strict time order
- *   Next     - lightweight suggestions section
+ * Layout: Timeline — exploration list in strict time order.
  */
 
 import type { ReactNode } from 'react';
@@ -19,15 +17,10 @@ import type {
 } from '../../data/protocol/observer-protocol';
 import { getSummaryItemForExploration } from '../../data/protocol/summary-contract';
 import { isExplorationSummarizing } from '../observer/view-model/presentation-summaries';
-import type { SessionPresentationMode } from '../../services/session/session-presentation-policy';
-import type { PotentialDirection } from '../../services/ai/flow-summaries';
-import { colors, pulseFrames, semantic, useThemeVersion } from './theme';
+import { colors, pulseFrames, useThemeVersion } from './theme';
 import { ExplorationCard } from './flow/ExplorationCard';
 import { FlowGraphView } from './flow/graph/FlowGraphView';
 import { createCachedBuilder } from '../observer/view-model/flow-graph-snapshot-cache';
-import { truncateFlowText } from '../../utils/flow-text';
-import { FlowSectionLabel } from './flow/flow-ui/FlowSectionLabel';
-import { flowSpacing } from './flow/flow-ui/flow-spacing';
 import { useWikiMatches } from '../observer/hooks/useWikiMatches';
 import { sortTimelineEntries } from '../observer/view-model/timeline';
 import type { WikiWriteChromeView } from '../observer/view-model/wiki-write-chrome';
@@ -41,6 +34,8 @@ const snapshotCache = createCachedBuilder();
 
 export type LiveObserverFlowBodyProps = {
   sessionId?: string;
+  sessionPath?: string;
+  allowWikiLiveSearch?: boolean;
   explorations: Exploration[];
   summaries: Record<string, string>;
   flowchartHints?: Record<string, FlowchartHint>;
@@ -49,13 +44,9 @@ export type LiveObserverFlowBodyProps = {
   wikiPersistResults?: Record<string, PersistResult>;
   wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
   pendingSummaryCount: number;
-  directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
-  directionsMessage: string;
-  potentialDirections: PotentialDirection[];
+  pendingByExplorationId?: Record<string, boolean>;
   /** Available width for content calculation */
   availableWidth?: number;
-  /** Strict replay mode hint when regeneration is intentionally disabled. */
-  sessionPresentationMode?: SessionPresentationMode;
   sessionBannerHint?: string;
   summaryItems?: Record<SessionScopedId, SummaryItem>;
   mode?: 'exploration' | 'flowchart';
@@ -73,27 +64,32 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   const {
     explorations,
     sessionId = 'current',
+    sessionPath = '',
+    allowWikiLiveSearch = true,
     summaries,
     flowchartHints,
     graphSnapshot: externalGraphSnapshot,
-    directionsStatus,
-    directionsMessage,
-    potentialDirections,
     availableWidth = 80,
-    sessionPresentationMode = 'live',
     sessionBannerHint,
     summaryItems,
     wikiPersistStatus,
     wikiPersistResults,
     wikiWriteChromeByExploration,
     pendingSummaryCount,
+    pendingByExplorationId = {},
     mode = 'exploration',
     calmMode = false,
     spinnerIntervalMs = 160,
   } = props;
   const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const hasRunning = explorations.some((item) => item.status === 'running');
-  const wikiMatchesByExploration = useWikiMatches(explorations, sessionId);
+  const shouldAnimateSpinner = hasRunning || pendingSummaryCount > 0;
+  const wikiMatchesByExploration = useWikiMatches(
+    explorations,
+    sessionId,
+    sessionPath,
+    allowWikiLiveSearch,
+  );
   const graphSnapshot = useMemo(() => {
     if (externalGraphSnapshot) return externalGraphSnapshot;
     return snapshotCache({
@@ -106,12 +102,12 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   }, [externalGraphSnapshot, sessionId, explorations, summaries, flowchartHints, wikiPersistStatus]);
 
   useEffect(() => {
-    if (!hasRunning) return;
+    if (!shouldAnimateSpinner) return;
     const timer = setInterval(() => {
       setSpinnerFrameIndex((prev) => (prev + 1) % pulseFrames.length);
     }, spinnerIntervalMs);
     return () => clearInterval(timer);
-  }, [hasRunning, spinnerIntervalMs]);
+  }, [shouldAnimateSpinner, spinnerIntervalMs]);
 
   if (explorations.length === 0) {
     const m = getObserverMessages();
@@ -125,51 +121,42 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
 
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
-      <box style={{ width: '100%', flexDirection: 'column' }}>
-        {sessionBannerHint ? (
-          <text fg={colors.fg.dim}>{sessionBannerHint}</text>
-        ) : null}
-        {mode === 'flowchart' ? (
-          <box
-            style={{
-              width: '100%',
-              flexGrow: 1,
-              flexDirection: 'column',
-              justifyContent: 'center',
-              paddingTop: 1,
-              paddingBottom: 1,
-            }}
-          >
-            <FlowGraphView
-              snapshot={graphSnapshot}
-              availableWidth={availableWidth}
-            />
-          </box>
-        ) : (
-          <ExplorationTimeline
-            sessionId={sessionId}
-            explorations={explorations}
-            summaries={summaries}
-            summaryItems={summaryItems}
-            pendingSummaryCount={pendingSummaryCount}
-            availableWidth={availableWidth}
-            spinnerFrame={pulseFrames[spinnerFrameIndex]}
-            calmMode={calmMode}
-            wikiPersistStatus={wikiPersistStatus}
-            wikiPersistResults={wikiPersistResults}
-            wikiWriteChromeByExploration={wikiWriteChromeByExploration}
-            wikiMatchesByExploration={wikiMatchesByExploration}
-          />
-        )}
-      </box>
-
-      {sessionPresentationMode !== 'replay' ? (
-        <NextPanel
-          status={directionsStatus}
-          message={directionsMessage}
-          directions={potentialDirections}
-        />
+      {sessionBannerHint ? (
+        <text fg={colors.fg.dim}>{sessionBannerHint}</text>
       ) : null}
+      {mode === 'flowchart' ? (
+        <box
+          style={{
+            width: '100%',
+            flexGrow: 1,
+            flexDirection: 'column',
+            justifyContent: 'center',
+            paddingTop: 1,
+            paddingBottom: 1,
+          }}
+        >
+          <FlowGraphView
+            snapshot={graphSnapshot}
+            availableWidth={availableWidth}
+          />
+        </box>
+      ) : (
+        <ExplorationTimeline
+          sessionId={sessionId}
+          explorations={explorations}
+          summaries={summaries}
+          summaryItems={summaryItems}
+          pendingSummaryCount={pendingSummaryCount}
+          pendingByExplorationId={pendingByExplorationId}
+          availableWidth={availableWidth}
+          spinnerFrame={pulseFrames[spinnerFrameIndex]}
+          calmMode={calmMode}
+          wikiPersistStatus={wikiPersistStatus}
+          wikiPersistResults={wikiPersistResults}
+          wikiWriteChromeByExploration={wikiWriteChromeByExploration}
+          wikiMatchesByExploration={wikiMatchesByExploration}
+        />
+      )}
     </box>
   );
 });
@@ -179,6 +166,7 @@ interface ExplorationTimelineProps {
   explorations: Exploration[];
   summaries: Record<string, string>;
   pendingSummaryCount: number;
+  pendingByExplorationId?: Record<string, boolean>;
   availableWidth: number;
   spinnerFrame: string;
   calmMode: boolean;
@@ -195,6 +183,7 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
     explorations,
     summaries,
     pendingSummaryCount,
+    pendingByExplorationId = {},
     availableWidth,
     spinnerFrame,
     calmMode,
@@ -214,7 +203,7 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
         const isGenerating = isExplorationSummarizing(
           exploration,
           summaryItem,
-          pendingSummaryCount,
+          pendingByExplorationId[exploration.id] === true,
         );
         const wikiMatch = wikiMatchesByExploration[exploration.id] ?? null;
 
@@ -239,69 +228,6 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
           />
         );
       })}
-    </box>
-  );
-}
-
-interface NextPanelProps {
-  status: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
-  message: string;
-  directions: PotentialDirection[];
-}
-
-function NextPanel({ status, message, directions }: NextPanelProps): ReactNode {
-  if (status === 'idle') return null;
-
-  const m = getObserverMessages();
-
-  const panelStyle = {
-    width: '100%' as const,
-    flexDirection: 'column' as const,
-    marginTop: flowSpacing.cardGap,
-    paddingLeft: flowSpacing.cardPadX,
-    paddingRight: flowSpacing.cardPadX,
-    backgroundColor: semantic.fill.grouped,
-    border: ['left'] as ['left'],
-    borderColor: semantic.tintMuted,
-  };
-
-  if (status === 'generating') {
-    return (
-      <box style={panelStyle}>
-        <FlowSectionLabel>{m.nextGenerating}</FlowSectionLabel>
-      </box>
-    );
-  }
-
-  if (status === 'insufficient') {
-    return (
-      <box style={panelStyle}>
-        <FlowSectionLabel>{m.nextInsufficient}</FlowSectionLabel>
-        <text fg={semantic.label.secondary}>{message || m.nextInsufficientHint}</text>
-      </box>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <box style={panelStyle}>
-        <text fg={semantic.destructive}>{m.nextError}</text>
-      </box>
-    );
-  }
-
-  return (
-    <box style={panelStyle}>
-      <FlowSectionLabel>{m.nextDirections}</FlowSectionLabel>
-      {directions.map((item, idx) => (
-        <box key={`dir_${idx}`} style={{ width: '100%', flexDirection: 'column', marginTop: idx > 0 ? 1 : 0 }}>
-          <text fg={semantic.label.primary}>{`${idx + 1}. ${item.direction}`}</text>
-          <text fg={semantic.label.secondary}>{m.nextWhy(truncateFlowText(item.why, 40))}</text>
-          <text fg={semantic.label.tertiary}>
-            {m.nextAction(truncateFlowText(item.nextAction, 30), item.confidence)}
-          </text>
-        </box>
-      ))}
     </box>
   );
 }

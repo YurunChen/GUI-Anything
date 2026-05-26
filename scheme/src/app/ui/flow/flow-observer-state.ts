@@ -11,14 +11,6 @@ export type SessionState =
   | { type: 'loading' }           // File exists but no data yet
   | { type: 'live'; path: string; id: string };  // Active session
 
-// Direction generation state
-export type DirectionsState =
-  | { type: 'idle' }
-  | { type: 'insufficient'; reason: string }
-  | { type: 'generating' }
-  | { type: 'ready' }
-  | { type: 'error'; message: string };
-
 // Wiki match state (search results)
 export type WikiSearchState =
   | { type: 'idle' }

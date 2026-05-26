@@ -178,7 +178,7 @@ export interface FlowGraphSnapshot {
 }
 
 /** Canonical session derived state — wiki/sessions/{sessionId}.json */
-export const SESSION_FLOW_RECORD_VERSION = 1 as const;
+export const SESSION_FLOW_RECORD_VERSION = 2 as const;
 
 export interface SessionFlowRecord {
   version: typeof SESSION_FLOW_RECORD_VERSION;
@@ -189,6 +189,8 @@ export interface SessionFlowRecord {
   updatedAt: number;
   flowGraph: FlowGraphSnapshot;
   flowchartHints: Record<ExplorationId, FlowchartHint>;
+  /** Canonical git root when saved — fail-closed load if mismatched. */
+  workspaceRoot?: string;
 }
 
 /** @deprecated Use SessionFlowRecord; kept for legacy -graph.json migration. */

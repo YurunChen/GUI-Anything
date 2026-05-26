@@ -1,31 +1,43 @@
 import type { ReactNode } from 'react';
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef, useEffect } from 'react';
+import { createLogger } from '../../utils/logger';
 
 import { FlowObserverShell } from '../ui/flow/FlowObserverShell';
-import { deriveSessionBindingState } from '../../services/session/session-binding-policy';
-import {
-  buildSessionBanner,
-  deriveSessionPresentationPolicy,
-} from '../../services/session/session-presentation-policy';
+import { buildSessionBanner } from '../../services/session/session-banner';
+import { getSessionBundleService } from '../../services/session/session-bundle-service';
+import { bundleHasDisplayData } from '../../data/wiki/session-bundle-mappers';
 import { getObserverMessages } from '../ui/i18n/observer-messages';
 
 import { useSessionPolling } from './hooks/useSessionPolling';
 import { useExplorationSummaries } from './hooks/useExplorationSummaries';
 import { useWikiCurator } from './hooks/useWikiCurator';
-import { usePotentialDirections } from './hooks/usePotentialDirections';
 import { useGraphSnapshot } from './hooks/useGraphSnapshot';
 import { useGraphConsolidation } from './hooks/useGraphConsolidation';
 import { buildFlowGraphSnapshot } from './view-model/flow-graph-builder';
 import { useNotification } from './hooks/useNotification';
-import { matchWikiForExploration } from './hooks/useWikiMatch';
 import { fileWikiAudit } from '../../services/wiki/audit-service';
 import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
+
+const log = createLogger('observer');
+let observerBootLogged = false;
 
 export function LiveObserverContainer(): ReactNode {
   const cwd = process.env.FLOW_PROJECT_DIR || process.cwd();
   const explicitSessionId = process.env.FLOW_SESSION_ID || '';
   const resumeModeRaw = process.env.FLOW_RESUME_MODE || '';
   const summaryModel = (process.env.CLAUDE_MODEL || '').trim();
+  const bootLoggedRef = useRef(observerBootLogged);
+
+  useEffect(() => {
+    if (bootLoggedRef.current) return;
+    bootLoggedRef.current = true;
+    observerBootLogged = true;
+    log.info('observer started', {
+      sessionId: explicitSessionId || undefined,
+      mode: resumeModeRaw || 'auto_latest',
+      logLevel: process.env.FLOW_LOG_LEVEL || 'info',
+    });
+  }, [cwd, resumeModeRaw, explicitSessionId]);
 
   const {
     sessionPath,
@@ -36,30 +48,54 @@ export function LiveObserverContainer(): ReactNode {
     tree,
     tokenDisplay,
     runtimeModel,
+    awaitingPickerSelection,
   } = useSessionPolling(cwd, {
     explicitSessionId: explicitSessionId || undefined,
     resumeModeRaw: resumeModeRaw || undefined,
   });
-  const presentation = useMemo(
-    () => deriveSessionPresentationPolicy(bindingIntent),
-    [bindingIntent],
-  );
+
+  const sessionBound = Boolean(sessionPath.trim());
+  const wikiBundleHasData = useMemo(() => {
+    const sid = sessionId.trim();
+    if (!sid) return false;
+    return bundleHasDisplayData(getSessionBundleService().load(sid));
+  }, [sessionId]);
 
   const {
     summaries: explorationSummaries,
     flowchartHints,
     pendingCount: pendingSummaryCount,
+    pendingByExplorationId,
     summaryItems,
     sessionIntent,
-  } = useExplorationSummaries(explorations, sessionId, sessionPath, summaryModel, presentation);
+    runtime,
+  } = useExplorationSummaries(
+    explorations,
+    sessionId,
+    sessionPath,
+    summaryModel,
+    bindingIntent,
+    wikiBundleHasData,
+    sessionBound,
+  );
+
+  const pickerStatusHint = useMemo(() => {
+    if (!awaitingPickerSelection) return undefined;
+    return getObserverMessages().statusAwaitingPicker;
+  }, [awaitingPickerSelection]);
 
   const sessionBannerHint = useMemo(() => {
-    if (presentation.mode !== 'replay') return undefined;
+    if (runtime.phase !== 'replay') return undefined;
     const m = getObserverMessages();
-    const banner = buildSessionBanner({ presentation, explorations, summaryItems });
+    const banner = buildSessionBanner({
+      presentation: runtime.presentation,
+      explorations,
+      summaryItems,
+    });
     if (!banner.detailLine) return m.replayBannerBody;
     return `${m.replayBannerBody} · ${banner.detailLine}`;
-  }, [presentation, explorations, summaryItems]);
+  }, [runtime, explorations, summaryItems]);
+
   const {
     wikiExtractedCount,
     explorationPersistStatus,
@@ -68,6 +104,7 @@ export function LiveObserverContainer(): ReactNode {
     recentInspirations,
     saveInspiration,
   } = useWikiCurator(explorations, summaryItems, sessionId, sessionIntent);
+
   const completedExplorationCount = explorations.filter((item) => item.status === 'complete').length;
   const baseGraphSnapshot = useMemo(() => buildFlowGraphSnapshot({
     sessionId: sessionId || 'current',
@@ -76,6 +113,7 @@ export function LiveObserverContainer(): ReactNode {
     flowchartHints,
     wikiPersistStatus: explorationPersistStatus,
   }), [sessionId, explorations, explorationSummaries, flowchartHints, explorationPersistStatus]);
+
   const consolidation = useGraphConsolidation({
     sessionId,
     graphSnapshot: baseGraphSnapshot,
@@ -84,6 +122,7 @@ export function LiveObserverContainer(): ReactNode {
     enabled: true,
   });
   const mergedFlowchartHints = consolidation.hintsOverlay ?? flowchartHints;
+
   const {
     snapshot: graphSnapshot,
     cacheHit: graphCacheHit,
@@ -96,12 +135,6 @@ export function LiveObserverContainer(): ReactNode {
     flowchartHints: mergedFlowchartHints,
     wikiPersistStatus: explorationPersistStatus,
   });
-  const bindingState = deriveSessionBindingState(bindingIntent, {
-    explorationCount: explorations.length,
-    summaryCount: Object.keys(explorationSummaries).length,
-    flowchartHintCount: Object.keys(mergedFlowchartHints).length,
-    graphCacheHit,
-  });
 
   const {
     notificationEnabled,
@@ -109,22 +142,18 @@ export function LiveObserverContainer(): ReactNode {
     lastNotifyStatus,
   } = useNotification(sessionId, tree ?? undefined);
 
-  const {
-    potentialDirections,
-    directionsStatus,
-    directionsMessage,
-  } = usePotentialDirections({
-    runtimeModel,
-    explorations,
-    summaries: explorationSummaries,
-    summaryModel: summaryModel || undefined,
-  });
-
   const handleFileWikiAudit = useCallback((): { filed: boolean; targetId?: string } => {
     if (!sessionId) return { filed: false };
+    const bundleService = getSessionBundleService();
+    const allowLiveSearch = runtime.presentation.allowWikiLiveSearch;
     for (const exploration of [...explorations].reverse()) {
       if (exploration.status !== 'complete') continue;
-      const match = matchWikiForExploration(exploration, sessionId);
+      const match = bundleService.ensureExplorationRetrieval(
+        sessionId,
+        exploration,
+        sessionPath,
+        allowLiveSearch,
+      );
       if (!match) continue;
       fileWikiAudit({
         targetId: match.entry.id,
@@ -137,13 +166,15 @@ export function LiveObserverContainer(): ReactNode {
       return { filed: true, targetId: match.entry.id };
     }
     return { filed: false };
-  }, [explorations, sessionId]);
+  }, [explorations, sessionId, sessionPath, runtime.presentation.allowWikiLiveSearch]);
 
   return (
     <FlowObserverShell
       explorations={explorations}
       tree={tree}
       sessionId={sessionId}
+      sessionPath={sessionPath}
+      allowWikiLiveSearch={runtime.presentation.allowWikiLiveSearch}
       tokenDisplay={tokenDisplay}
       runtimeModel={runtimeModel}
       wikiExtractedCount={wikiExtractedCount}
@@ -152,21 +183,19 @@ export function LiveObserverContainer(): ReactNode {
       graphSnapshot={graphSnapshot}
       explorationPersistStatus={explorationPersistStatus}
       pendingSummaryCount={pendingSummaryCount}
-      potentialDirections={potentialDirections}
-      directionsStatus={directionsStatus}
-      directionsMessage={directionsMessage}
+      pendingByExplorationId={pendingByExplorationId}
       recentInspirations={recentInspirations}
       onSaveInspiration={saveInspiration}
       persistResults={explorationPersistResults}
       wikiWriteChromeByExploration={wikiWriteChromeByExploration}
-      sessionPresentationMode={presentation.mode}
+      sessionPresentationMode={runtime.phase}
       sessionBannerHint={sessionBannerHint}
-      flowBodyVisible={bindingState.visibility === 'show'}
+      flowBodyVisible={runtime.visibility === 'show'}
       summaryItems={summaryItems}
       sessionIntent={sessionIntent}
       onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
       onFileWikiAudit={handleFileWikiAudit}
-      notifyStatus={lastNotifyStatus}
+      notifyStatus={pickerStatusHint ?? lastNotifyStatus}
     />
   );
 }

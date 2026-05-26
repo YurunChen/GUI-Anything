@@ -8,7 +8,7 @@ Flow observer UI follows **data → services → app(hooks/view-model) → ui** 
 |-----------|------------|
 | `scheme/src/app/ui/flow/**` | `data/protocol` (types only), `app/ui/theme`, `app/observer/view-model` (types/props builders only), `utils/*`, `constants/*` |
 | `scheme/src/app/ui/flow/flow-ui/**` | Same as above + sibling flow components |
-| `scheme/src/app/observer/hooks/**` | `services/*`, `data/protocol`, `constants/*` |
+| `scheme/src/app/observer/hooks/**` | `services/*`（含 `session-bundle-service`、`session-index-service`），`data/protocol`，`constants/*` |
 | `scheme/src/app/observer/view-model/**` | `data/protocol`, `domain/*` — no services, no OpenTUI, no UI imports |
 
 Chrome prop shapes live in [`shell-chrome.types.ts`](../scheme/src/app/observer/view-model/shell-chrome.types.ts); UI components alias/implement them.
@@ -22,6 +22,9 @@ Chrome prop shapes live in [`shell-chrome.types.ts`](../scheme/src/app/observer/
 ## Orchestration
 
 - [`LiveObserverContainer.tsx`](../scheme/src/app/observer/LiveObserverContainer.tsx) wires hooks and passes props to [`FlowObserverShell.tsx`](../scheme/src/app/ui/flow/FlowObserverShell.tsx).
+- **摘要**：`useExplorationSummaries` → `SummaryOrchestrator`（`services/ai/summary-orchestrator.ts`）；`useSessionIntent` 读 bundle intent。
+- **Prior KNOWLEDGE**：`useWikiMatches` → `SessionBundleService.ensureExplorationRetrieval`；热键 `k` 审计同路径。勿在 Observer 用 `matchWikiForExploration`。
+- **View-model 无 IO**：`presentation-summaries.ts` 的 `applyLiveSummaryPreview` 由 hook 传入 `bundleSummaryByExplorationId`，不在 view-model 内 `load` bundle。
 - Chrome aggregation lives in [`shell-props.ts`](../scheme/src/app/observer/view-model/shell-props.ts).
 - Leaf components (`ExplorationCard`, `WikiMatchCard`, etc.) are prop-driven only.
 - Flowchart layout math lives in `app/ui/flow/graph/flow-graph-layout.ts` (no service imports); `FlowGraphView.tsx` only consumes layout output.

@@ -10,6 +10,7 @@ import {
   type SessionFlowRepository,
 } from '../../data/session/session-flow-repository';
 import { buildFlowGraphSnapshot } from '../../app/observer/view-model/flow-graph-builder';
+import { resolveWorkspaceRootForCache } from '../../data/session/workspace-root';
 import {
   buildGraphFingerprint,
   type GraphFingerprintInput,
@@ -18,6 +19,7 @@ import {
 export interface PersistSessionFlowInput extends GraphFingerprintInput {
   sessionId: SessionId;
   jsonlMtime: number;
+  jsonlPath?: string;
 }
 
 export interface SessionFlowStore {
@@ -45,6 +47,7 @@ export function buildSessionFlowRecord(input: PersistSessionFlowInput): SessionF
     updatedAt: Date.now(),
     flowGraph,
     flowchartHints,
+    workspaceRoot: resolveWorkspaceRootForCache(),
   };
 }
 
@@ -59,7 +62,7 @@ export class DefaultSessionFlowStore implements SessionFlowStore {
     const next = buildSessionFlowRecord(input);
     const existing = this.repository.load(input.sessionId);
     next.revision = (existing?.revision ?? 0) + 1;
-    this.repository.save(next);
+    this.repository.save(next, input.jsonlPath);
     return next;
   }
 }

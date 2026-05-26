@@ -58,11 +58,11 @@ export function finalizeExplorationSummaryItem(input: {
 
   return {
     text,
-    source: 'ai',
+    source: 'fallback',
     status: 'ready',
     persistMeta: input.payload.persist ?? DEFAULT_SKIP_PERSIST,
     flowchart: input.payload.flowchart,
-    reason: validationReason ? `structured_output_${validationReason}` : undefined,
+    reason: validationReason ? `structured_output_${validationReason}` : 'structured_output_fallback',
   };
 }
 
@@ -74,7 +74,7 @@ export function finalizeSummaryFromTimelineOnly(input: {
 }): FinalizedSummaryFields {
   return {
     text: buildFallbackSummary(input.question, input.nodes),
-    source: 'ai',
+    source: 'fallback',
     status: 'ready',
     persistMeta: DEFAULT_SKIP_PERSIST,
     reason: input.errorReason,

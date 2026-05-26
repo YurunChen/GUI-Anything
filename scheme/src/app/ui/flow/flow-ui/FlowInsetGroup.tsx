@@ -35,17 +35,22 @@ export function FlowInsetGroup({ children, accent = false }: FlowInsetGroupProps
 
 interface FlowSectionProps {
   label: string;
+  /** Muted suffix on the same line as the section label (e.g. cached / fallback). */
+  labelSuffix?: string;
   children: ReactNode;
   /** Insert blank line before section label */
   gap?: boolean;
 }
 
 /** Uppercase section label + body — typography only, no extra frame. */
-export function FlowSection({ label, children, gap = true }: FlowSectionProps): ReactNode {
+export function FlowSection({ label, labelSuffix, children, gap = true }: FlowSectionProps): ReactNode {
+  const header = labelSuffix
+    ? `${label.toUpperCase()}  ${labelSuffix}`
+    : label.toUpperCase();
   return (
     <>
       {gap && <FlowLineGap />}
-      <text fg={semantic.label.quaternary}>{label.toUpperCase()}</text>
+      <text fg={semantic.label.quaternary}>{header}</text>
       {children}
     </>
   );

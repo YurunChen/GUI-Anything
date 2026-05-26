@@ -1,3 +1,4 @@
+import * as os from 'node:os';
 import * as path from 'node:path';
 import type { FlowEnv } from './protocol/observer-protocol';
 
@@ -6,18 +7,12 @@ export interface FlowEnvRepository {
 }
 
 /**
- * Resolve the unified data directory for observer.
- * Priority: FLOW_DATA_DIR > FLOW_ROOT_DIR/.flow-runtime
+ * Flow logging (scheme/src/utils/logger.ts):
+ * - FLOW_LOG_LEVEL: debug | info | warn | error (default info)
+ * - FLOW_LOG_MODULES: comma allowlist, e.g. binding,session,summary,runtime
+ * - FLOW_LOG_FILE: log path (default FLOW_ROOT_DIR/logs/observer.log)
+ * - FLOW_LOG_DISABLED: 1 = stderr only
  */
-export function resolveFlowDataDir(): string {
-  if (process.env.FLOW_DATA_DIR) {
-    return process.env.FLOW_DATA_DIR;
-  }
-  const rootDir = process.env.FLOW_ROOT_DIR || process.cwd();
-  return path.join(rootDir, '.flow-runtime');
-}
-
-// Note: SQLite removed — summary cache: data/wiki/summary-repository.ts
 
 /**
  * Resolve Wiki root directory.
@@ -35,14 +30,15 @@ export function resolveWikiRoot(): string {
 }
 
 /**
- * Resolve layouts directory.
- * Priority: FLOW_LAYOUT_DIR > FLOW_DATA_DIR/layouts
+ * Ephemeral Zellij layout directory (not persisted in repo).
+ * Priority: FLOW_LAYOUT_DIR > TMPDIR/gui-anything-flow/layouts
  */
-export function resolveLayoutDir(): string {
+export function resolveZellijLayoutDir(): string {
   if (process.env.FLOW_LAYOUT_DIR) {
     return process.env.FLOW_LAYOUT_DIR;
   }
-  return path.join(resolveFlowDataDir(), 'layouts');
+  const base = process.env.XDG_RUNTIME_DIR || process.env.TMPDIR || os.tmpdir();
+  return path.join(base, 'gui-anything-flow', 'layouts');
 }
 
 /** Stable project tag for wiki entries, e.g. `proj:gui-anything`. */

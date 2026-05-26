@@ -1,49 +1,75 @@
 # Flow Observer — 数据保存与展示策略
 
-单源策略定义：`scheme/src/services/session/session-presentation-policy.ts`（模式）+ `scheme/src/app/observer/view-model/presentation-summaries.ts`（摘要档位）。
+单源策略：
+- 模式：`scheme/src/services/session/session-runtime-policy.ts`
+- 摘要标签：`scheme/src/data/protocol/summary-provenance.ts`（`cached` / `fallback` 唯一入口）
 
 ## 用户流程 → 模式
 
-| 启动 | 模式 | 摘要写入 | 摘要读取 |
-|------|------|----------|----------|
-| `ga flow` | **live** | 可 AI 生成并写入 `wiki/sessions/{id}-summaries.json` | L4→L2→L3→L1→L0 |
-| `ga flow -c` | **live** | 同上 | 同上 |
-| `ga flow -r [id]` | **replay** | 不生成 | L2→L2s→L3→L1→L0 |
+| 启动 | 模式 | wiki 有数据 | wiki 无数据 |
+|------|------|-------------|-------------|
+| `ga flow` | live | live 构建 | live 构建 |
+| `ga flow -c` / `-r [id]` | continue | **replay**（只读 bundle） | **live 同步** Claude jsonl，构建 bundle |
+| `ga flow -r`（picker） | continue_picker | 选中后同上 | 选中后同上 |
 
-## 数据层
+运行时由 `deriveSessionRuntime` 决定 replay vs live；Claude jsonl 始终是 session 真相源。
+
+## 数据层（bundle 聚合）
 
 | 层 | 路径 | 角色 |
 |----|------|------|
 | 事实 | `~/.claude/projects/.../{sessionId}.jsonl` | 时间轴真相源 |
-| 派生 | `wiki/sessions/{sessionId}-summaries.json` | AI 摘要 + flowchart |
-| 派生 | `wiki/sessions/{sessionId}.json` | Flow 图 + flowchartHints |
-| Wiki 资产 | `wiki/knowledge/` | 长期知识 |
-| 证据 | `wiki/sessions/{sessionId}-evidence.json` | 会话证据 |
+| 继续指针 | `wiki/sessions/_index.json` | workspace 级 lastSessionId |
+| 会话快照 | `wiki/sessions/{sessionId}/bundle.json` | **唯一** session 派生聚合 |
+| Wiki 资产 | `wiki/knowledge/` | 长期知识 markdown |
 
-## 摘要档位（展示）
+### `bundle.json` 字段
 
-| 档位 | 来源 | Replay | Live |
-|------|------|--------|------|
-| L0 timeline | JSONL | 始终 | 始终 |
-| L1 excerpt | 规则摘录 `exploration-excerpt.ts` | 缺摘要时填充 | 不填充 |
-| L2 cache | summaries.json 有效 | ✓ | ✓ |
-| L2s stale | 缓存旧于 JSONL | 只读展示，不删文件 | 清除并 regen |
-| L3 wiki | knowledge | ✓ | ✓ |
-| L4 ai | generateMissing | ✗ | ✓ |
+| 字段 | 含义 |
+|------|------|
+| `meta` | sessionId、workspaceRoot、jsonlPath、jsonlMtime |
+| `session.intent` | intent 标题状态 |
+| `session.flow` | flow 图、fingerprint、flowchartHints、graphPatchLedger |
+| `curation` | intent buckets、evidence |
+| `explorations[id].summary` | AI 摘要（存 `ai`/`fallback` 生成来源） |
+| `explorations[id].retrieval` | KNOWLEDGE 检索：`undefined` 未扫 · `null` 无 hit · `object` 命中快照（`origin: retrieved`） |
+| `explorations[id].write` | Wiki 策展落盘结果（`origin: saved`） |
 
-卡片 Summary 区显示档位标签（AI / 缓存 / 过期快照 / Wiki / 时间轴摘录）。
+## 摘要展示（SUMMARY 标签）
+
+判定入口：`resolveSummaryDisplayTier()` in `summary-provenance.ts`
+
+| UI 标签 | 含义 | 条件 |
+|---------|------|------|
+| （无） | 本轮 AI 成功 | `source: ai` |
+| **cached** | 从 session bundle 读出 | hydrate → `source: cache` |
+| **fallback** | 降级路径 | `source: fallback`，或 replay excerpt |
+
+Live 生成中用 `live_preview` 占位，**不显示**标签。
+
+## 缓存与 JSONL mtime
+
+- `loadWithStatus`：JSONL 变新 → `stale`，**仍返回 bundle**（不删除）。
+- Live：仅为缺 `status: ready` 的 exploration 调 AI。
+- Restore / Replay：`allowSummaryRegen: false`；缺文用规则 excerpt（标 fallback）。
+
+`workspaceRoot` 必须与当前 git 根一致；mismatch 视为 invalid。
+
+## Flow 图持久化
+
+**唯一写入路径**：`useGraphSnapshot` → `graph-cache-service` → `bundle.session.flow`（300ms debounce）。摘要服务不再写 flow。
 
 ## UI 规则
 
-- **顶栏**：`Live` / `Replay` 徽章 + 模型 / token / done / errors / wiki 已存
-- **Replay banner**：一行说明 + 可选 `N stale · N excerpt`
-- **时间轴**：有 exploration 即显示（replay 不再因缺 summary 整页 hide）
-- **Next 面板**：仅 live 显示
-- **Calm**：仅最新条完整 Summary；其余一行折叠
+- **时间线卡片**：Summarizing 时 meta 与 SUMMARY 区显示 `◷ ◶ ◵ ◴` spinner（`pendingSummaryCount > 0` 时驱动，与 running 共用 `pulseFrames`）
+- **顶栏**：`Live` / `Replay` + 模型 / token / done / wiki 已存
+- **Replay banner**：一行说明 + 可选 `N excerpt · N timeline-only`
+- Hook 通过 `SessionBundleService` / `SessionIndexService` 访问 bundle（见 [ui-layer-rules.md](ui-layer-rules.md)）
 
 ## 实现边界
 
-- 绑定与 `allowRegen`：`session-binding-policy.ts`
-- 展示策略：`session-presentation-policy.ts`
-- 缓存过期：`summary-repository.loadWithStatus(..., { onExpired: 'stale' | 'clear' })`
-- UI 禁止直接读 repository（见 [ui-layer-rules.md](ui-layer-rules.md)）
+- 绑定与 regen：`session-binding-policy.ts`
+- 展示策略：`session-runtime-policy.ts` · Replay banner：`session-banner.ts`
+- 摘要编排：`summary-orchestrator.ts` · `exploration-summary-service.ts`
+- Hydrate 门闩：`summariesReadyKey` = `sessionId|jsonlPath`
+- Bundle facade：`services/session/session-bundle-service.ts`

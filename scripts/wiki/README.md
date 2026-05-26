@@ -8,7 +8,7 @@ Runtime data lives at repo `wiki/` (gitignored). Observer code uses **research t
 | Knowledge | `knowledge/entities/` | Papers, datasets, tools (`N` prefix ids) |
 | Knowledge | `knowledge/summaries/` | Per-exploration distillates (agent-only; excluded from UI match) |
 | Meta | `knowledge/SCHEMA.md`, `index.md`, `log/`, `audit/`, `outputs/progress/` | Service-maintained |
-| Sessions | `sessions/` | `{sessionId}.json` (flow graph), `-summaries.json`, `-graph-patches.json`, `-evidence.json` |
+| Sessions | `sessions/` | `_index.json` + `{sessionId}/bundle.json`（summary · retrieval · write · flow · curation） |
 | Notes | `notes/` | `{YYYY-MM-DD}.md` |
 
 Summary Agent may still emit `persistMeta.type` of `error|snippet|decision`; the wiki layer normalizes those to `contexts/` with `facet:` (no top-level `errors/snippets/decisions/`).

@@ -6,6 +6,7 @@ import type {
   SessionId,
 } from '../../../data/protocol/observer-protocol';
 import { buildFlowGraphSnapshot } from '../view-model/flow-graph-builder';
+import { resolveWorkspaceRootForCache } from '../../../data/session/workspace-root';
 import {
   DefaultGraphCacheService,
   type GraphCacheLoadStatus,
@@ -65,6 +66,8 @@ export function resolveGraphSnapshot(
     sessionId: input.sessionId,
     jsonlMtime: input.sourceMtimeMs,
     fingerprint,
+    workspaceRoot: resolveWorkspaceRootForCache(),
+    jsonlPath: input.sessionPath,
   });
   if (cache.snapshot && cache.status === 'hit') {
     return {
@@ -151,6 +154,7 @@ export function useGraphSnapshot(input: UseGraphSnapshotInput): GraphSnapshotSta
     if (!resolved.shouldPersist || !sessionId || sourceMtimeMs <= 0) {
       return;
     }
+    // Sole writer for bundle.session.flow (exploration-summary-service no longer persists graph).
     const timer = setTimeout(() => {
       service.saveGraphSnapshot({
         sessionId,
@@ -158,6 +162,7 @@ export function useGraphSnapshot(input: UseGraphSnapshotInput): GraphSnapshotSta
         fingerprint,
         snapshot: resolved.snapshot,
         flowchartHints: flowchartHints ?? {},
+        jsonlPath: sessionPath,
       });
     }, 300);
     return () => clearTimeout(timer);

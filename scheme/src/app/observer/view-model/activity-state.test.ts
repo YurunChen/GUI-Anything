@@ -7,7 +7,6 @@ describe('deriveActivityState', () => {
       explorations: [{ status: 'running' } as never],
       pendingSummaryCount: 0,
       persistPendingCount: 0,
-      directionsStatus: 'idle',
     });
     expect(state.tone).toBe('running');
     expect(state.spinning).toBe(true);
@@ -18,7 +17,6 @@ describe('deriveActivityState', () => {
       explorations: [],
       pendingSummaryCount: 2,
       persistPendingCount: 0,
-      directionsStatus: 'idle',
     });
     expect(state.label).toContain('Summarizing');
   });
@@ -28,7 +26,6 @@ describe('deriveActivityState', () => {
       explorations: [],
       pendingSummaryCount: 0,
       persistPendingCount: 0,
-      directionsStatus: 'idle',
     });
     expect(state.tone).toBe('idle');
   });

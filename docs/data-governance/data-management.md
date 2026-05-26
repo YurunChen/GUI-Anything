@@ -32,8 +32,10 @@
 
 | 数据类型 | 存储位置 | TTL | 重建成本 | 清理策略 |
 |---------|---------|-----|---------|---------|
-| AI Summary 缓存 | `wiki/sessions/{session}-summaries.json` | JSONL mtime 变化 | 低（重新调用AI） | 默认过期自动重建；`resume` 模式仅回放不重建 |
-| Evidence 数据 | `wiki/sessions/{session}-evidence.json` | 无/长期 | 中（需重新解析） | 孤儿检测后清理 |
+| Session 聚合 | `wiki/sessions/{id}/bundle.json` | 永久（按 exploration） | 低（live 补缺） | JSONL 变新标记 stale，不删文件 |
+| 继续指针 | `wiki/sessions/_index.json` | 永久 | 低 | workspace 不匹配则忽略 |
+
+`bundle.json` 含：`explorations[].summary`、`retrieval`、`write`、`session.flow`、`curation`。
 
 ### 2.3 Knowledge Layer (长期)
 
@@ -54,10 +56,12 @@ interface SessionRepository {
   // 注意: 不写操作，JSONL 是只读的
 }
 
-// 2. 派生缓存（实现分散，按职责拆分）
-// data/wiki/summary-repository.ts — SummaryRepository CRUD → wiki/sessions/{id}-summaries.json
-// data/session/session-flow-repository.ts — SessionFlowRecord → wiki/sessions/{id}.json
-// data/wiki/evidence-repository.ts — EvidenceRepository → wiki/sessions/{id}-evidence.json
+// 2. Session bundle（派生聚合）
+// data/wiki/session-bundle-repository.ts — bundle.json CRUD + patch retry
+// data/session/session-flow-repository.ts — bundle.session.flow 切片
+// data/wiki/intent-bucket-repository.ts / evidence-repository.ts — bundle.curation 切片
+// services/session/session-bundle-service.ts — hooks 访问 facade
+// services/session/session-index-service.ts — _index.json facade
 
 // 3. KnowledgeRepository - 管理知识库
 interface KnowledgeRepository {
@@ -141,43 +145,41 @@ async function cleanupOrphanEvidence(): Promise<CleanupReport> {
 
 ```
 app/ (应用层)
-  ├── useSessionPolling.ts → PollingObserverSessionService
+  ├── useSessionPolling.ts → SessionIndexService.touchLastSession
   ├── useExplorationSummaries.ts → DefaultExplorationSummaryService
-  ├── useGraphSnapshot.ts → graph-cache-service
-  └── useWikiCurator.ts → WikiCuratorService + InspirationNoteService
+  ├── useGraphSnapshot.ts → graph-cache-service（唯一 flow 写入）
+  └── useWikiCurator.ts → WikiCuratorService + SessionBundleService
 
 services/ (服务层)
   ├── session/
+  │   ├── session-bundle-service.ts → session-bundle-repository
+  │   ├── session-index-service.ts → session-index
   │   ├── observer-session-service.ts → data/session/repository.ts (JSONL)
   │   ├── session-binding-policy.ts
-  │   └── graph-cache-service.ts → graph-cache-repository.ts
+  │   ├── session-runtime-policy.ts
+  │   ├── session-banner.ts
+  │   ├── exploration-card-pipeline.ts
+  │   └── graph-cache-service.ts → session-flow-repository
   ├── ai/
-  │   ├── exploration-summary-service.ts
-  │   └── summary-cache.ts → wiki/sessions/{id}-summaries.json
+  │   ├── summary-orchestrator.ts
+  │   └── exploration-summary-service.ts → bundle explorations + intent
   └── wiki/
-      ├── wiki-curator-service.ts → intent digest + Wiki Agent（默认路径）
-      ├── persistence-service.ts → legacy per-turn（FLOW_WIKI_LEGACY_PER_TURN=1）
-      ├── inspiration-note-service.ts → note-repository
+      ├── wiki-curator-service.ts
       └── match-service.ts → knowledge-repository
 
 data/ (数据层)
   ├── protocol/
-  │   └── observer-protocol.ts (类型定义)
+  │   ├── observer-protocol.ts
+  │   └── summary-provenance.ts（cached/fallback 入口）
   ├── session/
-  │   ├── claude-project.ts (会话路径发现)
-  │   ├── jsonl-session.ts (JSONL 解析 / exploration)
-  │   ├── session-types.ts
-  │   ├── repository.ts (FileSessionRepository)
-  │   ├── graph-cache-repository.ts (sessions 图快照)
-  │   └── graph-patch-repository.ts (图合并补丁)
-  ├── wiki/
-  │   ├── wiki-data-layout.ts (路径常量)
-  │   ├── knowledge-repository.ts (知识库 CRUD)
-  │   ├── evidence-repository.ts (evidence 聚合)
-  │   ├── note-repository.ts (notes 灵感笔记)
-  │   └── summary-repository.ts (sessions 摘要缓存)
-  └── management/
-      └── data-governance.ts (去重、清理、一致性检查)
+  │   ├── session-index.ts
+  │   ├── session-discovery.ts
+  │   └── session-flow-repository.ts
+  └── wiki/
+      ├── session-bundle-repository.ts
+      ├── session-bundle-types.ts
+      ├── knowledge-repository.ts
+      └── evidence-repository.ts → bundle.curation.evidence
 ```
 
 ## 6. 关键设计原则

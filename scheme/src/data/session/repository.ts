@@ -1,5 +1,9 @@
 import * as fs from 'node:fs';
-import { findLatestSession } from './claude-project';
+import {
+  resolveSessionBinding,
+  type SessionDiscoveryInput,
+  type SessionDiscoveryMode,
+} from './session-discovery';
 import {
   buildTreeFromEvents,
   extractExplorationsFromSession,
@@ -8,12 +12,22 @@ import {
 } from './jsonl-session';
 import type { ObserverSessionSnapshot } from '../protocol/observer-protocol';
 import type { ActivityTree } from '../../domain/types';
+import { createLogger } from '../../utils/logger';
+
+const log = createLogger('session');
+
+export interface SessionBindingContext {
+  mode: SessionDiscoveryMode;
+  explicitSessionId?: string;
+  pinnedSessionId?: string;
+  baselineMtimes?: Map<string, number>;
+}
 
 export interface SessionRepository {
   resolveActiveSession(input: {
     cwd: string;
-    explicitSessionId?: string;
-  }): Promise<{ sessionId: string; sessionPath: string } | null>;
+    binding: SessionBindingContext;
+  }): Promise<{ sessionId: string; sessionPath: string; source: string } | null>;
   readSnapshot(input: {
     sessionPath: string;
     previous?: { mtimeMs: number; sessionPath: string } | null;
@@ -27,13 +41,29 @@ export interface SessionRepository {
 export class FileSessionRepository implements SessionRepository {
   async resolveActiveSession(input: {
     cwd: string;
-    explicitSessionId?: string;
-  }): Promise<{ sessionId: string; sessionPath: string } | null> {
-    const sessionPath = withFlowSessionId(input.explicitSessionId, () => findLatestSession(input.cwd));
-    if (!sessionPath) return null;
+    binding: SessionBindingContext;
+  }): Promise<{ sessionId: string; sessionPath: string; source: string } | null> {
+    const discoveryInput: SessionDiscoveryInput = {
+      cwd: input.cwd,
+      mode: input.binding.mode,
+      explicitSessionId: input.binding.explicitSessionId,
+      pinnedSessionId: input.binding.pinnedSessionId,
+      baselineMtimes: input.binding.baselineMtimes,
+    };
+    const resolved = resolveSessionBinding(discoveryInput);
+    if (!resolved) {
+      log.debug('no active session', { mode: input.binding.mode });
+      return null;
+    }
+    log.debug('active session resolved', {
+      sessionId: resolved.sessionId,
+      source: resolved.source,
+      mode: input.binding.mode,
+    });
     return {
-      sessionId: input.explicitSessionId || sessionIdFromPath(sessionPath),
-      sessionPath,
+      sessionId: resolved.sessionId,
+      sessionPath: resolved.sessionPath,
+      source: resolved.source,
     };
   }
 
@@ -78,12 +108,18 @@ export class FileSessionRepository implements SessionRepository {
       })
       ?.source?.model || 'unknown';
 
+    const sessionId = sessionIdFromPath(input.sessionPath);
+    log.debug('session snapshot updated', {
+      sessionId,
+      mtimeMs,
+      explorationCount: explorations.length,
+    });
     return {
       changed: true,
       mtimeMs,
       snapshot: {
         sessionPath: input.sessionPath,
-        sessionId: sessionIdFromPath(input.sessionPath),
+        sessionId,
         sourceMtimeMs: mtimeMs,
         explorations,
         tree,
@@ -93,21 +129,6 @@ export class FileSessionRepository implements SessionRepository {
         updatedAt: Date.now(),
       },
     };
-  }
-}
-
-function withFlowSessionId<T>(sessionId: string | undefined, fn: () => T): T {
-  if (!sessionId) return fn();
-  const previous = process.env.FLOW_SESSION_ID;
-  process.env.FLOW_SESSION_ID = sessionId;
-  try {
-    return fn();
-  } finally {
-    if (previous === undefined) {
-      delete process.env.FLOW_SESSION_ID;
-    } else {
-      process.env.FLOW_SESSION_ID = previous;
-    }
   }
 }
 

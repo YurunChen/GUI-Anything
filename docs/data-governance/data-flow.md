@@ -1,97 +1,47 @@
-# 数据流转链路（新格式）
+# 数据流转链路（bundle 聚合）
 
 ## 完整数据流
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              应用层 (app/)                                    │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  useExplorationSummaries.ts                                                 │
-│  ├── 调用: DefaultExplorationSummaryService                                 │
-│  │   ├── hydrateFromCache() → wiki/sessions/{session}-summaries.json       │
-│  │   └── hydrateFromWiki() → KnowledgeRepository.listAll()                 │
-│  │                                                          ↓              │
-│  └── 调用: generateMissing()（仅 allowRegen=true）→ saveSummary()          │
-│                                    ↓                                        │
-│                             wiki/sessions/{session}-summaries.json         │
-│                                                                             │
-│  useWikiMatches.ts → match-service（用户问题出现即检索，running 起展示 KNOWLEDGE）│
-│  useWikiCurator.ts（别名 useWikiPersistence）                                  │
-│  └── pivot 关闭 intent / session idle sweep → WikiCuratorService.curateIntent│
-│      同 intent 内只积累 intent-buckets；卡片 meta：anchor 轮 wiki saved/skipped │
-│      审计：`k` 快捷键 → audit/*.md（Phase 2 用户主动）                        │
-│                          ↓                                                  │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             服务层 (services/)                                │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ai/exploration-summary-service.ts                                          │
-│  └── 使用: KnowledgeRepository (新)                                         │
-│                                                                             │
-│  wiki/wiki-curator-service.ts                                               │
-│  ├── Intent digest → Wiki Agent (skill-only write contexts/)               │
-│  └── post-process: index / log / progress                                   │
-│                                                                             │
-│  wiki/wiki-maintenance-service.ts（legacy: FLOW_WIKI_LEGACY_PER_TURN=1）    │
-│                                                                             │
-│  wiki/audit-service.ts → knowledge/audit/*.md（用户 `k` 快捷键）            │
-│                                                                             │
-│  ai/summary-cache.ts                                                        │
-│  └── 重导出 → data/wiki/summary-repository.ts                               │
-│                                                                             │
-│  session/graph-cache-service.ts                                             │
-│  └── session-flow-repository.ts → wiki/sessions/{sessionId}.json           │
-│                                                                             │
-│  session/session-binding-policy.ts                                          │
-│  └── resume 可见性 / summary allowRegen（launcher 设 FLOW_RESUME_MODE）       │
-│  session/session-presentation-policy.ts                                     │
-│  └── live vs replay、stale 缓存、摘录兜底（见 display-policy.md）              │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-                                    ↓
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              数据层 (data/)                                   │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  wiki/knowledge-repository.ts                                               │
-│  ├── 读取: knowledge/{contexts,entities,summaries}/**/*.md                  │
-│  └── 保存: 扁平或嵌套路径；update 保留已有 relativePath                    │
-│                                                                             │
-│  wiki/evidence-repository.ts                                                │
-│  ├── 读取: sessions/{sessionId}-evidence.json (聚合)                         │
-│  └── 保存: sessions/{sessionId}-evidence.json (聚合)                       │
-│                                                                             │
-│  wiki/summary-repository.ts → sessions/{sessionId}-summaries.json           │
-│  wiki/note-repository.ts → notes/{YYYY-MM-DD}.md                            │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+app/
+  useSessionPolling → SessionIndexService → _index.json
+  useExplorationSummaries → SummaryOrchestrator → hydrateFromBundle → generateMissing (live)
+  useSessionIntent → SessionBundleService.getSessionIntent
+  useWikiMatches → SessionBundleService.ensureExplorationRetrieval
+  useWikiCurator → bundle.curation + patch write (origin: saved)
+  useGraphSnapshot → bundle.session.flow (sole graph writer, debounced)
+  LiveObserverContainer (k audit) → ensureExplorationRetrieval
+
+services/
+  session-bundle-service / session-index-service  ← hooks facade
+  exploration-card-pipeline.ensureExplorationCardRetrieval  ← retrieval before summary
+  summary-orchestrator  ← hydrate / generate scheduling
+  wiki-retrieval-policy.ensureExplorationRetrieval  ← bundle retrieval IO
+  exploration-summary-service → patch exploration cards
+  graph-cache-service → session-flow-repository
+  session-runtime-policy.ts
+  session-banner.ts
+
+data/
+  wiki/sessions/_index.json
+  wiki/sessions/{id}/bundle.json
+  wiki/knowledge/**/*.md
 ```
 
 ## 目录结构（三链）
 
 ```
 wiki/
-├── knowledge/                      ← Wiki 知识（长期 markdown）
-│   ├── SCHEMA.md, index.md, log/, audit/
-│   ├── contexts/                   ← 主链；可递归 {topic}/；error/snippet/decision 归一化为 context+facet
-│   ├── entities/                   ← N-prefix 实体页
-│   ├── summaries/                  ← agent-only；UI match 排除
-│   └── outputs/progress/index.html ← 服务层生成
-├── sessions/                       ← Session 派生 + 证据（json）
-│   ├── {sessionId}-summaries.json  ← AI 摘要 + flowchart hints
-│   ├── {sessionId}.json            ← Flow 图 + flowchartHints（真相源）
-│   ├── {sessionId}-graph-patches.json
-│   └── {sessionId}-evidence.json   ← exploration 证据聚合
-└── notes/                          ← 用户笔记
-    └── 2025-04-27.md
+├── knowledge/                      ← 长期 markdown
+├── sessions/
+│   ├── _index.json
+│   └── {sessionId}/bundle.json     ← 唯一 session 派生聚合
+└── notes/
 ```
 
-路径常量（唯一来源）：`scheme/src/data/wiki/wiki-data-layout.ts`。
+路径常量：`scheme/src/data/wiki/wiki-data-layout.ts`。
 
-**Wiki 根目录（易混）**：`resolveWikiRoot()` → `FLOW_WIKI_DIR` ?? `FLOW_ROOT_DIR/wiki` ?? `FLOW_PROJECT_DIR/wiki` ?? `cwd/wiki`。`flow-run.sh` 会设 `FLOW_ROOT_DIR` 为仓库根，故长期知识在 **`<repo>/wiki/knowledge/`**；`scheme/wiki/` 仅可能在未设 `FLOW_ROOT` 时出现（如本地直接 `cd scheme && bun run`，且通常只有 `sessions/*-intent.json` 等残留）。
+**Wiki 根目录**：`resolveWikiRoot()` → `FLOW_WIKI_DIR` ?? `FLOW_ROOT_DIR/wiki` ?? …。`flow-run.sh` 设 `FLOW_ROOT_DIR` 为仓库根 → **`<repo>/wiki/knowledge/`**。
 
 ## Wiki：检索 vs 落盘（两条链）
 
@@ -100,9 +50,9 @@ wiki/
 | **Prior 检索** | 用户问题写入 `exploration.question` 后（`running` 即可），每帧同步 | 只读 `listMatchPoolSync()`（`contexts/` + `entities/`，**不含** `summaries/`） | KNOWLEDGE 卡片（与 SUMMARY 无关） |
 | **Post-summary 落盘** | **pivot 关闭 intent** 或 session idle sweep | Intent digest → **Wiki Curator**（skill-only 写 `contexts/`） | 卡片 meta：**仅 anchor 轮** `wiki saved/updated/skipped` |
 
-二者独立：**有 prior hit** 只影响 KNOWLEDGE 卡片；同 intent 内 continue/refine **只积累** `*-summaries.json` / `{sessionId}-intent-buckets.json`，**不**每轮写 `contexts/`。策展输入为同 intent 多轮 digest；skill 失败 → `skipped: skill_failed`，**禁止** auto-extractor 回落 create。
+二者独立：**有 prior hit** 写入 bundle `retrieval`；策展结果写入 bundle `write`。Restore 模式只读 bundle，不 live 检索。
 
-**Prior 检索只执行一次**：`useWikiMatches` 在问题首次可检索时锁定命中结果；策展完成**不会**刷新 KNOWLEDGE（下一轮新问题才会再检）。
+**Prior 检索**：`wiki-retrieval-policy.ensureExplorationRetrieval`（经 `SessionBundleService`）。`useWikiMatches` 与 `exploration-summary-service` 共用；live 卡片顺序 **retrieval → summary**。Bundle `retrieval`：`undefined` 未扫 · `null` 无 hit · `object` 命中。Restore 禁用 live search。
 
 ### Intent 策展时间序
 
@@ -117,6 +67,7 @@ sequenceDiagram
   participant Disk as wiki/knowledge/*.md
 
   Claude->>Obs: exploration complete
+  Obs->>Obs: ensureExplorationRetrieval → bundle.retrieval
   Obs->>Sum: generateMissing
   Sum-->>Obs: SummaryItem ready + flowchart hint
 
@@ -138,7 +89,7 @@ sequenceDiagram
 ### 落盘决策树（`WikiCuratorService.curateIntent`）
 
 1. 门禁：`shouldSkipIntentCurate` — 空 bucket / 全 low_value / 无 solution_detail 且无工具轮 → skip
-2. `buildIntentDigest` — 多轮 `*-summaries.json` + evidence sidecar
+2. `buildIntentDigest` — bucket 内多轮 `SummaryItem`（来自 bundle）+ `curation.evidence`
 3. `findPriorHitForDigest` + `resolveWikiDecisionAsync`（digest 模式 prompt）
 4. skill 失败或无 prior 且 rules 回落 → `skipped: skill_failed` / `skill_only_no_prior`（**不** `extractWikiEntry` → create）
 
@@ -210,7 +161,7 @@ sequenceDiagram
 
 ### 与「删了 wiki 仍命中」相关的机制
 
-- **KNOWLEDGE 只认磁盘上的 `knowledge/{contexts,entities}/**/*.md`**，不认 `*-summaries.json`（摘要缓存删了不影响 prior hit）。
+- **KNOWLEDGE 只认磁盘上的 `knowledge/{contexts,entities}/**/*.md`**，不认 bundle 内 summary 文本（删 bundle 摘要不影响 prior hit）。
 - **删 markdown 后**：下一轮检索应无 hit；若仍有 hit，说明当时磁盘上仍有该文件（常见：本轮/上一轮 **落盘或 Agent skill 又写回** C001）。
 - **Observer 进程内**：intent 策展对同一 bucket **只 curate 一次**（`curatedAt` 后不再触发）；删 `knowledge/*.md` **不会**自动重跑 Agent。Legacy per-turn：`useWikiPersistence` + `resolveWikiPersistPhase` 仍可对同一 `exploration.id` 只跑一次。
 
@@ -220,20 +171,21 @@ sequenceDiagram
 |------|------|
 | **探索卡片** | 用户问题 · 工具 meta · **KNOWLEDGE**（规则检索，`running` 起即可展示）· SUMMARY |
 | **顶栏 `ObserverStatusBar`** | 第 1 行会话 meta；第 2 行 Intent（仅当前 `node_title`），无 Running tools / Summarizing 等活动行 |
-| **探索卡片 meta** | `done · N tools`；**仅 pivot/sweep anchor 轮** 追加 `wiki updated · C001 · N turns` |
+| **探索卡片 meta** | `Done · N tools`；**仅 pivot/sweep anchor 轮** 追加 `wiki C001 saved`（多轮 `(3 turns)`） |
 
 展示：读链 `wiki-turn-chrome.ts`（`resolveWikiTurnUi`）；写链 `wiki-write-chrome.ts`（`resolveWikiWriteChrome`）；积累/策展 `useWikiCurator` + `wiki-persist-policy.ts`。
 
 - **frontmatter 遗留**：如 `source: exploration/exp_1`（非 `session_id` / `exploration_id` 块）时，解析得到 `sessionId=""`，`hydrateFromWiki` / `findBySource` 可能对不上，但 **按 request 相似度的检索与 dedup 仍可能命中 C001**。
 
-### 三份存储分工
+### Session 派生存储（bundle 聚合）
 
 | 路径 | 内容 | 删了的影响 |
 |------|------|------------|
-| `wiki/knowledge/**/*.md` | 长期知识 | KNOWLEDGE / prior hit / 落盘目标 |
-| `wiki/sessions/{id}-intent-buckets.json` | Intent 多轮积累 + 策展状态 | pivot/sweep 触发写盘；anchor badge 来源 |
-| `wiki/sessions/{id}-summaries.json` | AI 摘要 + flowchart + persistMeta | SUMMARY 可来自缓存重显，**不**直接写 contexts |
-| `wiki/sessions/{id}-evidence.json` | 证据聚合 | 不影响 KNOWLEDGE 卡片 |
+| `wiki/sessions/{id}/bundle.json` | `explorations[].summary/retrieval/write`、`session.flow`、`curation` | Continue/replay 卡片、图、策展状态丢失；live 可重建摘要 |
+| `wiki/knowledge/**/*.md` | 长期知识 | KNOWLEDGE / prior hit / 策展落盘目标 |
+| `wiki/sessions/_index.json` | workspace 继续指针 | `-c` 绑定可能退化为扫 bundle / 最新 jsonl |
+
+旧布局 `{id}-summaries.json`、`-intent-buckets.json` 等 per-file 缓存已废弃；数据在 `bundle.json` 内。
 
 摘要契约（跨层唯一形状）：`scheme/src/data/protocol/summary-contract.ts` — `SummaryItem` 从 cache/AI → 应用展示 → wiki 落盘，禁止拆成 `summaries` + `persistMeta` 两条并行 map 再拼装。
 
@@ -260,5 +212,4 @@ import { EvidenceRepository } from 'data/wiki/evidence-repository';
 2. [ ] 重启 observer（若曾误报 `skipped · already_exists`，需重启后 `getExistingIds()` 才会扫到 `knowledge/{type}/` 下已有条目）
 3. [ ] 执行一个 exploration
 4. [ ] 检查 `wiki/knowledge/{type}/` 有新格式文件（ID 如 `C002` 递增，不重复 `C001`）
-5. [ ] 检查 `wiki/sessions/{session}-evidence.json` 存在
-6. [ ] 检查 `wiki/sessions/{session}-summaries.json` 存在
+5. [ ] 检查 `wiki/sessions/{sessionId}/bundle.json` 含 `explorations` / `curation` / `session.flow`

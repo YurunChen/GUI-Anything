@@ -3,6 +3,7 @@ import { DefaultExplorationSummaryService } from './exploration-summary-service'
 import type { Exploration } from '../../data/protocol/observer-protocol';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { FileSessionBundleRepository } from '../../data/wiki/session-bundle-repository';
 
 describe('DefaultExplorationSummaryService', () => {
   it('does not generate when a session-scoped wiki summary already exists', async () => {
@@ -47,7 +48,7 @@ describe('DefaultExplorationSummaryService', () => {
     let maxActive = 0;
     const historyByQuestion: Record<string, Array<{ summary?: string }>> = {};
 
-    const service = new DefaultExplorationSummaryService(undefined, {
+    const service = new DefaultExplorationSummaryService({
       maxAttempts: 2,
       generateSummary: async (question, _nodes, history, _model, sessionIntent) => {
         attempts[question] = (attempts[question] || 0) + 1;
@@ -79,7 +80,12 @@ describe('DefaultExplorationSummaryService', () => {
           active -= 1;
         }
       },
-      summaryRepository: { saveOne: () => {} } as never,
+      bundleRepository: {
+        load: () => null,
+        ensure: () => ({ session: { intent: null }, explorations: {} }) as never,
+        patch: () => ({ session: { intent: null } }) as never,
+        patchExploration: () => ({}) as never,
+      } as never,
     });
 
     const explorations = [
@@ -110,14 +116,18 @@ describe('DefaultExplorationSummaryService', () => {
   });
 
   it('falls back to failed summary after retry budget exhausted', async () => {
-    const service = new DefaultExplorationSummaryService(undefined, {
+    const service = new DefaultExplorationSummaryService({
       maxConcurrency: 1,
       maxAttempts: 2,
       generateSummary: async () => {
         throw new Error('always-fail');
       },
-      summaryRepository: { saveOne: () => {} } as never,
-      intentRepository: { load: () => null, save: () => {} },
+      bundleRepository: {
+        load: () => null,
+        ensure: () => ({ session: { intent: null }, explorations: {} }) as never,
+        patch: () => ({ session: { intent: null } }) as never,
+        patchExploration: () => ({}) as never,
+      } as never,
     });
 
     const generated = await service.generateMissing({
@@ -130,7 +140,7 @@ describe('DefaultExplorationSummaryService', () => {
     const failed = generated['session-c:exp_1'];
     expect(failed).toBeDefined();
     expect(failed?.status).toBe('ready');
-    expect(failed?.source).toBe('ai');
+    expect(failed?.source).toBe('fallback');
     expect(failed?.reason).toBe('always-fail');
     expect(service.getRuntimeStats().completed).toBe(1);
     expect(service.getRuntimeStats().failed).toBe(0);
@@ -138,15 +148,22 @@ describe('DefaultExplorationSummaryService', () => {
   });
 
   it('returns cache status details even when cache data is missing', () => {
-    const service = new DefaultExplorationSummaryService();
     const tempDir = fs.mkdtempSync(path.join(process.cwd(), '.tmp-summary-service-'));
+    process.env.FLOW_WIKI_DIR = path.join(tempDir, 'wiki');
+    process.env.FLOW_ROOT_DIR = tempDir;
+    fs.mkdirSync(path.join(tempDir, '.git'));
     const jsonlPath = path.join(tempDir, 'session.jsonl');
     fs.writeFileSync(jsonlPath, '', 'utf-8');
 
-    const result = service.hydrateFromCache('session-miss', jsonlPath);
+    const service = new DefaultExplorationSummaryService({
+      bundleRepository: new FileSessionBundleRepository({ wikiRoot: path.join(tempDir, 'wiki') }),
+    });
+    const result = service.hydrateFromBundle('session-miss', jsonlPath);
     expect(result.cacheStatus).toBe('miss');
     expect(result.items).toEqual({});
 
+    delete process.env.FLOW_WIKI_DIR;
+    delete process.env.FLOW_ROOT_DIR;
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });
@@ -167,8 +184,4 @@ function makeExploration(id: string, question: string): Exploration {
       label: 'done',
     }],
   };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

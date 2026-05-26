@@ -3,8 +3,10 @@ import type {
   SessionFlowRecord,
   SessionId,
 } from '../../data/protocol/observer-protocol';
+import { SESSION_FLOW_RECORD_VERSION } from '../../data/protocol/observer-protocol';
 import { FileSessionFlowRepository } from '../../data/session/session-flow-repository';
 import type { SessionFlowRepository } from '../../data/session/session-flow-repository';
+import { resolveWorkspaceRootForCache } from '../../data/session/workspace-root';
 import {
   buildGraphFingerprint as buildGraphInputFingerprintImpl,
   type GraphFingerprintInput,
@@ -27,6 +29,8 @@ export interface GraphCacheService {
     sessionId: SessionId;
     jsonlMtime: number;
     fingerprint: string;
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): GraphCacheLoadResult;
   saveSessionFlow(input: {
     sessionId: SessionId;
@@ -34,14 +38,17 @@ export interface GraphCacheService {
     fingerprint: string;
     snapshot: FlowGraphSnapshot;
     flowchartHints: SessionFlowRecord['flowchartHints'];
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): void;
-  /** @deprecated Use saveSessionFlow */
   saveGraphSnapshot(input: {
     sessionId: SessionId;
     jsonlMtime: number;
     fingerprint: string;
     snapshot: FlowGraphSnapshot;
     flowchartHints?: SessionFlowRecord['flowchartHints'];
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): void;
   clearGraphCache(sessionId: SessionId): void;
 }
@@ -53,7 +60,10 @@ export class DefaultGraphCacheService implements GraphCacheService {
     sessionId: SessionId;
     jsonlMtime: number;
     fingerprint: string;
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): GraphCacheLoadResult {
+    const currentWorkspace = input.workspaceRoot ?? resolveWorkspaceRootForCache();
     const cache = this.repository.load(input.sessionId);
     if (!cache) {
       return {
@@ -68,6 +78,24 @@ export class DefaultGraphCacheService implements GraphCacheService {
       return {
         status: 'corrupted',
         reason: 'session_id_mismatch',
+        snapshot: null,
+        flowchartHints: null,
+        revision: null,
+      };
+    }
+    if (!cache.workspaceRoot) {
+      return {
+        status: 'stale',
+        reason: 'workspace_root_missing',
+        snapshot: null,
+        flowchartHints: null,
+        revision: null,
+      };
+    }
+    if (cache.workspaceRoot !== currentWorkspace) {
+      return {
+        status: 'corrupted',
+        reason: 'workspace_mismatch',
         snapshot: null,
         flowchartHints: null,
         revision: null,
@@ -106,10 +134,12 @@ export class DefaultGraphCacheService implements GraphCacheService {
     fingerprint: string;
     snapshot: FlowGraphSnapshot;
     flowchartHints: SessionFlowRecord['flowchartHints'];
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): void {
     const existing = this.repository.load(input.sessionId);
     const record: SessionFlowRecord = {
-      version: 1,
+      version: SESSION_FLOW_RECORD_VERSION,
       sessionId: input.sessionId,
       jsonlMtime: input.jsonlMtime,
       fingerprint: input.fingerprint,
@@ -117,8 +147,9 @@ export class DefaultGraphCacheService implements GraphCacheService {
       updatedAt: Date.now(),
       flowGraph: input.snapshot,
       flowchartHints: input.flowchartHints,
+      workspaceRoot: input.workspaceRoot ?? resolveWorkspaceRootForCache(),
     };
-    this.repository.save(record);
+    this.repository.save(record, input.jsonlPath);
   }
 
   saveGraphSnapshot(input: {
@@ -127,6 +158,8 @@ export class DefaultGraphCacheService implements GraphCacheService {
     fingerprint: string;
     snapshot: FlowGraphSnapshot;
     flowchartHints?: SessionFlowRecord['flowchartHints'];
+    workspaceRoot?: string;
+    jsonlPath?: string;
   }): void {
     this.saveSessionFlow({
       sessionId: input.sessionId,
@@ -134,6 +167,8 @@ export class DefaultGraphCacheService implements GraphCacheService {
       fingerprint: input.fingerprint,
       snapshot: input.snapshot,
       flowchartHints: input.flowchartHints ?? {},
+      workspaceRoot: input.workspaceRoot,
+      jsonlPath: input.jsonlPath,
     });
   }
 

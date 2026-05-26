@@ -116,29 +116,29 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
   const summaryTierLabel = formatSummaryTierLabel(summaryTier, messages);
 
   const summarySection = showInlineSummary ? (
-    <FlowSection label={messages.summary}>
+    <FlowSection
+      label={messages.summary}
+      labelSuffix={!isGenerating ? summaryTierLabel : undefined}
+    >
       {isGenerating ? (
         <text wrapMode="none" fg={semantic.activity}>
           {`${spinnerFrame} ${messages.summarizing}`}
         </text>
       ) : (
-        <>
-          <text wrapMode="char" fg={semantic.label.secondary}>
-            {buildInlineSummary(summary, false)}
-          </text>
-          {summaryTierLabel ? (
-            <text fg={semantic.label.tertiary}>{summaryTierLabel}</text>
-          ) : null}
-        </>
+        <text wrapMode="char" fg={semantic.label.secondary}>
+          {buildInlineSummary(summary, false)}
+        </text>
       )}
     </FlowSection>
   ) : null;
 
   const knowledgeSection = showKnowledgeCard && wikiMatch ? (
-    <FlowFramedSection label={messages.knowledge} variant="knowledge">
+    <FlowFramedSection
+      label={`${messages.knowledge} · ${wikiMatch.entry.id}`}
+      variant="knowledge"
+    >
       <WikiMatchCard
         match={wikiMatch}
-        availableWidth={availableWidth}
         contextQuestion={exploration.question}
       />
     </FlowFramedSection>
@@ -194,16 +194,8 @@ function formatSummaryTierLabel(
 ): string | undefined {
   if (!tier) return undefined;
   switch (tier) {
-    case 'ai':
-      return undefined;
     case 'cache':
       return messages.summaryTierCache;
-    case 'stale':
-      return messages.summaryTierStale;
-    case 'wiki':
-      return messages.summaryTierWiki;
-    case 'excerpt':
-      return messages.summaryTierExcerpt;
     case 'fallback':
       return messages.summaryTierFallback;
     default:

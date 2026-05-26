@@ -1,3 +1,4 @@
+import { getSessionBundleService } from '../../../services/session/session-bundle-service';
 import type {
   ExplorationId,
   IntentBucketLedger,
@@ -5,14 +6,13 @@ import type {
   SessionIntentState,
   SessionScopedId,
   SummaryItem,
-  WikiPersistStatus,
 } from '../../../data/protocol/observer-protocol';
 import { makeSessionScopedId } from '../../../data/protocol/observer-protocol';
 import { normalizeSummaryItems } from '../../../data/protocol/summary-contract';
 import { shouldCurateWikiForIntent } from '../../../constants/session-intent-keys';
 import { IntentBucketService, isLegacyPerTurnWikiEnabled } from '../../../services/wiki/intent-bucket-service';
 import { getWikiCuratorService } from '../../../services/wiki/wiki-curator-service';
-import { resolveWikiPersistPhase } from '../../../services/wiki/wiki-persist-policy';
+import { resolveWikiPersistPhase, isSummaryReadyForWiki, type WikiPersistStatus } from '../../../services/wiki/wiki-persist-policy';
 import {
   DefaultWikiPersistenceService,
 } from '../../../services/wiki/persistence-service';
@@ -108,6 +108,7 @@ export function useWikiCurator(
       });
       if (!mountedRef.current || runSessionId !== lastSessionRef.current) return;
       const ledger = bucketServiceRef.current.load(runSessionId);
+      syncWriteFieldsFromLedger(runSessionId, ledger);
       const saved = result.status === 'saved' || result.status === 'updated';
       setState((prev) => ({
         ...prev,
@@ -133,7 +134,7 @@ export function useWikiCurator(
       if (exploration.status !== 'complete') continue;
       const scopedId = makeSessionScopedId(sessionId, exploration.id);
       const item = items[scopedId];
-      if (!item?.flowchart || !isSummaryReady(item)) continue;
+      if (!item?.flowchart || !isSummaryReadyForWiki(item)) continue;
       if (recordedSummariesRef.current.has(scopedId)) continue;
 
       const priorIntent = intentBeforeExploration(sessionIntent, exploration.id);
@@ -300,8 +301,22 @@ export function useWikiCurator(
   };
 }
 
-function isSummaryReady(item: SummaryItem): boolean {
-  return Boolean(item.text?.trim() && item.status === 'ready' && item.source !== 'excerpt');
+function syncWriteFieldsFromLedger(sessionId: string, ledger: IntentBucketLedger | null): void {
+  if (!ledger) return;
+  const repo = getSessionBundleService();
+  for (const bucket of Object.values(ledger.buckets)) {
+    if (!bucket.persistResult || !bucket.anchorExplorationId) continue;
+    repo.patchExploration(sessionId, bucket.anchorExplorationId, {
+      write: {
+        origin: 'saved',
+        status: bucket.persistResult.status,
+        reason: bucket.persistResult.reason,
+        targetId: bucket.persistResult.id,
+        targetPath: bucket.persistResult.path,
+        completedAt: bucket.curatedAt ?? Date.now(),
+      },
+    });
+  }
 }
 
 function closeIneligibleIntentBucket(

@@ -14,50 +14,74 @@ interface PersistBadgeProps {
   turnCount?: number;
 }
 
+export interface WikiPersistBadgeView {
+  /** Full plain-text label (compact rows, tests). */
+  text: string;
+  fg: string;
+  targetId?: string;
+  statusText?: string;
+  turnHint?: string;
+}
+
 export function PersistBadge({ status, result, targetId, turnCount }: PersistBadgeProps): ReactNode {
   if (!status) return null;
 
-  const { text, fg } = formatWikiPersistBadge(status, result?.reason, { targetId, turnCount });
-  return <span fg={fg}>{text}</span>;
+  const badge = formatWikiPersistBadge(status, result?.reason, { targetId, turnCount });
+  if (badge.targetId && badge.statusText) {
+    const m = getObserverMessages();
+    return (
+      <>
+        <span fg={semantic.label.quaternary}>{m.wikiBadgeLabel} </span>
+        <span fg={semantic.label.tertiary}>{badge.targetId} </span>
+        <span fg={badge.fg}>{badge.statusText}{badge.turnHint ?? ''}</span>
+      </>
+    );
+  }
+  return <span fg={badge.fg}>{badge.text}</span>;
 }
 
-/** Per-card wiki write label, e.g. `wiki updated · C001 · 3 turns`. */
+/** Per-card wiki write label, e.g. `wiki C001 saved` or `wiki C001 saved (3 turns)`. */
 export function formatWikiPersistBadge(
   status: 'saved' | 'updated' | 'skipped' | 'failed' | 'pending',
   reason?: string,
   extras?: { targetId?: string; turnCount?: number },
-): { text: string; fg: string } {
+): WikiPersistBadgeView {
   const m = getObserverMessages();
-  const inner = formatPersist(status, reason, extras);
-  return { text: `${m.wikiBadgeLabel} ${inner.text}`, fg: inner.fg };
-}
-
-function formatPersist(
-  status: 'saved' | 'updated' | 'skipped' | 'failed' | 'pending',
-  reason?: string,
-  extras?: { targetId?: string; turnCount?: number },
-): { text: string; fg: string } {
-  const m = getObserverMessages();
+  const targetId = extras?.targetId?.trim() || undefined;
+  const turnHint =
+    extras?.turnCount && extras.turnCount > 1
+      ? ` (${extras.turnCount} turns)`
+      : '';
   const skipHint =
     status === 'skipped' && reason?.trim()
       ? ` (${reason.trim().slice(0, 28)})`
       : '';
-  const suffixParts: string[] = [];
-  if (extras?.targetId) suffixParts.push(extras.targetId);
-  if (extras?.turnCount && extras.turnCount > 1) {
-    suffixParts.push(`${extras.turnCount} turns`);
+
+  const { statusText, fg } = resolveWikiPersistStatus(status, skipHint);
+  if (targetId) {
+    const text = `${m.wikiBadgeLabel} ${targetId} ${statusText}${turnHint}`;
+    return { text, fg, targetId, statusText, turnHint: turnHint || undefined };
   }
-  const suffix = suffixParts.length > 0 ? ` · ${suffixParts.join(' · ')}` : '';
+
+  const text = `${m.wikiBadgeLabel} ${statusText}${turnHint}`;
+  return { text, fg };
+}
+
+function resolveWikiPersistStatus(
+  status: 'saved' | 'updated' | 'skipped' | 'failed' | 'pending',
+  skipHint: string,
+): { statusText: string; fg: string } {
+  const m = getObserverMessages();
   switch (status) {
     case 'saved':
-      return { text: `${m.wikiWriteSaved}${suffix}`, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWriteSaved, fg: semantic.label.tertiary };
     case 'updated':
-      return { text: `${m.wikiWriteUpdated}${suffix}`, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWriteUpdated, fg: semantic.label.tertiary };
     case 'skipped':
-      return { text: `${m.wikiWriteSkipped}${skipHint}`, fg: semantic.label.quaternary };
+      return { statusText: `${m.wikiWriteSkipped}${skipHint}`, fg: semantic.label.quaternary };
     case 'failed':
-      return { text: m.wikiWriteFailed, fg: semantic.destructive };
+      return { statusText: m.wikiWriteFailed, fg: semantic.destructive };
     case 'pending':
-      return { text: m.wikiWritePending, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWritePending, fg: semantic.label.tertiary };
   }
 }

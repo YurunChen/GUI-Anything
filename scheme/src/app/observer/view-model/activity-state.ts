@@ -12,9 +12,8 @@ export function deriveActivityState(input: {
   explorations: Exploration[];
   pendingSummaryCount: number;
   persistPendingCount: number;
-  directionsStatus: 'idle' | 'generating' | 'ready' | 'insufficient' | 'error';
 }): ActivityState {
-  const { explorations, pendingSummaryCount, persistPendingCount, directionsStatus } = input;
+  const { explorations, pendingSummaryCount, persistPendingCount } = input;
   const runningCount = explorations.filter((item) => item.status === 'running').length;
   const interruptedCount = explorations.filter((item) => item.status === 'interrupted').length;
 
@@ -38,12 +37,6 @@ export function deriveActivityState(input: {
       tone: 'running',
       spinning: true,
     };
-  }
-  if (directionsStatus === 'generating') {
-    return { label: 'Generating next hints', tone: 'running', spinning: true };
-  }
-  if (directionsStatus === 'error') {
-    return { label: 'Next hints failed', tone: 'error', spinning: false };
   }
   if (interruptedCount > 0) {
     return {

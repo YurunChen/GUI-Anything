@@ -1,14 +1,8 @@
 import { describe, expect, it } from 'bun:test';
-import {
-  formatSlugForDisplay,
-  formatKnowledgeTypeLabel,
-  formatWikiContinuityLine,
-  shouldShowRequest,
-} from './WikiMatchCard';
+import { shouldShowRequest } from './WikiMatchCard';
 import {
   formatKnowledgeExcerpt,
 } from '../../../services/wiki/wiki-text-utils';
-import { getObserverMessages } from '../i18n/observer-messages';
 
 describe('formatKnowledgeExcerpt', () => {
   it('strips frontmatter and uses 摘要 section', () => {
@@ -68,46 +62,5 @@ describe('shouldShowRequest', () => {
 
   it('hides empty request', () => {
     expect(shouldShowRequest('   ', 'question')).toBe(false);
-  });
-});
-
-describe('formatKnowledgeTypeLabel', () => {
-  it('resolves entity type in zh-Hans', () => {
-    const labels = getObserverMessages('zh-Hans').wikiKnowledgeType;
-    expect(formatKnowledgeTypeLabel('entity', labels)).toBe('实体');
-  });
-});
-
-describe('formatWikiContinuityLine', () => {
-  it('shows continues id, title, and score', () => {
-    const messages = getObserverMessages('zh-Hans');
-    const line = formatWikiContinuityLine({
-      score: 0.87,
-      entry: {
-        id: 'C012',
-        type: 'context',
-        slug: 'gui-layering',
-        request: '分层',
-        content: '---\n## 摘要\nGUI 三层架构说明\n',
-        tags: [],
-        sessionId: 's',
-        explorationId: 'e1',
-      },
-    }, messages);
-    expect(line).toContain('接续 C012');
-    expect(line).toContain('87%');
-    expect(line).toContain('GUI');
-  });
-});
-
-describe('formatSlugForDisplay', () => {
-  it('truncates long slugs by display width', () => {
-    const slug = 'project-analysis-gui-anything-flow-observer';
-    expect(formatSlugForDisplay(slug, 40).length).toBeLessThan(slug.length);
-    expect(formatSlugForDisplay(slug, 40)).toContain('project');
-  });
-
-  it('returns empty for blank slug', () => {
-    expect(formatSlugForDisplay('  ', 80)).toBe('');
   });
 });

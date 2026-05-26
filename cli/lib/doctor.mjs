@@ -51,8 +51,8 @@ function claudeAuthHint() {
 
 export function runDoctor({ rootDir } = {}) {
   const projectRoot = rootDir ?? process.cwd();
-  const flowRuntimeDir = path.join(projectRoot, '.flow-runtime');
   const wikiDir = path.join(projectRoot, 'wiki');
+  const sessionIndexPath = path.join(wikiDir, 'sessions', '_index.json');
 
   const auth = claudeAuthHint();
 
@@ -98,12 +98,14 @@ export function runDoctor({ rootDir } = {}) {
       fix: `Ensure write permission for ${wikiDir}.`,
     },
     {
-      id: 'flow-runtime-dir',
-      label: 'Writable flow runtime directory',
-      required: true,
-      ok: isWritableDir(flowRuntimeDir),
-      detail: flowRuntimeDir,
-      fix: `Ensure write permission for ${flowRuntimeDir}.`,
+      id: 'session-index',
+      label: 'Session index (optional)',
+      required: false,
+      ok: true,
+      detail: fs.existsSync(sessionIndexPath)
+        ? sessionIndexPath
+        : 'not created yet (run flow once)',
+      fix: 'Run `ga flow` to create wiki/sessions/_index.json.',
     },
   ];
 

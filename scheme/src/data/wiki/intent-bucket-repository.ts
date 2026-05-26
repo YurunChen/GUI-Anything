@@ -1,10 +1,13 @@
-import type { IntentBucketLedger, SessionId } from '../protocol/observer-protocol';
+import type {
+  ExplorationId,
+  IntentBucketLedger,
+  PersistResult,
+  SessionId,
+} from '../../data/protocol/observer-protocol';
 import {
-  ensureDir,
-  sessionIntentBucketsPath,
-  wikiSessionsDir,
-} from './wiki-data-layout';
-import { deleteJsonFile, readJsonFile, writeJsonFile } from '../session/json-io';
+  defaultSessionBundleRepository,
+  type SessionBundleRepository,
+} from '../../data/wiki/session-bundle-repository';
 
 export interface IntentBucketRepository {
   load(sessionId: SessionId): IntentBucketLedger | null;
@@ -12,32 +15,35 @@ export interface IntentBucketRepository {
   clear(sessionId: SessionId): void;
 }
 
-function ensureSessionsDir(): void {
-  ensureDir(wikiSessionsDir());
-}
+export class BundleIntentBucketRepository implements IntentBucketRepository {
+  constructor(private readonly bundleRepo: SessionBundleRepository = defaultSessionBundleRepository()) {}
 
-export class FileIntentBucketRepository implements IntentBucketRepository {
   load(sessionId: SessionId): IntentBucketLedger | null {
-    const result = readJsonFile<IntentBucketLedger>(sessionIntentBucketsPath(sessionId));
-    if (result === null) return null;
-    if (result === Symbol.for('corrupted') as unknown as IntentBucketLedger) {
-      deleteJsonFile(sessionIntentBucketsPath(sessionId));
-      return null;
-    }
-    if (result.sessionId !== sessionId) {
-      return { ...result, sessionId };
-    }
-    return result;
+    const bundle = this.bundleRepo.load(sessionId);
+    if (!bundle) return null;
+    return {
+      sessionId,
+      openIntentKey: bundle.curation.openIntentKey,
+      buckets: bundle.curation.buckets,
+      updatedAt: bundle.meta.updatedAt,
+    };
   }
 
   save(ledger: IntentBucketLedger): void {
-    ensureSessionsDir();
-    writeJsonFile(sessionIntentBucketsPath(ledger.sessionId), ledger);
+    this.bundleRepo.patch(ledger.sessionId, (bundle) => {
+      bundle.curation.openIntentKey = ledger.openIntentKey;
+      bundle.curation.buckets = ledger.buckets;
+    });
   }
 
   clear(sessionId: SessionId): void {
-    deleteJsonFile(sessionIntentBucketsPath(sessionId));
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      bundle.curation = { openIntentKey: '', buckets: {}, evidence: bundle.curation.evidence };
+    });
   }
 }
 
-export const defaultIntentBucketRepository = new FileIntentBucketRepository();
+export const defaultIntentBucketRepository = new BundleIntentBucketRepository();
+
+/** @deprecated Use BundleIntentBucketRepository */
+export { BundleIntentBucketRepository as FileIntentBucketRepository };

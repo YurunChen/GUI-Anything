@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { dispatchObserverKey } from './observer-key-dispatch';
+import { dispatchObserverKey, isHelpKey } from './observer-key-dispatch';
 
 const baseState = {
   showHelp: false,
@@ -76,5 +76,17 @@ describe('dispatchObserverKey', () => {
         { ...baseState, wikiAuditAvailable: false },
       ),
     ).toBeNull();
+  });
+
+  test('help keys toggle overlay', () => {
+    expect(isHelpKey({ name: '?', ctrl: false, meta: false })).toBe(true);
+    expect(isHelpKey({ name: 'question', ctrl: false, meta: false })).toBe(true);
+    expect(isHelpKey({ name: 'slash', ctrl: false, meta: false, shift: true })).toBe(true);
+    expect(isHelpKey({ name: '/', ctrl: false, meta: false })).toBe(true);
+    expect(isHelpKey({ name: '/', ctrl: false, meta: false, shift: true })).toBe(true);
+    expect(dispatchObserverKey({ name: '?', ctrl: false, meta: false }, baseState)?.type).toBe('toggle_help');
+    expect(dispatchObserverKey({ name: '/', ctrl: false, meta: false }, baseState)?.type).toBe('toggle_help');
+    expect(dispatchObserverKey({ name: 'slash', ctrl: false, meta: false }, baseState)?.type).toBe('toggle_help');
+    expect(dispatchObserverKey({ name: 'k', ctrl: true, meta: false }, baseState)?.type).toBe('toggle_help');
   });
 });

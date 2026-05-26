@@ -58,18 +58,21 @@ describe('graph cache service', () => {
     const repository = new InMemorySessionFlowRepository();
     const service = new DefaultGraphCacheService(repository);
     const snapshot = makeSnapshot('s2');
+    const workspaceRoot = '/tmp/flow-test-workspace';
     service.saveSessionFlow({
       sessionId: 's2',
       jsonlMtime: 20,
       fingerprint: 'fp2',
       snapshot,
       flowchartHints: { exp_1: { nodeId: 'n1', nodeTitle: 'T', parentId: null, branchType: 'trunk', importance: 'medium', dropFromChart: false, intentKey: 'n1' } },
+      workspaceRoot,
     });
 
     const result = service.loadGraphSnapshotWithStatus({
       sessionId: 's2',
       jsonlMtime: 20,
       fingerprint: 'fp2',
+      workspaceRoot,
     });
     expect(result.status).toBe('hit');
     expect(result.snapshot).toEqual(snapshot);
@@ -109,6 +112,50 @@ describe('graph cache service', () => {
     });
     expect(result.status).toBe('stale');
     expect(result.reason).toBe('input_fingerprint_mismatch');
+  });
+
+  it('returns stale when workspaceRoot is missing', () => {
+    const repository = new InMemorySessionFlowRepository();
+    const service = new DefaultGraphCacheService(repository);
+    repository.save({
+      version: 2,
+      sessionId: 's6',
+      jsonlMtime: 60,
+      fingerprint: 'fp6',
+      revision: 1,
+      updatedAt: 1,
+      flowGraph: makeSnapshot('s6'),
+      flowchartHints: {},
+    });
+    const result = service.loadGraphSnapshotWithStatus({
+      sessionId: 's6',
+      jsonlMtime: 60,
+      fingerprint: 'fp6',
+      workspaceRoot: '/repo/a',
+    });
+    expect(result.status).toBe('stale');
+    expect(result.reason).toBe('workspace_root_missing');
+  });
+
+  it('returns corrupted when workspace mismatches', () => {
+    const repository = new InMemorySessionFlowRepository();
+    const service = new DefaultGraphCacheService(repository);
+    service.saveSessionFlow({
+      sessionId: 's5',
+      jsonlMtime: 50,
+      fingerprint: 'fp5',
+      snapshot: makeSnapshot('s5'),
+      flowchartHints: {},
+      workspaceRoot: '/repo/a',
+    });
+    const result = service.loadGraphSnapshotWithStatus({
+      sessionId: 's5',
+      jsonlMtime: 50,
+      fingerprint: 'fp5',
+      workspaceRoot: '/repo/b',
+    });
+    expect(result.status).toBe('corrupted');
+    expect(result.reason).toBe('workspace_mismatch');
   });
 
   it('builds stable fingerprint from graph inputs', () => {

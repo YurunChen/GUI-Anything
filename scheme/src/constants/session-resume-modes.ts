@@ -1,0 +1,22 @@
+/** FLOW_RESUME_MODE values — keep in sync with scripts/flow-run.sh */
+
+export const FLOW_RESUME_MODE_BIND_SPECIFIC = 'bind_specific' as const;
+export const FLOW_RESUME_MODE_AUTO_LATEST = 'auto_latest' as const;
+export const FLOW_RESUME_MODE_CONTINUE = 'continue' as const;
+export const FLOW_RESUME_MODE_CONTINUE_PICKER = 'continue_picker' as const;
+
+/** @deprecated use FLOW_RESUME_MODE_CONTINUE */
+export const FLOW_RESUME_MODE_REPLAY = FLOW_RESUME_MODE_CONTINUE;
+/** @deprecated use FLOW_RESUME_MODE_CONTINUE_PICKER */
+export const FLOW_RESUME_MODE_REPLAY_PICKER = FLOW_RESUME_MODE_CONTINUE_PICKER;
+/** @deprecated use FLOW_RESUME_MODE_CONTINUE */
+export const FLOW_RESUME_MODE_RESUME_SPECIFIC = FLOW_RESUME_MODE_CONTINUE;
+/** @deprecated use FLOW_RESUME_MODE_CONTINUE_PICKER */
+export const FLOW_RESUME_MODE_RESUME_PICKER = FLOW_RESUME_MODE_CONTINUE_PICKER;
+
+export const FLOW_RESUME_MODES = [
+  FLOW_RESUME_MODE_BIND_SPECIFIC,
+  FLOW_RESUME_MODE_AUTO_LATEST,
+  FLOW_RESUME_MODE_CONTINUE,
+  FLOW_RESUME_MODE_CONTINUE_PICKER,
+] as const;

@@ -11,6 +11,10 @@ import {
 
 export { extractWikiSearchQuery };
 
+/**
+ * @deprecated Observer paths should use SessionBundleService.ensureExplorationRetrieval.
+ * Read-only search for CLI/maintenance — does not read or write bundle retrieval.
+ */
 export function matchWikiForExploration(
   exploration: Exploration | undefined,
   sessionId: string,

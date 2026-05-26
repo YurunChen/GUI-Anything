@@ -1,11 +1,15 @@
 /**
- * Evidence Repository - Evidence 数据管理
- * 聚合存储 exploration 原始数据
+ * Evidence storage — backed by session bundle curation.evidence
  */
 
-import * as fs from 'node:fs';
 import type { SessionId, ExplorationId } from '../protocol/observer-protocol';
 import { resolveWikiRoot } from '../env';
+import {
+  defaultSessionBundleRepository,
+  type SessionBundleRepository,
+} from './session-bundle-repository';
+import type { BundleEvidenceEntry } from './session-bundle-types';
+import { listSessionBundleIds } from './wiki-data-layout';
 
 export interface EvidenceEntry {
   explorationId: string;
@@ -28,145 +32,71 @@ export interface EvidenceData {
   entries: Record<ExplorationId, EvidenceEntry>;
 }
 
-import {
-  ensureDir,
-  sessionEvidencePath,
-  wikiSessionsDir,
-} from './wiki-data-layout';
-
 export class EvidenceRepository {
   private wikiRoot: string;
+  private bundleRepo: SessionBundleRepository;
 
-  constructor(wikiRoot?: string) {
+  constructor(wikiRoot?: string, bundleRepo?: SessionBundleRepository) {
     this.wikiRoot = wikiRoot || resolveWikiRoot();
-  }
-
-  private getEvidencePath(sessionId: string): string {
-    return sessionEvidencePath(sessionId, this.wikiRoot);
-  }
-
-  private ensureSessionsDir(): void {
-    ensureDir(wikiSessionsDir(this.wikiRoot));
+    this.bundleRepo = bundleRepo ?? defaultSessionBundleRepository();
   }
 
   listSessions(): string[] {
-    const ids = new Set<string>();
-    try {
-      const sessionsDir = wikiSessionsDir(this.wikiRoot);
-      if (fs.existsSync(sessionsDir)) {
-        for (const file of fs.readdirSync(sessionsDir)) {
-          const match = file.match(/^(.+)-evidence\.json$/);
-          if (match) ids.add(match[1]);
-        }
-      }
-    } catch {
-      return [];
-    }
-    return [...ids];
+    return listSessionBundleIds(this.wikiRoot);
   }
 
   loadEvidence(sessionId: SessionId): EvidenceData | null {
-    const filePath = this.getEvidencePath(sessionId);
-    
-    try {
-      if (!fs.existsSync(filePath)) return null;
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const data = JSON.parse(content);
-      
-      return {
-        sessionId,
-        cachedAt: data.cachedAt || Date.now(),
-        entries: data,
-      };
-    } catch {
-      return null;
+    const bundle = this.bundleRepo.load(sessionId);
+    if (!bundle) return null;
+    const entries: Record<ExplorationId, EvidenceEntry> = {};
+    for (const [id, entry] of Object.entries(bundle.curation.evidence)) {
+      entries[id] = { ...entry };
     }
+    return {
+      sessionId,
+      cachedAt: bundle.meta.updatedAt,
+      entries,
+    };
   }
 
-  // 保存单个 exploration 的 evidence（增量追加）
   saveEvidence(
     sessionId: SessionId,
     explorationId: ExplorationId,
-    entry: Omit<EvidenceEntry, 'explorationId'>
+    entry: Omit<EvidenceEntry, 'explorationId'>,
   ): void {
-    this.ensureSessionsDir();
-
-    const filePath = this.getEvidencePath(sessionId);
-    
-    // 读取现有数据或创建新对象
-    let data: Record<string, unknown> = {};
-    if (fs.existsSync(filePath)) {
-      try {
-        const existing = fs.readFileSync(filePath, 'utf-8');
-        data = JSON.parse(existing);
-      } catch {
-        data = {};
-      }
-    }
-    
-    // 添加新条目
-    data[explorationId] = {
-      ...entry,
-      explorationId,
-    };
-    
-    // 添加元数据
-    data.cachedAt = Date.now();
-    data.sessionId = sessionId;
-    
-    // 写回文件
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      const stored: BundleEvidenceEntry = {
+        ...entry,
+        explorationId,
+      };
+      bundle.curation.evidence[explorationId] = stored;
+    });
   }
 
-  // 删除整个 session 的 evidence
   deleteEvidence(sessionId: SessionId): void {
-    const filePath = this.getEvidencePath(sessionId);
-    try {
-      fs.rmSync(filePath, { force: true });
-    } catch {
-      // 忽略错误
-    }
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      bundle.curation.evidence = {};
+    });
   }
 
-  // 删除单个 exploration 的 evidence
   deleteExplorationEvidence(
     sessionId: SessionId,
-    explorationId: ExplorationId
+    explorationId: ExplorationId,
   ): void {
-    const filePath = this.getEvidencePath(sessionId);
-    
-    try {
-      if (!fs.existsSync(filePath)) return;
-      
-      const content = fs.readFileSync(filePath, 'utf-8');
-      const data = JSON.parse(content);
-      
-      delete data[explorationId];
-      
-      // 如果没有剩余条目，删除整个文件
-      const remainingKeys = Object.keys(data).filter(k => !k.startsWith('_'));
-      if (remainingKeys.length === 0) {
-        fs.rmSync(filePath, { force: true });
-      } else {
-        fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
-      }
-    } catch {
-      // 忽略错误
-    }
+    this.bundleRepo.patch(sessionId, (bundle) => {
+      delete bundle.curation.evidence[explorationId];
+    });
   }
 
-  // 获取所有 evidence 的统计
   stats(): { totalSessions: number; totalExplorations: number } {
     const sessions = this.listSessions();
     let totalExplorations = 0;
-    
     for (const sessionId of sessions) {
       const evidence = this.loadEvidence(sessionId);
       if (evidence) {
         totalExplorations += Object.keys(evidence.entries).length;
       }
     }
-    
     return {
       totalSessions: sessions.length,
       totalExplorations,
@@ -174,7 +104,6 @@ export class EvidenceRepository {
   }
 }
 
-// 单例导出
 let defaultRepo: EvidenceRepository | null = null;
 
 export function getEvidenceRepository(): EvidenceRepository {

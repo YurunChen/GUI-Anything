@@ -39,7 +39,16 @@ describe('formatFooterHotkeyLines', () => {
     const hints = buildObserverHotkeyHints(base);
     const { line1, line2 } = formatFooterHotkeyLines(hints, false, 200);
     expect(line1).toContain('flowchart');
+    expect(line1).toContain('? / F1 / Ctrl+/ / Ctrl-K help');
+    expect(line1).not.toContain('?:help');
     expect(line2).toContain('theme');
+  });
+
+  test('uses compact help label when footer is narrow', () => {
+    const hints = buildObserverHotkeyHints(base);
+    const { line1 } = formatFooterHotkeyLines(hints, true, 80);
+    expect(line1).toContain('? / help');
+    expect(line1).not.toContain('?:help');
   });
 });
 

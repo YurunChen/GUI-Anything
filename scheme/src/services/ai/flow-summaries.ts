@@ -408,14 +408,6 @@ export interface ExplorationSummaryNode {
   status?: 'running' | 'ok' | 'error';
 }
 
-export interface DirectionExplorationInput {
-  id: string;
-  question: string;
-  summary?: string;
-  toolCount: number;
-  errorCount: number;
-}
-
 export interface ExplorationHistoryContext {
   question: string;
   summary?: string;
@@ -423,49 +415,6 @@ export interface ExplorationHistoryContext {
   errorCount: number;
   status: 'complete' | 'interrupted';
 }
-
-export interface PotentialDirection {
-  direction: string;
-  why: string;
-  nextAction: string;
-  confidence: 'high' | 'medium' | 'low';
-}
-
-export interface PotentialDirectionsResult {
-  status: 'ready' | 'insufficient';
-  message?: string;
-  directions: PotentialDirection[];
-}
-
-const POTENTIAL_DIRECTIONS_PROMPT = `你是一个“下一步方向建议器”，基于已有探索信息提出潜在方向。
-
-【任务目标】
-根据输入的探索历史，输出可执行、可解释的潜在方向建议。
-
-【硬约束】
-1) 只能基于输入事实，不得编造。
-2) 每条建议必须包含三部分：direction、why、nextAction。
-3) why 必须体现事实证据（例如来自哪些探索观察）。
-4) 若证据不足，必须返回 insufficient 状态，不要硬给方向。
-5) 输出必须是严格 JSON，不要 Markdown，不要额外文本。
-
-【输出 JSON 契约】
-{
-  "status": "ready" | "insufficient",
-  "message": "当 status=insufficient 时的说明，可选",
-  "directions": [
-    {
-      "direction": "建议方向",
-      "why": "基于事实的依据",
-      "nextAction": "最小下一步动作",
-      "confidence": "high" | "medium" | "low"
-    }
-  ]
-}
-
-【数量约束】
-- status=ready 时，directions 输出 2-3 条。
-- status=insufficient 时，directions 必须为空数组。`;
 
 const TRIVIAL_GREETING_REQUESTS = new Set([
   'hello', 'hi', 'hey', 'thanks', 'thank you', 'thx', '你好', '您好', '在吗', '谢谢', 'ping', 'test',
@@ -578,29 +527,6 @@ function formatExplorationHistory(history: ExplorationHistoryContext[]): string 
     .join('\n');
 }
 
-function formatPotentialDirectionsInput(
-  runtimeModel: string,
-  explorations: DirectionExplorationInput[],
-): string {
-  const rows = explorations.map((item, index) => {
-    const parts = [
-      `#${index + 1}`,
-      `question=${item.question}`,
-      `tools=${item.toolCount}`,
-      `errors=${item.errorCount}`,
-    ];
-    if (item.summary && item.summary.trim()) {
-      parts.push(`summary=${item.summary.trim()}`);
-    }
-    return parts.join(' | ');
-  });
-  return [
-    `runtime_model=${runtimeModel || 'unknown'}`,
-    `exploration_count=${explorations.length}`,
-    ...rows,
-  ].join('\n');
-}
-
 function fallbackExplorationSummary(question: string, nodes: ExplorationSummaryNode[]): string {
   const toolCount = nodes.filter((node) => node.type === 'tool').length;
   const errorCount = nodes.filter((node) => node.status === 'error' || node.type === 'error').length;
@@ -678,98 +604,6 @@ export function parseExplorationSummaryAIOutput(
     persist,
     validationError: validation.fallbackReason,
   };
-}
-
-function fallbackPotentialDirections(
-  explorations: DirectionExplorationInput[],
-): PotentialDirectionsResult {
-  if (explorations.length < 2) {
-    return {
-      status: 'insufficient',
-      message: '当前证据不足，建议先补充至少两轮有效探索。',
-      directions: [],
-    };
-  }
-  const latest = explorations[explorations.length - 1];
-  return {
-    status: 'ready',
-    directions: [
-      {
-        direction: '先收敛问题边界与成功标准',
-        why: '已有探索问题跨度较大，先明确边界有助于避免后续执行偏航。',
-        nextAction: `将“${latest.question}”拆成可验证的2-3个子目标。`,
-        confidence: 'medium',
-      },
-      {
-        direction: '优先补足证据再做方案决策',
-        why: '当前上下文信息仍偏摘要化，关键判断依据不足。',
-        nextAction: '继续补充与核心目标直接相关的文件与命令观察。',
-        confidence: 'medium',
-      },
-    ],
-  };
-}
-
-function parseJsonObjectFromText(raw: string): string | null {
-  const first = raw.indexOf('{');
-  const last = raw.lastIndexOf('}');
-  if (first === -1 || last === -1 || last <= first) return null;
-  return raw.slice(first, last + 1);
-}
-
-function normalizeConfidence(value: string | undefined): 'high' | 'medium' | 'low' {
-  if (value === 'high' || value === 'low' || value === 'medium') {
-    return value;
-  }
-  return 'medium';
-}
-
-function normalizePotentialDirections(
-  raw: string,
-  explorations: DirectionExplorationInput[],
-): PotentialDirectionsResult {
-  const jsonText = parseJsonObjectFromText(raw.trim());
-  if (!jsonText) {
-    return fallbackPotentialDirections(explorations);
-  }
-  try {
-    const parsed = JSON.parse(jsonText) as {
-      status?: string;
-      message?: string;
-      directions?: Array<{
-        direction?: string;
-        why?: string;
-        nextAction?: string;
-        confidence?: string;
-      }>;
-    };
-
-    if (parsed.status === 'insufficient') {
-      return {
-        status: 'insufficient',
-        message: parsed.message?.trim() || '当前证据不足，建议继续补充探索。',
-        directions: [],
-      };
-    }
-
-    const items = Array.isArray(parsed.directions) ? parsed.directions : [];
-    const directions: PotentialDirection[] = items
-      .map((item) => ({
-        direction: (item.direction || '').trim(),
-        why: (item.why || '').trim(),
-        nextAction: (item.nextAction || '').trim(),
-        confidence: normalizeConfidence(item.confidence),
-      }))
-      .filter((item) => item.direction && item.why && item.nextAction)
-      .slice(0, 3);
-
-    if (directions.length === 0) {
-      return fallbackPotentialDirections(explorations);
-    }
-    return { status: 'ready', directions };
-  } catch {
-    return fallbackPotentialDirections(explorations);
-  }
 }
 
 export async function generateFlowSummaryAI(
@@ -855,34 +689,6 @@ ${formatExplorationForClaude(question, nodes)}`;
   }
 
   return parseExplorationSummaryAIOutput(question, nodes, result.output);
-}
-
-export async function generatePotentialDirectionsAI(
-  runtimeModel: string,
-  explorations: DirectionExplorationInput[],
-  model?: string,
-): Promise<PotentialDirectionsResult> {
-  if (explorations.length === 0) {
-    return fallbackPotentialDirections(explorations);
-  }
-
-  const args = ['--print'];
-  if (model) args.push('-m', model);
-
-  const promptText = `${POTENTIAL_DIRECTIONS_PROMPT}\n\n【输入】\n${formatPotentialDirectionsInput(runtimeModel, explorations)}`;
-
-  const result = await runClaudeSpawn({
-    args,
-    promptText,
-    timeoutMs: 45000,
-    taskId: `dir_${Date.now()}`,
-  });
-
-  if (result.timedOut || result.exitCode !== 0 || !result.output.trim()) {
-    return fallbackPotentialDirections(explorations);
-  }
-
-  return normalizePotentialDirections(result.output, explorations);
 }
 
 export async function runClaudePrintPrompt(
