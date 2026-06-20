@@ -479,6 +479,9 @@ export function getPlayerScript(): string {
   // Init
   // ═══════════════════════════════════════
 
+  // Apply the embedded/selected theme so colors match the dropdown on load
+  applyTheme(($themeSelect && $themeSelect.value) || data.theme || 'tokyo-night');
+
   renderTimeline();
   renderDetail();
   renderStats();

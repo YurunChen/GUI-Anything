@@ -277,12 +277,12 @@ html, body {
   font-weight: 500;
 }
 
-.badge--explore { background: rgba(122, 162, 247, 0.15); color: var(--status-info); }
-.badge--execute { background: rgba(158, 206, 106, 0.15); color: var(--status-success); }
-.badge--verify { background: rgba(224, 175, 104, 0.15); color: var(--status-warning); }
-.badge--error { background: rgba(247, 118, 142, 0.15); color: var(--status-error); }
-.badge--complete { background: rgba(158, 206, 106, 0.15); color: var(--status-success); }
-.badge--running { background: rgba(122, 162, 247, 0.15); color: var(--status-info); }
+.badge--explore { background: color-mix(in srgb, var(--status-info) 15%, transparent); color: var(--status-info); }
+.badge--execute { background: color-mix(in srgb, var(--status-success) 15%, transparent); color: var(--status-success); }
+.badge--verify { background: color-mix(in srgb, var(--status-warning) 15%, transparent); color: var(--status-warning); }
+.badge--error { background: color-mix(in srgb, var(--status-error) 15%, transparent); color: var(--status-error); }
+.badge--complete { background: color-mix(in srgb, var(--status-success) 15%, transparent); color: var(--status-success); }
+.badge--running { background: color-mix(in srgb, var(--status-info) 15%, transparent); color: var(--status-info); }
 
 .exploration__nodes {
   margin-left: 20px;

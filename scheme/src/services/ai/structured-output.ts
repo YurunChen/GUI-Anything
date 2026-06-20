@@ -21,6 +21,7 @@ import {
   formatSessionIntentKeyCatalogForPrompt,
   normalizeSessionIntentKey,
 } from '../../constants/session-intent-keys';
+import { getObserverMessages } from '../../app/ui/i18n/observer-messages';
 
 /**
  * 结构化 Summary 输出格式
@@ -60,7 +61,7 @@ export interface StructuredSummaryOutput {
  * 校验结果类型
  */
 export type ValidationResult<T> =
-  | { success: true; data: T }
+  | { success: true; data: T; warnings?: string[] }
   | { success: false; error: string; fallbackReason: string };
 
 /**
@@ -214,9 +215,18 @@ export function validateStructuredSummaryOutput(
     keyCommand = parsed.key_command === null ? null : parsed.key_command.trim() || null;
   }
 
+  // flowchart 校验失败不再牵连整个摘要：丢弃 flowchart 并记 warning，
+  // 由上层用确定性推断合成一个，保证摘要文本(summary)始终被采用。
   const flowchart = validateFlowchartHint(parsed.flowchart);
-  if (!flowchart.success) {
-    return flowchart.error;
+  const warnings: string[] = [];
+  let flowchartData: StructuredSummaryOutput['flowchart'] | undefined;
+  if (flowchart.success) {
+    flowchartData = flowchart.data;
+  } else {
+    warnings.push(`flowchart_${flowchart.error.fallbackReason}`);
+  }
+  if (!flowchartData) {
+    warnings.push('flowchart_missing');
   }
 
   // 构建有效的输出对象
@@ -233,15 +243,17 @@ export function validateStructuredSummaryOutput(
     },
     tags,
     key_command: keyCommand,
-    flowchart: flowchart.data,
+    flowchart: flowchartData,
   };
 
-  return { success: true, data: validated };
+  return { success: true, data: validated, warnings: warnings.length > 0 ? warnings : undefined };
 }
+
+type FlowchartValidationFailure = { success: false; error: string; fallbackReason: string };
 
 function validateFlowchartHint(flowchartRaw: unknown):
   | { success: true; data: StructuredSummaryOutput['flowchart'] | undefined }
-  | { success: false; error: ValidationResult<StructuredSummaryOutput> } {
+  | { success: false; error: FlowchartValidationFailure } {
   if (flowchartRaw === undefined) {
     return { success: true, data: undefined };
   }

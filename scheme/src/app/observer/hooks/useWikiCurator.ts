@@ -22,8 +22,10 @@ import { resolveWikiWriteChrome } from '../view-model/wiki-write-chrome';
 import type { WikiWriteChromeView } from '../view-model/wiki-write-chrome';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Exploration, InspirationRecord } from '../../../data/protocol/observer-protocol';
+import { createLogger } from '../../../utils/logger';
 
 const SWEEP_IDLE_MS = 30_000;
+const wikiLog = createLogger('wiki');
 
 interface WikiCuratorState {
   extractedCount: number;
@@ -107,6 +109,11 @@ export function useWikiCurator(
         explorations,
       });
       if (!mountedRef.current || runSessionId !== lastSessionRef.current) return;
+      wikiLog.info('wiki curate done', {
+        sessionId: runSessionId,
+        intentKey,
+        status: result.status,
+      });
       const ledger = bucketServiceRef.current.load(runSessionId);
       syncWriteFieldsFromLedger(runSessionId, ledger);
       const saved = result.status === 'saved' || result.status === 'updated';
@@ -134,7 +141,15 @@ export function useWikiCurator(
       if (exploration.status !== 'complete') continue;
       const scopedId = makeSessionScopedId(sessionId, exploration.id);
       const item = items[scopedId];
-      if (!item?.flowchart || !isSummaryReadyForWiki(item)) continue;
+      if (!item?.flowchart || !isSummaryReadyForWiki(item)) {
+        wikiLog.debug('skip summary for wiki bucketing', {
+          sessionId,
+          explorationId: exploration.id,
+          hasFlowchart: Boolean(item?.flowchart),
+          summaryReady: item ? isSummaryReadyForWiki(item) : false,
+        });
+        continue;
+      }
       if (recordedSummariesRef.current.has(scopedId)) continue;
 
       const priorIntent = intentBeforeExploration(sessionIntent, exploration.id);
@@ -149,7 +164,14 @@ export function useWikiCurator(
       recordedSummariesRef.current.add(scopedId);
 
       if (record.curateIntentKey && record.anchorExplorationId) {
-        if (shouldCurateWikiForIntent(record.curateIntentKey)) {
+        const eligible = shouldCurateWikiForIntent(record.curateIntentKey);
+        wikiLog.info('intent bucket closed (pivot)', {
+          sessionId,
+          explorationId: record.anchorExplorationId,
+          intentKey: record.curateIntentKey,
+          eligible,
+        });
+        if (eligible) {
           void runCurate(record.curateIntentKey, record.anchorExplorationId, sessionId, items);
         } else {
           ledger = closeIneligibleIntentBucket(

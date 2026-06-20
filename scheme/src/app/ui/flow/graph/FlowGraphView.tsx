@@ -18,6 +18,7 @@ import {
   formatStackConnector,
 } from './flow-graph-node-chrome';
 import {
+  GRAPH_LEVEL_GAP,
   resolveCardInnerWidth,
   resolveFlowGraphLayoutMode,
   resolveNodeCardOuterWidth,
@@ -35,13 +36,13 @@ interface FlowTreeMeta {
 }
 
 const centeredRowStyle = {
-  width: '100%',
+  width: '100%' as const,
   flexDirection: 'row' as const,
   justifyContent: 'center' as const,
 };
 
 const centeredColumnStyle = {
-  width: '100%',
+  width: '100%' as const,
   flexDirection: 'column' as const,
   alignItems: 'center' as const,
 };

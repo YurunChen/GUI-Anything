@@ -5,7 +5,7 @@
 
 import { getReplayStyles } from './styles';
 import { getPlayerScript } from './player';
-import { escapeHtml, formatTimestamp, formatDuration } from '../shared/html-utils';
+import { escapeHtml, escapeJsonForScript, formatTimestamp, formatDuration } from '../shared/html-utils';
 import { themesToEmbeddableJson } from '../shared/theme-to-css';
 import { themes } from '../../app/ui/themes/index';
 import type { ReplaySessionData } from './types';
@@ -123,8 +123,8 @@ export function generateReplayHtml(data: ReplaySessionData): string {
   </div>
 
   <!-- Embedded Data (self-contained) -->
-  <script type="application/json" id="replay-data">${jsonData}</script>
-  <script type="application/json" id="theme-data">${themeData}</script>
+  <script type="application/json" id="replay-data">${escapeJsonForScript(jsonData)}</script>
+  <script type="application/json" id="theme-data">${escapeJsonForScript(themeData)}</script>
 
   <!-- Player Script -->
   <script>${js}</script>

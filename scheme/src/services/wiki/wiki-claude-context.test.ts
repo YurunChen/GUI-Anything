@@ -10,7 +10,7 @@ describe('maintenanceReportHasWork', () => {
     generatedAt: '',
     wikiRoot: '/tmp/wiki',
     openAudits: [],
-    lint: { issues: [], errorCount: 0, warnCount: 0 },
+    lint: { issues: [], errorCount: 0, warnCount: 0, matchPoolCount: 0, indexedCount: 0 },
     flatContextFiles: [],
     intentBuckets: [],
     summaryText: '',
@@ -36,7 +36,7 @@ describe('maintenanceReportHasWork', () => {
   it('returns true for lint errors', () => {
     expect(maintenanceReportHasWork({
       ...base,
-      lint: { issues: [], errorCount: 1, warnCount: 0 },
+      lint: { issues: [], errorCount: 1, warnCount: 0, matchPoolCount: 0, indexedCount: 0 },
     })).toBe(true);
   });
 });

@@ -55,9 +55,9 @@ describe('validateStructuredSummaryOutput flowchart contract', () => {
     expect(result.data.flowchart?.parent_id).toBe('project_design');
   });
 
-  it('fails when required flowchart fields are missing', () => {
+  it('salvages summary when flowchart fields are missing (drops flowchart + warns)', () => {
     const raw = JSON.stringify({
-      summary: 'summary',
+      summary: '一句话概括本轮工作。',
       solution_detail: '',
       persist: {
         should_persist: false,
@@ -75,9 +75,36 @@ describe('validateStructuredSummaryOutput flowchart contract', () => {
       },
     });
     const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 1 });
+    // New contract: bad flowchart no longer fails the whole summary.
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.summary).toBe('一句话概括本轮工作。');
+    expect(result.data.flowchart).toBeUndefined();
+    expect(result.warnings).toContain('flowchart_missing_flowchart_fields');
+  });
+
+  it('still hard-fails when summary itself is missing', () => {
+    const raw = JSON.stringify({
+      solution_detail: '',
+      persist: { should_persist: false, type: 'none', confidence: 0.5 },
+    });
+    const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 1 });
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.fallbackReason).toBe('missing_flowchart_fields');
+    expect(result.fallbackReason).toBe('missing_summary');
+  });
+
+  it('warns flowchart_missing when no flowchart provided', () => {
+    const raw = JSON.stringify({
+      summary: '没有流程图的摘要。',
+      solution_detail: '',
+      persist: { should_persist: false, type: 'none', confidence: 0.5 },
+    });
+    const result = validateStructuredSummaryOutput(raw, { question: 'q', nodeCount: 1 });
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.data.flowchart).toBeUndefined();
+    expect(result.warnings).toContain('flowchart_missing');
   });
 
   it('accepts persist.type entity', () => {

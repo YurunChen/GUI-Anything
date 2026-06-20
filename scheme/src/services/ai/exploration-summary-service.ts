@@ -240,6 +240,9 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
           explorationId: exploration.id,
           status: item.status,
           source: item.source,
+          hasFlowchart: Boolean(item.flowchart),
+          intentKey: item.flowchart?.intentKey,
+          titleDelta: item.flowchart?.titleDelta,
           durationMs,
           durationSec: Math.round(durationMs / 100) / 10,
         });
