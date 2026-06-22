@@ -1,5 +1,8 @@
 # 🌊 GUI-Anything × HTML — 创意提案
 
+> ⚠️ **部分取代（2026-06-20）**：`--export-html` 已从「Session Replay 回放」改为
+> 「项目功能演进史」（intent 演进可视化，`scheme/src/export/evolution/`）。本提案的回放方向已落地为该形态；其余创意仍有效。
+
 > TUI 做「心流观察」是极佳的本地体验；HTML 可以补足 TUI 天然做不到的事。
 > 以下是 5 个将 HTML 与我们项目结合的方向，按「好玩 → 实用」排序。
 

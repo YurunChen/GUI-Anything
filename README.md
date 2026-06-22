@@ -81,7 +81,7 @@ ga flow --model sonnet "your task"   # pass a model + prompt
 | 🪣 | **Intent-aware wiki** | Same task compounds in a bucket; pivot closes it → `/llm-wiki` agent writes `contexts/` |
 | 🎨 | **32 themes** | Hot-swap in observer — `[` `]` · Apple System default · morandi cycle · light/dark |
 | 📱 | **Web Mirror** | Watch progress in the browser (phone-friendly WebSocket) |
-| 🎬 | **Session Replay HTML** | Export one self-contained HTML file to share or review offline |
+| 🎬 | **Project Evolution HTML** | Self-contained page: scroll the milestone timeline, left rail abstracts the project's evolution into eras (AI-synthesized, rule fallback) |
 | 🔔 | **Push notifications** | WeChat / Feishu / DingTalk when errors or milestones hit |
 | ⏪ | **Honest resume** | `-r` replays cache — won’t silently re-run summary AI |
 | ↩️ | **Continue** | `-c` reloads `wiki/sessions/{id}/bundle.json`; only new explorations trigger summary AI |
@@ -117,13 +117,19 @@ Full list: help overlay inside `ga flow`. Chinese chrome: `FLOW_LOCALE=zh-Hans`.
 ## Optional superpowers
 
 <details>
-<summary><b>HTML export</b> — replay, mirror, knowledge graph</summary>
+<summary><b>HTML export</b> — project evolution, mirror, knowledge graph</summary>
 
 ```bash
 cd scheme
 
-# Single-file interactive replay
-bun run src/main.ts --export-html -o replay.html
+# Project evolution (default: all sessions in this workspace)
+bun run src/main.ts --export-html -o evolution.html
+
+# Drill into a single session
+bun run src/main.ts --export-html --scope session --session-id <id> -o evo.html
+
+# Skip AI era synthesis (deterministic rule grouping)
+bun run src/main.ts --export-html --no-ai --theme catppuccin -o evo.html
 
 # Real-time browser view (align session with FLOW_SESSION_ID)
 FLOW_PROJECT_DIR=/path/to/repo FLOW_SESSION_ID=<uuid> \
