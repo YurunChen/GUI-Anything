@@ -1,4 +1,9 @@
 import { describe, expect, it } from 'bun:test';
+
+// Badge labels are localized; pin to English so assertions don't depend on the
+// dev machine's LANG (resolveObserverLocale reads FLOW_LOCALE first).
+process.env.FLOW_LOCALE = 'en';
+
 import { formatWikiPersistBadge } from './StatusBadges';
 
 describe('formatWikiPersistBadge', () => {

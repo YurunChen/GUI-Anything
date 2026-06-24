@@ -47,14 +47,28 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
       </div>
     </div>
 
-    <div class="evo-view is-on" id="view-project"></div>
-    <div class="evo-view" id="view-session"></div>
+    <nav class="evo-tabs" id="evo-tabs" hidden></nav>
+
+    <div class="evo-tabpanels" id="evo-tabpanels">
+      <section class="evo-tab is-on" id="tab-main" data-tab="main">
+        <div class="evo-view is-on" id="view-project"></div>
+        <div class="evo-view" id="view-session"></div>
+      </section>
+      <section class="evo-tab" id="tab-knowledge" data-tab="knowledge"></section>
+      <section class="evo-tab" id="tab-persona" data-tab="persona"></section>
+      <section class="evo-tab" id="tab-digest" data-tab="digest"></section>
+    </div>
 
     <div class="evo-footer">
-      GUI-Anything · 项目功能演进史 v${escapeHtml(data.version)} ·
-      ${nodeCount} 个里程碑 / ${sessionCount} 个 session ·
-      ${data.aiUsed ? 'AI 合成主线' : '规则合成主线'} ·
-      <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题 · <kbd>Esc</kbd> 返回
+      <div class="evo-footer__line">
+        GUI-Anything · 项目功能演进史 v${escapeHtml(data.version)} ·
+        ${nodeCount} 个里程碑 / ${sessionCount} 个 session ·
+        ${data.aiUsed ? 'AI 合成主线' : '规则合成主线'}
+      </div>
+      <div class="evo-footer__prov" id="evo-prov"></div>
+      <div class="evo-footer__keys">
+        <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题 · <kbd>Esc</kbd> 返回
+      </div>
     </div>
   </div>
 

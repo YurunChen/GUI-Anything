@@ -51,6 +51,34 @@ export function getEvolutionClientScript(): string {
     if (isNaN(d.getTime())) return '';
     return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
   }
+  function fmtDuration(ms) {
+    if (!ms || ms < 0) return '';
+    if (ms < 1000) return ms + 'ms';
+    var s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60), rs = s % 60;
+    if (m < 60) return rs ? m + 'm' + rs + 's' : m + 'm';
+    var h = Math.floor(m / 60), rm = m % 60;
+    if (h < 24) return rm ? h + 'h' + rm + 'm' : h + 'h';
+    var d = Math.floor(h / 24), rh = h % 24;
+    return rh ? d + 'd' + rh + 'h' : d + 'd';
+  }
+  function fmtNum(n) {
+    if (n == null) return '0';
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\\.0$/, '') + 'k';
+    return String(n);
+  }
+  /* Error intensity bucket from a node's metrics (reliable signals only). */
+  function heatLevel(metrics) {
+    if (!metrics) return 'low';
+    var err = metrics.errorCount || 0;
+    var tools = metrics.toolCount || 0;
+    var ratio = tools > 0 ? err / tools : 0;
+    if (err >= 3 || ratio >= 0.4) return 'high';
+    if (err >= 1 || ratio >= 0.15) return 'mid';
+    return 'low';
+  }
 
   /* ---------- rendering ---------- */
   function renderEras(eras) {
@@ -86,6 +114,38 @@ export function getEvolutionClientScript(): string {
       '</div>';
   }
 
+  /* Per-node behavioural badge: tools · errors · ~duration · tokens (real signals only). */
+  function renderNodeBadge(metrics) {
+    if (!metrics) return '';
+    var parts = [];
+    if (metrics.toolCount) parts.push('<span class="nbadge__item">' + icon('wrench', 'evo-ico--sm') + fmtNum(metrics.toolCount) + ' 工具</span>');
+    if (metrics.errorCount) parts.push('<span class="nbadge__item nbadge__item--err">' + icon('alert-triangle', 'evo-ico--sm') + fmtNum(metrics.errorCount) + ' 错误</span>');
+    var dur = fmtDuration(metrics.elapsedMs);
+    if (dur) parts.push('<span class="nbadge__item">' + icon('refresh', 'evo-ico--sm') + '~' + dur + '</span>');
+    if (metrics.tokens) parts.push('<span class="nbadge__item">' + icon('zap', 'evo-ico--sm') + fmtNum(metrics.tokens) + ' tok</span>');
+    if (metrics.files && metrics.files.length) parts.push('<span class="nbadge__item">' + icon('file-text', 'evo-ico--sm') + metrics.files.length + ' 文件</span>');
+    if (!parts.length) return '';
+    return '<div class="node__badge">' + parts.join('') + '</div>';
+  }
+
+  /* P4: intent-transition card inserted before the milestone it leads into. */
+  var transByTo = {};
+  (function () {
+    var edges = (DATA.narrative && DATA.narrative.edges) || [];
+    edges.forEach(function (e) { if (e && e.toNodeId) transByTo[e.toNodeId] = e; });
+  })();
+  function renderTransition(toNodeId) {
+    var e = transByTo[toNodeId];
+    if (!e || !e.why) return '';
+    return '<div class="trans">' +
+      '<div class="trans__rail">' + icon('git-branch', 'evo-ico--sm') + '</div>' +
+      '<div class="trans__body">' +
+        '<span class="trans__label">转折</span>' +
+        '<span class="trans__why">' + esc(e.why) + '</span>' +
+        (e.evidence ? '<span class="trans__ev">' + icon('search', 'evo-ico--sm') + esc(e.evidence) + '</span>' : '') +
+      '</div></div>';
+  }
+
   function renderNodes(nodes, opts) {
     if (!nodes.length) return '<div class="evo-empty">暂无时间节点</div>';
     var html = '';
@@ -93,21 +153,56 @@ export function getEvolutionClientScript(): string {
     nodes.forEach(function (node) {
       var m = monthLabel(node.at);
       if (m && m !== lastMonth) { html += '<div class="evo-date">' + esc(m) + '</div>'; lastMonth = m; }
+      html += renderTransition(node.id);
       var drill = opts.drillable && sessionsById[node.sessionId]
         ? '<button class="node__drill" data-session="' + esc(node.sessionId) + '">下钻到该 session ' + icon('arrow-right', 'evo-ico--sm') + '</button>'
         : '';
-      html += '<article class="node" data-node-id="' + esc(node.id) + '" data-era-id="' + esc(node.eraId) + '">' +
+      var heat = heatLevel(node.metrics);
+      html += '<article class="node node--heat-' + heat + '" data-node-id="' + esc(node.id) + '" data-era-id="' + esc(node.eraId) + '">' +
         '<div class="node__dot">' + icon(node.icon || DELTA_ICON[node.delta] || 'flag') + '</div>' +
         '<div class="node__head">' +
           '<span class="delta delta--' + esc(node.delta) + '">' + deltaIcon(node.delta) + esc(node.delta) + '</span>' +
           '<h3 class="node__title">' + esc(node.title) + '</h3>' +
         '</div>' +
         (node.note ? '<p class="node__note">' + esc(node.note) + '</p>' : '') +
+        renderNodeBadge(node.metrics) +
         renderSubsteps(node.children) +
         drill +
         '</article>';
     });
     return html;
+  }
+
+  /* KPI dashboard built from aggregated, reliable metrics. */
+  function renderKpis(model) {
+    var m = model.metrics;
+    if (!m) return '';
+    var cards = [];
+    function card(ico, num, label) {
+      cards.push('<div class="kpi"><div class="kpi__ico">' + icon(ico) + '</div>' +
+        '<div class="kpi__num">' + esc(num) + '</div>' +
+        '<div class="kpi__label">' + esc(label) + '</div></div>');
+    }
+    var span = fmtDuration(m.elapsedMs);
+    if (span) card('refresh', span, '活跃时间跨度');
+    card('wrench', fmtNum(m.toolCount), '工具调用 Σ');
+    card('alert-triangle', fmtNum(m.errorCount), '报错 Σ');
+    card('search', fmtNum(m.retrievals), '知识命中');
+    card('book', fmtNum(m.writes), '知识沉淀');
+    if (m.tokens) card('zap', fmtNum(m.tokens), 'Token Σ');
+    if (m.files && m.files.length) card('file-text', fmtNum(m.files.length), '涉及文件');
+    if (!cards.length) return '';
+    return '<section class="evo-kpi-wrap"><div class="evo-kpi">' + cards.join('') + '</div></section>';
+  }
+
+  /* Color-encoding legend (non-negotiable: any color encoding ships a legend). */
+  function renderLegend() {
+    return '<div class="evo-legend" title="节点左缘色带表示该里程碑的试错强度">' +
+      '<span class="evo-legend__label">试错强度</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--low"></i>顺畅</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--mid"></i>有波折</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--high"></i>多次报错</span>' +
+      '</div>';
   }
 
   function renderHero(opts) {
@@ -129,6 +224,7 @@ export function getEvolutionClientScript(): string {
   function renderView(container, model, opts) {
     container.innerHTML =
       renderHero(opts) +
+      renderKpis(model) +
       '<div class="evo-layout">' +
         '<aside class="evo-rail"><div class="evo-rail__sticky">' +
           '<div class="evo-rail__head">' +
@@ -137,6 +233,7 @@ export function getEvolutionClientScript(): string {
           '</div>' +
           '<div class="evo-progress"><div class="evo-progress__fill"></div></div>' +
           '<div class="evo-eras">' + renderEras(model.eras) + '</div>' +
+          renderLegend() +
         '</div></aside>' +
         '<section class="evo-stream">' + renderNodes(model.nodes, opts) + '</section>' +
       '</div>';
@@ -279,6 +376,12 @@ export function getEvolutionClientScript(): string {
 
   /* ---------- events ---------- */
   document.addEventListener('click', function (e) {
+    var copyBtn = e.target.closest && e.target.closest('[data-copy]');
+    if (copyBtn) { copyText(copyBtn.getAttribute('data-copy'), copyBtn); return; }
+    var printBtn = e.target.closest && e.target.closest('[data-print]');
+    if (printBtn) { window.print(); return; }
+    var jump = e.target.closest && e.target.closest('[data-jump-node]');
+    if (jump) { jumpToNode(jump.getAttribute('data-jump-node')); return; }
     var drill = e.target.closest && e.target.closest('.node__drill');
     if (drill) { location.hash = '#/session/' + encodeURIComponent(drill.getAttribute('data-session')); return; }
     var era = e.target.closest && e.target.closest('.era');
@@ -322,12 +425,277 @@ export function getEvolutionClientScript(): string {
     }
   });
 
+  /* ---------- tabs (outer shell; main keeps its scroll narrative intact) ---------- */
+  // Panels other than 'main' are populated by renderers below; a tab whose
+  // renderer yields no content stays hidden so the bar only shows real sections.
+  var TAB_DEFS = [
+    { id: 'main', label: '演进主线', icon: 'compass' },
+    { id: 'knowledge', label: '知识流', icon: 'git-branch', render: renderKnowledgeFlow },
+    { id: 'persona', label: '编码人格', icon: 'sparkles', render: renderPersona },
+    { id: 'digest', label: '全景 Summary', icon: 'file-text', render: renderDigest }
+  ];
+
+  /* P3: two-sided knowledge flow — what we stood on / what we left behind. */
+  function renderKnowledgeFlow() {
+    var k = DATA.knowledge;
+    if (!k || (!(k.inflow && k.inflow.length) && !(k.outflow && k.outflow.length))) return '';
+
+    function jump(nodeId, title) {
+      if (!nodeId) return '';
+      return '<button class="kflow__jump" data-jump-node="' + esc(nodeId) + '">' +
+        icon('arrow-right', 'evo-ico--sm') + esc(title || '相关里程碑') + '</button>';
+    }
+
+    var inflow = (k.inflow || []).map(function (it) {
+      var tags = (it.tags || []).slice(0, 5).map(function (t) {
+        return '<span class="kflow__tag">' + esc(t) + '</span>';
+      }).join('');
+      var score = typeof it.score === 'number' && it.score > 0
+        ? '<span class="kflow__score">匹配度 ' + Math.round(it.score * 100) / 100 + '</span>' : '';
+      return '<article class="kflow__card kflow__card--in">' +
+        '<div class="kflow__head">' + icon('search', 'evo-ico--sm') +
+          '<span class="kflow__req">' + esc(it.request || '(检索)') + '</span>' + score + '</div>' +
+        (it.excerpt ? '<p class="kflow__excerpt">' + esc(it.excerpt) + '</p>' : '') +
+        (tags ? '<div class="kflow__tags">' + tags + '</div>' : '') +
+        jump(it.nodeId, it.nodeTitle) +
+        '</article>';
+    }).join('') || '<div class="evo-empty">这一程没有显式复用既有知识。</div>';
+
+    var outflow = (k.outflow || []).map(function (it) {
+      var st = it.status ? '<span class="kflow__status kflow__status--' + esc(it.status) + '">' + esc(it.status) + '</span>' : '';
+      var target = it.targetPath || it.targetId || '(知识条目)';
+      return '<article class="kflow__card kflow__card--out">' +
+        '<div class="kflow__head">' + icon('book', 'evo-ico--sm') +
+          '<span class="kflow__req">' + esc(target) + '</span>' + st + '</div>' +
+        jump(it.nodeId, it.nodeTitle) +
+        '</article>';
+    }).join('') || '<div class="evo-empty">这一程还没有沉淀新的知识条目。</div>';
+
+    return '<div class="kflow">' +
+      '<div class="kflow__intro">' +
+        '<h2 class="kflow__title">知识流</h2>' +
+        '<p class="kflow__sub">左侧是这个项目站立其上的既有知识，右侧是它回馈沉淀下来的新知识。</p>' +
+      '</div>' +
+      '<div class="kflow__cols">' +
+        '<section class="kflow__col">' +
+          '<div class="kflow__col-head">' + icon('compass', 'evo-ico--sm') + ' 站在哪些旧知识上 <span class="kflow__count">' + ((k.inflow || []).length) + '</span></div>' +
+          inflow +
+        '</section>' +
+        '<div class="kflow__arrow">' + icon('arrow-right', 'evo-ico--lg') + '</div>' +
+        '<section class="kflow__col">' +
+          '<div class="kflow__col-head">' + icon('package', 'evo-ico--sm') + ' 这一程沉淀了什么 <span class="kflow__count">' + ((k.outflow || []).length) + '</span></div>' +
+          outflow +
+        '</section>' +
+      '</div>' +
+      '</div>';
+  }
+  /* P5: coding-persona SBTI card (deterministic sliders + AI naming). */
+  function renderPersona() {
+    var p = DATA.persona;
+    if (!p || !p.scores || !p.scores.length) return '';
+    var sliders = p.scores.map(function (s) {
+      var v = Math.max(0, Math.min(100, s.value || 0));
+      var leanRight = v >= 50;
+      return '<div class="persona__axis">' +
+        '<div class="persona__axis-head">' +
+          '<span class="persona__pole' + (leanRight ? '' : ' is-lean') + '">' + esc(s.leftLabel) + '</span>' +
+          '<span class="persona__axis-name">' + esc(s.axis) + '</span>' +
+          '<span class="persona__pole' + (leanRight ? ' is-lean' : '') + '">' + esc(s.rightLabel) + '</span>' +
+        '</div>' +
+        '<div class="persona__track"><div class="persona__fill" style="width:' + v + '%"></div>' +
+          '<div class="persona__knob" style="left:' + v + '%"></div></div>' +
+        '</div>';
+    }).join('');
+    var sig = '';
+    if (p.signatureNodeId) {
+      var node = null;
+      (DATA.project.nodes || []).forEach(function (n) { if (n.id === p.signatureNodeId) node = n; });
+      if (node) sig = '<button class="persona__sig" data-jump-node="' + esc(node.id) + '">' +
+        icon('flag', 'evo-ico--sm') + ' 代表时刻：' + esc(node.title) + '</button>';
+    }
+    return '<div class="persona">' +
+      '<div class="persona__card">' +
+        '<div class="persona__badge">' + icon('sparkles', 'evo-ico--lg') + '</div>' +
+        (p.typeCode ? '<div class="persona__code">' + esc(p.typeCode) + '</div>' : '') +
+        '<h2 class="persona__title">' + esc(p.title || '编码人格') + '</h2>' +
+        (p.tagline ? '<p class="persona__tagline">' + esc(p.tagline) + '</p>' : '') +
+        '<div class="persona__axes">' + sliders + '</div>' +
+        (p.reading ? '<p class="persona__reading">' + esc(p.reading) + '</p>' : '') +
+        sig +
+        '<div class="persona__foot">' + (DATA.aiUsed ? 'AI 命名 · 规则评分' : '规则评分（未启用 AI 命名）') + '</div>' +
+      '</div>' +
+      '</div>';
+  }
+  /* P6: one-page project digest (全景 Summary) — scrollable / printable. */
+  function renderDigest() {
+    var d = DATA.digest;
+    if (!d) return '';
+    var hasBody = (d.chapters && d.chapters.length) || (d.outputs && d.outputs.length) ||
+      (d.learned && d.learned.length) || (d.turningPoints && d.turningPoints.length);
+    if (!d.headline && !hasBody) return '';
+
+    function section(ico, title, body) {
+      if (!body) return '';
+      return '<section class="digest__sec">' +
+        '<h3 class="digest__sec-title">' + icon(ico, 'evo-ico--sm') + ' ' + esc(title) + '</h3>' +
+        body + '</section>';
+    }
+
+    var chapters = (d.chapters || []).map(function (c, i) {
+      return '<li class="digest__chapter">' +
+        '<div class="digest__chapter-head">' +
+          '<span class="digest__chapter-no">' + (i + 1) + '</span>' +
+          '<span class="digest__chapter-era">' + esc(c.era) + '</span>' +
+          (c.span ? '<span class="digest__chapter-span">' + esc(c.span) + '</span>' : '') +
+        '</div>' +
+        (c.line ? '<p class="digest__chapter-line">' + esc(c.line) + '</p>' : '') +
+        '</li>';
+    }).join('');
+    var chaptersBody = chapters ? '<ol class="digest__chapters">' + chapters + '</ol>' : '';
+
+    var turns = (d.turningPoints || []).map(function (t) {
+      return '<li class="digest__turn">' +
+        '<span class="digest__turn-title">' + esc(t.title) + '</span>' +
+        '<span class="digest__turn-why">' + esc(t.why) + '</span>' +
+        '</li>';
+    }).join('');
+    var turnsBody = turns ? '<ul class="digest__turns">' + turns + '</ul>' : '';
+
+    var outputs = (d.outputs || []).map(function (o) {
+      return '<div class="digest__kpi"><div class="digest__kpi-num">' + esc(o.value) + '</div>' +
+        '<div class="digest__kpi-label">' + esc(o.label) + '</div></div>';
+    }).join('');
+    var outputsBody = outputs ? '<div class="digest__kpis">' + outputs + '</div>' : '';
+
+    var learned = (d.learned || []).map(function (l) {
+      return '<li class="digest__learn">' + icon('book', 'evo-ico--sm') + ' ' + esc(l) + '</li>';
+    }).join('');
+    var learnedBody = learned ? '<ul class="digest__learned">' + learned + '</ul>' : '';
+
+    var nextBody = '';
+    if (d.nextSteps && d.nextSteps.length) {
+      var steps = d.nextSteps.map(function (s) {
+        return '<li class="digest__next-item">' + icon('arrow-right', 'evo-ico--sm') + ' ' + esc(s) + '</li>';
+      }).join('');
+      nextBody = '<div class="digest__next-head">' +
+          '<button class="digest__copy" data-copy="nextsteps">' + icon('file-text', 'evo-ico--sm') + ' 复制</button>' +
+        '</div><ul class="digest__next">' + steps + '</ul>';
+    }
+
+    return '<div class="digest">' +
+      '<div class="digest__hero">' +
+        '<div class="digest__kicker">' + icon('file-text', 'evo-ico--sm') + ' 全景 Summary</div>' +
+        (d.headline ? '<h2 class="digest__headline">' + esc(d.headline) + '</h2>' : '') +
+        '<button class="digest__print" data-print="1">' + icon('file-text', 'evo-ico--sm') + ' 打印 / 导出 PDF</button>' +
+      '</div>' +
+      section('flag', '旅程章节', chaptersBody) +
+      section('git-branch', '关键转折', turnsBody) +
+      section('bar-chart', '累计产出', outputsBody) +
+      section('book', '学到了什么', learnedBody) +
+      section('check-circle', '下一步 / 待决策', nextBody) +
+      '</div>';
+  }
+
+  /* Copy nextSteps as paste-ready text (work-canvas initCopy idiom). */
+  function copyText(key, btn) {
+    var text = '';
+    if (key === 'nextsteps' && DATA.digest && DATA.digest.nextSteps) {
+      text = DATA.digest.nextSteps.join('\\n');
+    }
+    if (!text) return;
+    var done = function () {
+      if (!btn) return;
+      var old = btn.innerHTML; btn.innerHTML = icon('check-circle', 'evo-ico--sm') + ' 已复制';
+      setTimeout(function () { btn.innerHTML = old; }, 1500);
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, function () {});
+        return;
+      }
+    } catch (e) {}
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); done();
+    } catch (e2) {}
+  }
+
+  /* Jump from a knowledge card to its milestone in the main scroll narrative. */
+  function jumpToNode(nodeId) {
+    switchTab('main');
+    if (location.hash && location.hash !== '#/') location.hash = '#/';
+    setTimeout(function () {
+      var target = document.querySelector('.evo-view.is-on .node[data-node-id="' + (window.CSS && CSS.escape ? CSS.escape(nodeId) : nodeId) + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 60);
+  }
+
+  function initTabs() {
+    var bar = document.getElementById('evo-tabs');
+    if (!bar) return;
+    var visible = [];
+    TAB_DEFS.forEach(function (def) {
+      if (def.id === 'main') { visible.push(def); return; }
+      var panel = document.getElementById('tab-' + def.id);
+      if (!panel) return;
+      var html = def.render ? def.render() : '';
+      if (html) { panel.innerHTML = html; visible.push(def); }
+    });
+    if (visible.length < 2) { bar.hidden = true; return; } // nothing to switch between
+    bar.hidden = false;
+    bar.innerHTML = visible.map(function (def, i) {
+      return '<button class="evo-tab-btn' + (i === 0 ? ' is-active' : '') + '" data-tab="' + esc(def.id) + '">' +
+        icon(def.icon, 'evo-ico--sm') + '<span>' + esc(def.label) + '</span></button>';
+    }).join('');
+    bar.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.evo-tab-btn');
+      if (!btn) return;
+      switchTab(btn.getAttribute('data-tab'));
+    });
+  }
+
+  function switchTab(id) {
+    var bar = document.getElementById('evo-tabs');
+    if (bar) {
+      bar.querySelectorAll('.evo-tab-btn').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-tab') === id);
+      });
+    }
+    document.querySelectorAll('.evo-tab').forEach(function (p) {
+      p.classList.toggle('is-on', p.getAttribute('data-tab') === id);
+    });
+    window.scrollTo(0, 0);
+  }
+
+  /* ---------- provenance footer ---------- */
+  function renderProvenance() {
+    var el = document.getElementById('evo-prov');
+    if (!el) return;
+    var p = DATA.generatedBy;
+    if (!p) { el.style.display = 'none'; return; }
+    var bits = [];
+    if (p.agent) bits.push(esc(p.agent));
+    if (p.model) bits.push('模型 ' + esc(p.model));
+    if (p.builtAt) {
+      var d = new Date(p.builtAt);
+      if (!isNaN(d.getTime())) {
+        bits.push('生成于 ' + d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) +
+          '-' + ('0' + d.getDate()).slice(-2) + ' ' +
+          ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2));
+      }
+    }
+    el.innerHTML = icon('shield', 'evo-ico--sm') + ' ' + bits.join(' · ');
+  }
+
   /* ---------- boot ---------- */
   var saved;
   try { saved = localStorage.getItem('evo-theme'); } catch (e) {}
   var initial = saved || DATA.theme || themeSel.value;
   if (THEMES[initial]) { themeSel.value = initial; applyTheme(initial); }
 
+  initTabs();
+  renderProvenance();
   window.addEventListener('hashchange', route);
   route();
 })();

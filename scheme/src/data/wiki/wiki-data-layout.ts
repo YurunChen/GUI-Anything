@@ -166,6 +166,11 @@ export function knowledgeProgressIndexPath(wikiRoot?: string): string {
   return path.join(knowledgeProgressDir(wikiRoot), 'index.html');
 }
 
+/** Deterministic cache path for the project-evolution HTML export. */
+export function evolutionExportPath(wikiRoot?: string): string {
+  return path.join(wikiKnowledgeDir(wikiRoot), KNOWLEDGE_OUTPUTS_DIR, 'evolution.html');
+}
+
 export function knowledgeQueriesDir(wikiRoot?: string): string {
   return path.join(wikiKnowledgeDir(wikiRoot), KNOWLEDGE_QUERIES_DIR);
 }

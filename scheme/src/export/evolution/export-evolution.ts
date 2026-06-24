@@ -9,8 +9,14 @@ import * as path from 'node:path';
 import { defaultProjectEvolutionRepository } from '../../data/wiki/project-evolution-repository';
 import type { ProjectEvolutionRaw } from '../../data/protocol/evolution-types';
 import { buildEvolutionExport, type EraSynthesizer } from '../../services/evolution/evolution-service';
+import { ruleBasedPersona } from '../../services/evolution/persona-score';
+import { buildBaseDigest } from '../../services/evolution/digest-build';
+import type { TransitionSynthesizer } from '../../services/ai/evolution-transitions';
+import type { PersonaSynthesizer } from '../../services/ai/coding-persona';
+import type { DigestSynthesizer } from '../../services/ai/project-digest';
 import { sanitizePath, redactSecrets } from '../shared/sanitize';
 import { generateEvolutionHtml } from './template';
+import { generateEmptyEvolutionHtml } from './empty-state';
 import type { ExportEvolutionOptions } from './types';
 
 function redactRaw(raw: ProjectEvolutionRaw): ProjectEvolutionRaw {
@@ -28,6 +34,16 @@ function redactRaw(raw: ProjectEvolutionRaw): ProjectEvolutionRaw {
       summaries: Object.fromEntries(
         Object.entries(session.summaries).map(([k, v]) => [k, clean(v)]),
       ),
+      retrievals: session.retrievals.map((r) => ({
+        ...r,
+        request: clean(r.request),
+        excerpt: clean(r.excerpt),
+        tags: r.tags.map(clean),
+      })),
+      writes: session.writes.map((w) => ({
+        ...w,
+        targetPath: w.targetPath ? sanitizePath(w.targetPath) : w.targetPath,
+      })),
     })),
   };
 }
@@ -49,7 +65,19 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
   } else {
     raw = repo.loadProjectEvolution({ workspaceRoot: options.workspaceRoot });
     if (raw.sessions.length === 0) {
-      throw new Error('No project evolution data found. Run `ga flow` to build intent history first.');
+      // New project (no milestones yet): render a friendly, self-refreshing
+      // placeholder so `ga flow` always has a page to open. The live watcher
+      // overwrites it with the real timeline once the first bundle lands.
+      const html = generateEmptyEvolutionHtml({ workspaceRoot: raw.workspaceRoot });
+      if (options.outputPath) {
+        const dir = path.dirname(options.outputPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(options.outputPath, html, 'utf-8');
+        console.error(`📭 No milestones yet — wrote evolution placeholder: ${options.outputPath}`);
+        return options.outputPath;
+      }
+      process.stdout.write(html);
+      return 'stdout';
     }
   }
 
@@ -62,6 +90,46 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
     theme: options.theme || process.env.FLOW_THEME,
     eraSynthesizer,
   });
+
+  // P4: AI intent-transition narrative (best-effort; omitted on failure or --no-ai).
+  if (!options.noAi) {
+    const synthesizeTransitions = await loadTransitionSynthesizer();
+    if (synthesizeTransitions) {
+      const narrative = await synthesizeTransitions(data.project.nodes);
+      if (narrative) data.narrative = narrative;
+    }
+  }
+
+  // P5: coding persona — deterministic scores always; AI naming enriches when available.
+  if (data.project.nodes.length > 0) {
+    data.persona = ruleBasedPersona(data.project.nodes, data.sessions.length);
+    if (!options.noAi) {
+      const synthesizePersona = await loadPersonaSynthesizer();
+      if (synthesizePersona) {
+        const persona = await synthesizePersona(data.project.nodes, data.sessions.length);
+        if (persona) data.persona = persona;
+      }
+    }
+  }
+
+  // P6: project-wide one-page digest — deterministic base always; AI rewrites prose.
+  if (data.project.nodes.length > 0) {
+    data.digest = buildBaseDigest(data);
+    if (!options.noAi) {
+      const synthesizeDigest = await loadDigestSynthesizer();
+      if (synthesizeDigest) {
+        const digest = await synthesizeDigest(data);
+        if (digest) data.digest = digest;
+      }
+    }
+  }
+
+  // Provenance footer (work-canvas non-negotiable): who/what/when built this.
+  data.generatedBy = {
+    agent: 'GUI-Anything · Flow Observer',
+    model: data.aiUsed ? (process.env.FLOW_SUMMARY_MODEL || process.env.CLAUDE_MODEL || 'sonnet') : undefined,
+    builtAt: Date.now(),
+  };
 
   const html = generateEvolutionHtml(data);
 
@@ -82,6 +150,36 @@ async function loadAiSynthesizer(): Promise<EraSynthesizer | undefined> {
   try {
     const mod = await import('../../services/ai/evolution-abstract');
     return mod.synthesizeEras;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Lazy-load the AI transition synthesizer; returns undefined if unavailable. */
+async function loadTransitionSynthesizer(): Promise<TransitionSynthesizer | undefined> {
+  try {
+    const mod = await import('../../services/ai/evolution-transitions');
+    return mod.synthesizeTransitions;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Lazy-load the AI persona synthesizer; returns undefined if unavailable. */
+async function loadPersonaSynthesizer(): Promise<PersonaSynthesizer | undefined> {
+  try {
+    const mod = await import('../../services/ai/coding-persona');
+    return mod.synthesizePersona;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Lazy-load the AI project-digest synthesizer; returns undefined if unavailable. */
+async function loadDigestSynthesizer(): Promise<DigestSynthesizer | undefined> {
+  try {
+    const mod = await import('../../services/ai/project-digest');
+    return mod.synthesizeDigest;
   } catch {
     return undefined;
   }

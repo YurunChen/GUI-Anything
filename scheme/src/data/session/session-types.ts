@@ -46,4 +46,8 @@ export interface Exploration {
     result: number;
   };
   nodes: ExplorationNode[];
+  /** Total tokens processed by assistant messages in this exploration (input+output+cache). */
+  tokens?: number;
+  /** Distinct file paths touched by tool calls (Edit/Write/Read/NotebookEdit). */
+  files?: string[];
 }

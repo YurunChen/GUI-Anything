@@ -7,6 +7,7 @@ const baseState = {
   inspirationInputFocused: false,
   notifyAvailable: true,
   wikiAuditAvailable: true,
+  exportAvailable: true,
 };
 
 describe('dispatchObserverKey', () => {
@@ -74,6 +75,23 @@ describe('dispatchObserverKey', () => {
       dispatchObserverKey(
         { name: 'k', ctrl: false, meta: false },
         { ...baseState, wikiAuditAvailable: false },
+      ),
+    ).toBeNull();
+  });
+
+  test('e exports html, r regenerates, gated on exportAvailable', () => {
+    expect(dispatchObserverKey({ name: 'e', ctrl: false, meta: false }, baseState)?.type).toBe('export_html');
+    expect(dispatchObserverKey({ name: 'r', ctrl: false, meta: false }, baseState)?.type).toBe('regenerate_html');
+    expect(
+      dispatchObserverKey(
+        { name: 'e', ctrl: false, meta: false },
+        { ...baseState, exportAvailable: false },
+      ),
+    ).toBeNull();
+    expect(
+      dispatchObserverKey(
+        { name: 'r', ctrl: false, meta: false },
+        { ...baseState, exportAvailable: false },
       ),
     ).toBeNull();
   });
