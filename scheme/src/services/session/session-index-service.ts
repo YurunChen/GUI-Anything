@@ -3,10 +3,8 @@
  */
 
 import type { SessionId } from '../../data/protocol/observer-protocol';
-import {
-  touchLastSession as touchLastSessionRecord,
-  type SessionIndex,
-} from '../../data/session/session-index';
+import { touchLastSession as touchLastSessionRecord } from '../../data/session/session-index';
+import type { SessionIndex } from '../../data/wiki/session-bundle-types';
 import { createLogger } from '../../utils/logger';
 
 const log = createLogger('index');

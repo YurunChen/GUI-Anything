@@ -176,35 +176,24 @@ export function useExplorationSummaries(
 
   useEffect(() => {
     const orchestrator = orchestratorRef.current;
-    const service = orchestrator.service;
 
-    if (!shouldGenerateMissingSummaries({
-      allowRegen: presentation.allowSummaryRegen,
-      sessionId,
-      summariesReadyKey: state.summariesReadyKey,
-      sessionPath,
-    })) {
-      setState((prev) => ({ ...prev, pendingCount: 0 }));
-      return;
-    }
-
-    const pendingInFlight = service.pendingCount();
-    if (pendingInFlight > 0) {
-      setState((prev) => (
-        prev.pendingCount === pendingInFlight ? prev : { ...prev, pendingCount: pendingInFlight }
-      ));
-      return;
-    }
-
-    if (!orchestrator.shouldRunGenerate({
+    const decision = orchestrator.planGenerate({
       allowRegen: presentation.allowSummaryRegen,
       sessionId,
       summariesReadyKey: state.summariesReadyKey,
       sessionPath,
       explorations,
       items: itemsRef.current,
-    })) {
-      setState((prev) => ({ ...prev, pendingCount: 0 }));
+      bundleSummaryByExplorationId: bundleSummaryRef.current,
+    });
+    if (decision.action === 'pending') {
+      setState((prev) => (
+        prev.pendingCount === decision.pendingCount ? prev : { ...prev, pendingCount: decision.pendingCount }
+      ));
+      return;
+    }
+    if (decision.action === 'idle') {
+      setState((prev) => ({ ...prev, pendingCount: decision.pendingCount }));
       return;
     }
 
@@ -214,39 +203,29 @@ export function useExplorationSummaries(
       trigger: generateTriggerKey || 'none',
     });
     const runSessionId = sessionId;
-    const runSessionPath = sessionPath;
-    const existingSnapshot = { ...itemsRef.current };
-    const priorFlags = { ...bundleSummaryRef.current };
 
     setState((prev) => ({
       ...prev,
-      pendingCount: service.pendingCount(),
+      pendingCount: decision.pendingCount,
     }));
 
-    void service.generateMissing({
+    void orchestrator.generateAndFinish({
       sessionId,
+      sessionPath,
       explorations,
-      jsonlPath: sessionPath,
-      existing: existingSnapshot,
+      existing: decision.existing,
+      priorBundleSummaryFlags: decision.priorBundleSummaryFlags,
       summaryModel: summaryModelRef.current,
     })
-      .then(async (generatedItems) => {
+      .then((finished) => {
         if (!mountedRef.current) return;
         if (runSessionId !== lastSessionRef.current) return;
-
-        const finished = await orchestrator.finishGenerate({
-          sessionId: runSessionId,
-          sessionPath: runSessionPath,
-          existing: existingSnapshot,
-          generatedItems,
-          priorBundleSummaryFlags: priorFlags,
-        });
 
         itemsRef.current = finished.items;
         bundleSummaryRef.current = finished.bundleSummaryByExplorationId;
         log.info('generate finished', {
           sessionId: runSessionId,
-          generated: Object.keys(generatedItems).length,
+          generated: Object.keys(finished.generatedItems).length,
           pending: finished.pendingCount,
           items: Object.keys(finished.items).length,
         });

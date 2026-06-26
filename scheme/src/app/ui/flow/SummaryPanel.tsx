@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 import { memo } from 'react';
-import { semantic, useThemeVersion } from '../theme';
+import { useThemeVersion, useTuiTheme } from '../theme';
 import { truncateFlowText } from '../../../utils/flow-text';
 import { FlowTextBlock } from './FlowTextBlock';
 
@@ -24,9 +24,13 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
     availableWidth,
     compact = false,
   } = props;
+  const tuiTheme = useTuiTheme();
+  const timelineTheme = tuiTheme.modes.timeline;
 
   const summaryText = summary?.trim() || (isGenerating ? 'Generating...' : 'No summary');
-  const textColor = isGenerating || !summary ? semantic.label.tertiary : semantic.label.primary;
+  const textColor = isGenerating || !summary
+    ? timelineTheme.summary.pending.fg
+    : tuiTheme.semantic.label.primary;
 
   if (compact) {
     return (
@@ -48,11 +52,11 @@ export const SummaryPanel = memo(function SummaryPanel(props: SummaryPanelProps)
         paddingTop: 0,
         paddingBottom: 0,
         border: ['left'],
-        borderColor: semantic.separator,
-        backgroundColor: semantic.fill.grouped,
+        borderColor: tuiTheme.semantic.separator,
+        backgroundColor: tuiTheme.semantic.fill.grouped,
       }}
     >
-      <text fg={semantic.tint}>{'summary'}</text>
+      <text fg={tuiTheme.semantic.tint}>{'summary'}</text>
       <FlowTextBlock text={summaryText} fg={textColor} />
     </box>
   );

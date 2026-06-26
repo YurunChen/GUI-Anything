@@ -10,7 +10,7 @@ import { themesToEmbeddableJson } from '../shared/theme-to-css';
 import { themes } from '../../app/ui/themes/index';
 import type { EvolutionExport } from '../../data/protocol/evolution-types';
 
-const DEFAULT_THEME = 'apple-system-light';
+const DEFAULT_THEME = 'transparent';
 
 export function generateEvolutionHtml(data: EvolutionExport): string {
   const css = getEvolutionStyles();

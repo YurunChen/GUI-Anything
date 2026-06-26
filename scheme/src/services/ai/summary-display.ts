@@ -7,7 +7,7 @@ import type { FlowchartHint } from '../../data/protocol/observer-protocol';
 import type { WikiPersistMeta } from '../wiki/auto-extractor';
 import { buildExplorationRoundRecord } from './exploration-round-record';
 import type { ExplorationSummaryAIResult } from './flow-summaries';
-import { getObserverMessages } from '../../app/ui/i18n/observer-messages';
+import { getSummaryMessages } from '../../constants/summary-messages';
 
 export const DEFAULT_SKIP_PERSIST: WikiPersistMeta = {
   should_persist: false,
@@ -27,7 +27,7 @@ export interface FinalizedSummaryFields {
 
 /** Rule-based fallback summary when LLM generation is unavailable. */
 function buildFallbackSummary(question: string, nodes: Exploration['nodes']): string {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   if (nodes.filter((n) => n.type === 'tool').length === 0 && nodes.length === 0) {
     return m.calmNoSummary;
   }

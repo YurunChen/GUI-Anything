@@ -1,7 +1,7 @@
 {
   "name": "gui-anything",
   "version": "0.1.0",
-  "description": "Commercial CLI wrapper for GUI-Anything flow sessions.",
+  "description": "A sidecar observer and memory layer for Claude Code flow sessions.",
   "type": "module",
   "private": false,
   "bin": {
@@ -9,9 +9,19 @@
   },
   "files": [
     "cli",
+    "!cli/**/*.test.mjs",
     "scripts",
-    "scheme",
-    "README.md"
+    "scheme/src",
+    "scheme/bun.lock",
+    "scheme/package.json",
+    "scheme/tsconfig.json",
+    "!scheme/src/**/*.test.ts",
+    "!scheme/src/**/*.test.tsx",
+    "!scheme/src/services/notification/weixin-service/data",
+    "assets",
+    "README.md",
+    "README_CN.md",
+    "CONTRIBUTING.md"
   ],
   "engines": {
     "node": ">=20.0.0"

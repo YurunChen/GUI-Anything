@@ -6,15 +6,31 @@
 import { getObserverMessages, type ObserverMessages } from '../i18n/observer-messages';
 
 export type ObserverFooterMode = 'default' | 'notes' | 'notes-input';
+export type ObserverViewMode = 'timeline' | 'focus' | 'workspace';
+
+export function nextObserverViewMode(mode: ObserverViewMode): ObserverViewMode {
+  switch (mode) {
+    case 'timeline':
+      return 'focus';
+    case 'focus':
+      return 'workspace';
+    case 'workspace':
+      return 'timeline';
+    default:
+      return 'timeline';
+  }
+}
 
 export interface ObserverHotkeyContext {
   footerMode: ObserverFooterMode;
-  observerMode: 'exploration' | 'flowchart';
+  observerMode: ObserverViewMode;
   calmMode: boolean;
   /** `s` is wired and notification service is enabled. */
   notifyAvailable: boolean;
   /** `k` files audit for latest KNOWLEDGE hit. */
   wikiAuditAvailable: boolean;
+  /** `h` exports and opens the current session HTML page. */
+  htmlExportAvailable: boolean;
 }
 
 export interface HotkeyHint {
@@ -50,17 +66,17 @@ export function buildObserverHotkeyHints(ctx: ObserverHotkeyContext): HotkeyHint
   return [
     ...navHints(ctx, m, 1, 0),
     hint('notes', 1, 10, m.cmdNotes, m.cmdNotesShort),
-    hint('calm', 1, 11, calmLabel(ctx, m), calmLabelShort(ctx, m)),
-    hint('help', 1, 12, m.cmdHelpOpen, m.cmdHelpOpenShort),
+    ...questionHints(ctx, m, 1, 11),
+    hint('calm', 1, 12, calmLabel(ctx, m), calmLabelShort(ctx, m)),
+    hint('help', 1, 13, m.cmdHelpOpen, m.cmdHelpOpenShort),
     ...appearanceHints(m, 2, 0),
     ...sessionHints(ctx, m, 2, 10),
   ];
 }
 
-function navHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
-  const nextMode = ctx.observerMode === 'exploration' ? m.modeFlowchart : m.modeTimeline;
+function navHints(_ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
   return [
-    hint('mode', row, baseOrder, m.cmdSwitchMode(nextMode), m.cmdSwitchModeShort(nextMode)),
+    hint('mode', row, baseOrder, m.cmdSwitchView, m.cmdSwitchViewShort),
   ];
 }
 
@@ -68,6 +84,16 @@ function appearanceHints(m: ObserverMessages, row: 1 | 2, baseOrder: number): Ho
   return [
     hint('theme', row, baseOrder, m.cmdTheme, m.cmdThemeShort),
   ];
+}
+
+function questionHints(
+  ctx: ObserverHotkeyContext,
+  m: ObserverMessages,
+  row: 1 | 2,
+  baseOrder: number,
+): HotkeyHint[] {
+  if (ctx.observerMode !== 'timeline') return [];
+  return [hint('question', row, baseOrder, m.cmdQuestionExpand, m.cmdQuestionExpandShort)];
 }
 
 function sessionHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
@@ -79,6 +105,9 @@ function sessionHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 
   }
   if (ctx.wikiAuditAvailable) {
     out.push(hint('wiki-audit', row, order++, m.cmdWikiAudit, m.cmdWikiAuditShort));
+  }
+  if (ctx.htmlExportAvailable) {
+    out.push(hint('html-export', row, order++, m.cmdHtmlExport, m.cmdHtmlExportShort));
   }
   out.push(
     hint('quit', row, order++, quitLabel(ctx, m), quitLabelShort(ctx, m)),
@@ -192,6 +221,9 @@ export function buildHelpLinesFromHotkeys(ctx: ObserverHotkeyContext): string[] 
   if (byId.has('calm')) {
     lines.push(ctx.calmMode ? m.helpKeyCalmDisable : m.helpKeyCalmEnable);
   }
+  if (byId.has('question')) {
+    lines.push(m.helpKeyQuestionExpand);
+  }
 
   if (ctx.footerMode === 'notes-input') {
     lines.push(m.helpKeyEnterNote, m.helpKeyEscNoteInput);
@@ -204,12 +236,15 @@ export function buildHelpLinesFromHotkeys(ctx: ObserverHotkeyContext): string[] 
   if (byId.has('wiki-audit')) {
     lines.push(m.helpKeyWikiAudit);
   }
+  if (byId.has('html-export')) {
+    lines.push(m.helpKeyHtmlExport);
+  }
   lines.push(ctx.footerMode === 'notes' || ctx.footerMode === 'notes-input'
     ? m.helpKeyQuitNotes
     : m.helpKeyQuitDefault);
 
   lines.push('', m.appearanceSection);
-  lines.push(m.helpKeyThemeBracket, m.helpKeyThemeMorandi);
+  lines.push(m.helpKeyThemeBracket);
 
   lines.push('', m.displaySection);
   lines.push(ctx.calmMode ? m.helpCalmOnHint : m.helpCalmOffHint);

@@ -7,7 +7,7 @@ import { useKeyboard } from '@opentui/react';
 import type { ReactNode } from 'react';
 import { useState, useCallback } from 'react';
 import type { ActivityTree } from '../../domain/types';
-import { colors, typeIcons, typeColors } from './theme';
+import { tuiTheme, typeIcons } from './theme';
 import { truncate, toPreview } from '../../utils/string';
 
 interface FlowViewProps {
@@ -27,6 +27,7 @@ interface FlowRow {
 }
 
 function timelineRows(tree: ActivityTree): FlowRow[] {
+  const theme = tuiTheme;
   const nodes = [...tree.nodes.values()].sort((a, b) => a.timestamp - b.timestamp);
   const rows: FlowRow[] = [];
   const pending = new Map<string, number>();
@@ -44,8 +45,8 @@ function timelineRows(tree: ActivityTree): FlowRow[] {
         timestamp: node.timestamp,
         icon: typeIcons[node.type] ?? '⚡',
         label: truncate(label, 96),
-        color: typeColors[node.type] ?? colors.fg.primary,
-        sideColor: colors.status.warning,
+        color: activityTypeColor(node.type),
+        sideColor: theme.semantic.warning,
         resultStatus: 'pending',
       });
       if (content.toolCallId) {
@@ -63,8 +64,8 @@ function timelineRows(tree: ActivityTree): FlowRow[] {
         rows[idx] = {
           ...prev,
           icon: content.isError ? '✗' : '✓',
-          color: content.isError ? colors.status.error : colors.status.success,
-          sideColor: content.isError ? colors.status.error : colors.status.success,
+          color: content.isError ? theme.semantic.destructive : theme.semantic.success,
+          sideColor: content.isError ? theme.semantic.destructive : theme.semantic.success,
           label: `${prev.label}${suffix}`,
           resultStatus: content.isError ? 'error' : 'success',
         };
@@ -75,8 +76,8 @@ function timelineRows(tree: ActivityTree): FlowRow[] {
           timestamp: node.timestamp,
           icon: content.isError ? '✗' : '✓',
           label: content.contentPreview ?? '',
-          color: content.isError ? colors.status.error : colors.status.success,
-          sideColor: content.isError ? colors.status.error : colors.status.success,
+          color: content.isError ? theme.semantic.destructive : theme.semantic.success,
+          sideColor: content.isError ? theme.semantic.destructive : theme.semantic.success,
           resultStatus: content.isError ? 'error' : 'success',
         });
       }
@@ -92,8 +93,8 @@ function timelineRows(tree: ActivityTree): FlowRow[] {
         timestamp: node.timestamp,
         icon: typeIcons[node.type] ?? '💬',
         label: truncate(text.replace(/\s+/g, ' '), 96),
-        color: typeColors[node.type] ?? colors.fg.primary,
-        sideColor: colors.accent.secondary,
+        color: activityTypeColor(node.type),
+        sideColor: theme.semantic.tintMuted,
       });
       continue;
     }
@@ -106,8 +107,8 @@ function timelineRows(tree: ActivityTree): FlowRow[] {
           timestamp: node.timestamp,
           icon: '!',
           label: truncate(`error: ${content.error}`, 96),
-          color: colors.status.error,
-          sideColor: colors.status.error,
+          color: theme.semantic.destructive,
+          sideColor: theme.semantic.destructive,
         });
       }
     }
@@ -125,6 +126,7 @@ function formatTimeOffset(offsetMs: number): string {
 
 export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
   const [selectedIndex, setSelectedIndex] = useState(-1);
+  const theme = tuiTheme;
 
   useKeyboard(useCallback((key: { name: string }) => {
     if (!tree) return;
@@ -138,7 +140,7 @@ export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
 
   if (!tree) {
     return (
-      <text fg={colors.fg.dim}>● ● ● Collecting activity…</text>
+      <text fg={theme.semantic.label.quaternary}>● ● ● Collecting activity…</text>
     );
   }
 
@@ -148,11 +150,11 @@ export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
   // Build stats parts into ONE text element
   const buildStats = () => {
     const parts: Array<{ text: string; fg?: string }> = [];
-    parts.push({ text: `[${tree.nodes.size}n `, fg: colors.accent.primary });
-    parts.push({ text: `${tree.stats.toolCallCount}t`, fg: colors.fg.secondary });
+    parts.push({ text: `[${tree.nodes.size}n `, fg: theme.semantic.tint });
+    parts.push({ text: `${tree.stats.toolCallCount}t`, fg: theme.semantic.label.secondary });
     parts.push({ text: ` │ ${tree.stats.responseCount}r]` });
     if (tree.alerts.length > 0) {
-      parts.push({ text: ` ${tree.alerts.length}w`, fg: colors.status.warning });
+      parts.push({ text: ` ${tree.alerts.length}w`, fg: theme.semantic.warning });
     }
     return parts;
   };
@@ -169,12 +171,12 @@ export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
       parts.push({ text: row.resultStatus === 'pending' ? '│' : '└', fg: row.sideColor });
     }
     parts.push({ text: ' ', fg: row.sideColor });
-    parts.push({ text: timeStr, fg: colors.fg.dim });
+    parts.push({ text: timeStr, fg: theme.semantic.label.quaternary });
     parts.push({ text: ' ┃ ' });
     parts.push({ text: row.icon, fg: row.color });
-    parts.push({ text: row.label, fg: sel ? colors.fg.primary : colors.fg.secondary });
+    parts.push({ text: row.label, fg: sel ? theme.semantic.label.primary : theme.semantic.label.secondary });
     if (row.resultStatus === 'pending' && !sel) {
-      parts.push({ text: ' …', fg: colors.fg.dim });
+      parts.push({ text: ' …', fg: theme.semantic.label.quaternary });
     }
 
     return parts;
@@ -183,7 +185,7 @@ export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
   return (
     <>
       {/* Stats bar — one text element, no spacers */}
-      <text fg={colors.fg.dim}>
+      <text fg={theme.semantic.label.quaternary}>
         {buildStats().map((p, i) => (
           <span key={i} fg={p.fg}>{p.text}</span>
         ))}
@@ -205,8 +207,28 @@ export function FlowView({ tree, running, elapsed }: FlowViewProps): ReactNode {
 
       {/* End marker */}
       {!running && rows.length > 0 && (
-        <text fg={colors.border.muted}>─ end ─</text>
+        <text fg={theme.semantic.separator}>─ end ─</text>
       )}
     </>
   );
+}
+
+function activityTypeColor(type: string): string {
+  const theme = tuiTheme;
+  switch (type) {
+    case 'prompt':
+      return theme.semantic.info;
+    case 'thinking':
+      return theme.semantic.label.tertiary;
+    case 'tool_call':
+      return theme.semantic.warning;
+    case 'tool_result':
+      return theme.semantic.success;
+    case 'response':
+      return theme.semantic.label.primary;
+    case 'group':
+      return theme.semantic.tintMuted;
+    default:
+      return theme.semantic.label.primary;
+  }
 }

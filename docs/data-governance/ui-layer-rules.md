@@ -27,13 +27,15 @@ Chrome prop shapes live in [`shell-chrome.types.ts`](../scheme/src/app/observer/
 - **View-model 无 IO**：`presentation-summaries.ts` 的 `applyLiveSummaryPreview` 由 hook 传入 `bundleSummaryByExplorationId`，不在 view-model 内 `load` bundle。
 - Chrome aggregation lives in [`shell-props.ts`](../scheme/src/app/observer/view-model/shell-props.ts).
 - Leaf components (`ExplorationCard`, `WikiMatchCard`, etc.) are prop-driven only.
-- Flowchart layout math lives in `app/ui/flow/graph/flow-graph-layout.ts` (no service imports); `FlowGraphView.tsx` only consumes layout output.
-- Flowchart snapshot building lives in `app/observer/view-model/flow-graph-builder.ts` (data/protocol only); hooks/container pass `FlowGraphSnapshot` to UI.
+- Focus view chrome lives in `app/ui/flow/graph/FocusView.tsx` (no service imports); Focus projection lives in `app/observer/view-model/focus-guide-view.ts`.
+- Flow graph snapshot building lives in `data/protocol/session-flow-projector.ts`; hooks/container pass `FlowGraphSnapshot` to UI.
 - Top chrome: `ObserverStatusBar.tsx` — session stats/outcomes (via `shell-props.ts`).
 - Bottom chrome: `CommandBar.tsx` — hotkeys only; hidden when `HelpOverlay` is open. No `UnifiedFooter` row.
 - `HelpOverlay.tsx`: one multiline `<text>` via `buildHelpBody()`; do not render multiple sibling `<text>` rows (OpenTUI overlaps them in narrow panes).
 
 ## Theming
 
-- Prefer `semantic.*` from [`theme.ts`](../scheme/src/app/ui/theme.ts) over raw `colors.accent` / `colors.status.success` for chrome and labels.
-- Reserve `semantic.tint` for active focus; `semantic.destructive` for errors only.
+- Prefer `useTuiTheme()` from [`theme.ts`](../scheme/src/app/ui/theme.ts) for UI chrome.
+- Mode-specific surfaces should read `theme.modes.<mode>.*` from `resolved-theme.ts` instead of ad hoc `semantic.*` choices.
+- `semantic.*` remains the shared fallback for generic labels/fills/status; raw `colors.accent` / `colors.status.*` should stay inside theme builders and compatibility code.
+- Reserve `theme.semantic.tint` for active focus; `theme.semantic.destructive` for errors only.

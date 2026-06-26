@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import type { Exploration } from '../../data/protocol/observer-protocol';
 import { resolveSessionBindingIntent } from './session-binding-policy';
 import {
+  countMissingSummaries,
   deriveSessionRuntime,
   hasMissingSummaries,
   resolveObserverPhase,
@@ -98,5 +99,23 @@ describe('session-runtime-policy', () => {
     expect(runtime.presentation.allowSummaryRegen).toBe(false);
     expect(runtime.presentation.fillExcerptFallback).toBe(true);
     expect(runtime.hasMissingSummaries).toBe(false);
+  });
+
+  it('counts only complete explorations without ready summaries', () => {
+    expect(countMissingSummaries('sid', [
+      makeExploration('exp_1'),
+      makeExploration('exp_2'),
+      { ...makeExploration('exp_3'), status: 'running', endedAt: undefined },
+    ], {
+      'sid:exp_1': {
+        id: 'sid:exp_1',
+        sessionId: 'sid',
+        explorationId: 'exp_1',
+        text: 'cached',
+        source: 'cache',
+        status: 'ready',
+        persistMeta: null,
+      },
+    })).toBe(1);
   });
 });

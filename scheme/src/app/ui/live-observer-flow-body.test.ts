@@ -7,8 +7,8 @@ import {
   wrapFlowText,
 } from './flow/summary-layout';
 import { sortTimelineEntries } from './live-observer-flow-body';
-import { buildFlowGraphSnapshot } from '../observer/view-model/flow-graph-builder';
-import { shouldShowInlineSummary } from '../observer/view-model/exploration-card-view';
+import { buildFlowGraphSnapshot } from '../../data/protocol/session-flow-projector';
+import { shouldRenderTimelineSummary } from '../observer/view-model/exploration-card-view';
 
 function makeExploration(
   id: string,
@@ -73,18 +73,49 @@ describe('single rail timeline order', () => {
 });
 
 describe('summary dedup gating', () => {
-  it('shows inline summary when complete or interrupted (even while generating)', () => {
-    expect(shouldShowInlineSummary('expanded', 'complete', false)).toBe(true);
-    expect(shouldShowInlineSummary('expanded', 'complete', true)).toBe(true);
-    expect(shouldShowInlineSummary('compact', 'complete', false)).toBe(false);
-    expect(shouldShowInlineSummary('expanded', 'running', false)).toBe(false);
-    expect(shouldShowInlineSummary('expanded', 'interrupted', false)).toBe(true);
+  it('shows timeline summary only when there is summary content to render', () => {
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'complete',
+      isGenerating: false,
+    })).toBe(true);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'complete',
+      isGenerating: true,
+    })).toBe(true);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'complete',
+      isGenerating: true,
+      summary: 'Existing summary',
+    })).toBe(true);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'compact',
+      status: 'complete',
+      isGenerating: false,
+    })).toBe(false);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'running',
+      isGenerating: false,
+    })).toBe(false);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'interrupted',
+      isGenerating: false,
+    })).toBe(true);
   });
 });
 
 describe('inline summary layout', () => {
   it('uses native word wrap via FlowTextBlock (no manual line splitting)', () => {
-    expect(shouldShowInlineSummary('expanded', 'complete', false)).toBe(true);
+    expect(shouldRenderTimelineSummary({
+      displayMode: 'expanded',
+      status: 'complete',
+      isGenerating: false,
+      summary: 'Existing summary',
+    })).toBe(true);
   });
 });
 

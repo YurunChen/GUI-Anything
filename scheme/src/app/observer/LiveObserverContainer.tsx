@@ -1,3 +1,6 @@
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import type { ReactNode } from 'react';
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { createLogger } from '../../utils/logger';
@@ -11,12 +14,15 @@ import { getObserverMessages } from '../ui/i18n/observer-messages';
 import { useSessionPolling } from './hooks/useSessionPolling';
 import { useExplorationSummaries } from './hooks/useExplorationSummaries';
 import { useWikiCurator } from './hooks/useWikiCurator';
+import { useWikiMatches } from './hooks/useWikiMatches';
 import { useGraphSnapshot } from './hooks/useGraphSnapshot';
 import { useGraphConsolidation } from './hooks/useGraphConsolidation';
-import { buildFlowGraphSnapshot } from './view-model/flow-graph-builder';
+import { useWorkspaceTreeSnapshot } from './hooks/useWorkspaceTreeSnapshot';
+import { buildFlowGraphSnapshot } from '../../data/protocol/session-flow-projector';
 import { useNotification } from './hooks/useNotification';
 import { fileWikiAudit } from '../../services/wiki/audit-service';
 import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
+import { exportEvolutionToHtml } from '../../export/evolution/export-evolution';
 
 const log = createLogger('observer');
 let observerBootLogged = false;
@@ -25,8 +31,9 @@ export function LiveObserverContainer(): ReactNode {
   const cwd = process.env.FLOW_PROJECT_DIR || process.cwd();
   const explicitSessionId = process.env.FLOW_SESSION_ID || '';
   const resumeModeRaw = process.env.FLOW_RESUME_MODE || '';
-  const summaryModel = (process.env.CLAUDE_MODEL || '').trim();
+  const summaryModel = (process.env.FLOW_SUMMARY_MODEL || process.env.CLAUDE_MODEL || '').trim();
   const bootLoggedRef = useRef(observerBootLogged);
+  const workspaceTree = useWorkspaceTreeSnapshot(cwd);
 
   useEffect(() => {
     if (bootLoggedRef.current) return;
@@ -125,7 +132,6 @@ export function LiveObserverContainer(): ReactNode {
 
   const {
     snapshot: graphSnapshot,
-    cacheHit: graphCacheHit,
   } = useGraphSnapshot({
     sessionId,
     sessionPath,
@@ -135,6 +141,13 @@ export function LiveObserverContainer(): ReactNode {
     flowchartHints: mergedFlowchartHints,
     wikiPersistStatus: explorationPersistStatus,
   });
+
+  const wikiMatchesByExploration = useWikiMatches(
+    explorations,
+    sessionId,
+    sessionPath,
+    runtime.presentation.allowWikiLiveSearch,
+  );
 
   const {
     notificationEnabled,
@@ -168,18 +181,36 @@ export function LiveObserverContainer(): ReactNode {
     return { filed: false };
   }, [explorations, sessionId, sessionPath, runtime.presentation.allowWikiLiveSearch]);
 
+  const handleOpenHtml = useCallback(async (): Promise<{ opened: boolean; path?: string; error?: string }> => {
+    try {
+      if (!sessionId.trim()) {
+        return { opened: false, error: 'No active session yet' };
+      }
+      const shortSessionId = sessionId.slice(0, 8);
+      const outputPath = path.join(os.tmpdir(), `gui-anything-flow-session-${shortSessionId}.html`);
+      await exportEvolutionToHtml({
+        outputPath,
+        noAi: true,
+        scope: 'session',
+        sessionId,
+        workspaceRoot: cwd,
+      });
+      openFile(outputPath);
+      return { opened: true, path: outputPath };
+    } catch (err) {
+      return { opened: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  }, [cwd, sessionId]);
+
   return (
     <FlowObserverShell
       explorations={explorations}
       tree={tree}
       sessionId={sessionId}
-      sessionPath={sessionPath}
-      allowWikiLiveSearch={runtime.presentation.allowWikiLiveSearch}
       tokenDisplay={tokenDisplay}
       runtimeModel={runtimeModel}
       wikiExtractedCount={wikiExtractedCount}
       explorationSummaries={explorationSummaries}
-      flowchartHints={mergedFlowchartHints}
       graphSnapshot={graphSnapshot}
       explorationPersistStatus={explorationPersistStatus}
       pendingSummaryCount={pendingSummaryCount}
@@ -188,14 +219,29 @@ export function LiveObserverContainer(): ReactNode {
       onSaveInspiration={saveInspiration}
       persistResults={explorationPersistResults}
       wikiWriteChromeByExploration={wikiWriteChromeByExploration}
+      wikiMatchesByExploration={wikiMatchesByExploration}
       sessionPresentationMode={runtime.phase}
       sessionBannerHint={sessionBannerHint}
       flowBodyVisible={runtime.visibility === 'show'}
       summaryItems={summaryItems}
+      workspaceTree={workspaceTree}
       sessionIntent={sessionIntent}
       onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
       onFileWikiAudit={handleFileWikiAudit}
+      onOpenHtml={handleOpenHtml}
       notifyStatus={pickerStatusHint ?? lastNotifyStatus}
     />
   );
+}
+
+function openFile(filePath: string): void {
+  if (process.platform === 'darwin') {
+    Bun.spawn(['open', filePath], { stdout: 'ignore', stderr: 'ignore' });
+    return;
+  }
+  if (process.platform === 'win32') {
+    Bun.spawn(['cmd', '/c', 'start', '', filePath], { stdout: 'ignore', stderr: 'ignore' });
+    return;
+  }
+  Bun.spawn(['xdg-open', filePath], { stdout: 'ignore', stderr: 'ignore' });
 }

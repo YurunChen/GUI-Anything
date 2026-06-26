@@ -9,7 +9,7 @@ import {
   FileSessionFlowRepository,
   type SessionFlowRepository,
 } from '../../data/session/session-flow-repository';
-import { buildFlowGraphSnapshot } from '../../app/observer/view-model/flow-graph-builder';
+import { buildFlowGraphSnapshot } from '../../data/protocol/session-flow-projector';
 import { resolveWorkspaceRootForCache } from '../../data/session/workspace-root';
 import {
   buildGraphFingerprint,

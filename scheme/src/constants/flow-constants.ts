@@ -12,6 +12,13 @@ export const WIKI_SEARCH_THRESHOLD = 0.5; // 50% similarity threshold
 
 // Layout thresholds
 export const COMPACT_LAYOUT_WIDTH = 110; // Terminal columns below this = compact mode
+export const OBSERVER_MIN_TERMINAL_COLS = 52;
+export const OBSERVER_MIN_TERMINAL_ROWS = 16;
+
+export function isObserverTerminalTooSmall(terminalCols: number, terminalRows: number): boolean {
+  if (terminalCols <= 0 || terminalRows <= 0) return false;
+  return terminalCols < OBSERVER_MIN_TERMINAL_COLS || terminalRows < OBSERVER_MIN_TERMINAL_ROWS;
+}
 
 // Input box heights
 export const INPUT_BOX_HEIGHT_DEFAULT = 6;

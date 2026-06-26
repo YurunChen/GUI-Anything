@@ -148,6 +148,28 @@ set_permissions() {
 
 }
 
+link_ga_cli() {
+  log_info "Linking ga CLI..."
+
+  if ! command_exists npm; then
+    log_warn "npm not found; skipped global ga link"
+    log_info "Run with: node cli/ga.mjs flow"
+    return 0
+  fi
+
+  if (cd "$ROOT_DIR" && npm link); then
+    if command_exists ga; then
+      log_success "ga linked: $(command -v ga)"
+    else
+      log_warn "npm link finished, but ga is not in PATH"
+      log_info "Add your npm global bin directory to PATH, then run: ga doctor"
+    fi
+  else
+    log_warn "Could not link ga automatically"
+    log_info "Run manually from the repo root: npm link"
+  fi
+}
+
 # Verify installation
 verify_installation() {
   log_info "Verifying installation..."
@@ -253,6 +275,8 @@ main() {
   setup_zellij_env
   echo ""
   set_permissions
+  echo ""
+  link_ga_cli
   echo ""
   verify_installation
   echo ""

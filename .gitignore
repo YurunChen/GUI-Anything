@@ -6,6 +6,7 @@ reference/
 .idea/
 .vscode/
 .history/
+.superpowers/
 
 # Env / local config
 .env
@@ -54,5 +55,4 @@ temp/
 # Local wiki knowledge data (runtime-generated; contains local paths & session transcripts)
 /wiki/
 /scheme/wiki/
-
 

@@ -84,7 +84,7 @@ interface KnowledgeRepository {
 // data/wiki/note-repository.ts — FileNoteRepository
 //   create / findById / listRecent / listByDate / update / delete
 // services/wiki/inspiration-note-service.ts — DefaultInspirationNoteService
-// app/observer/hooks/useWikiCurator.ts — 策展 + 灵感（useWikiPersistence 为别名）
+// app/observer/hooks/useWikiCurator.ts — 策展 + 灵感
 ```
 
 ## 4. 数据治理机制

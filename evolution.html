@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>项目功能演进史</title>
+  <style>
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
+  background: var(--bg-primary, #1a1b26);
+  color: var(--fg-primary, #c0caf5);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Icons ---- */
+.evo-ico { width: 18px; height: 18px; flex: 0 0 auto; display: inline-block; vertical-align: -3px; }
+.evo-ico--sm { width: 13px; height: 13px; vertical-align: -2px; }
+.evo-ico--lg { width: 22px; height: 22px; vertical-align: -5px; }
+span.evo-ico.iconify { line-height: 0; }
+
+/* ---- Hero ---- */
+.evo-hero {
+  position: relative; overflow: hidden;
+  padding: 56px 20px 44px;
+  text-align: center;
+  background:
+    radial-gradient(120% 120% at 50% -10%,
+      color-mix(in srgb, var(--accent-primary, #7aa2f7) 16%, transparent) 0%, transparent 60%),
+    var(--bg-primary, #1a1b26);
+  border-bottom: 1px solid var(--border-muted, #2a2b3c);
+}
+.evo-hero__inner { max-width: 760px; margin: 0 auto; }
+.evo-hero__badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 600;
+  padding: 5px 14px; border-radius: 999px; margin-bottom: 16px;
+  color: var(--accent-primary, #7aa2f7);
+  background: color-mix(in srgb, var(--accent-primary, #7aa2f7) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #7aa2f7) 30%, transparent);
+}
+.evo-hero__title {
+  font-size: clamp(26px, 4.4vw, 42px); font-weight: 800; line-height: 1.15;
+  margin: 0 0 12px; letter-spacing: -.01em;
+  background: linear-gradient(120deg,
+    var(--fg-primary, #c0caf5),
+    var(--accent-primary, #7aa2f7));
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent; color: var(--fg-primary, #c0caf5);
+}
+.evo-hero__sub { font-size: 15px; color: var(--fg-muted, #787c99); margin: 0 auto; max-width: 520px; }
+.evo-hero__stats { display: flex; justify-content: center; flex-wrap: wrap; gap: 14px; margin-top: 28px; }
+.hero__stat {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  min-width: 84px; padding: 12px 18px; border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-secondary, #16161e) 70%, transparent);
+  border: 1px solid var(--border-muted, #2a2b3c);
+}
+.hero__stat-num { font-size: 24px; font-weight: 800; color: var(--fg-primary, #c0caf5); }
+.hero__stat-label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-dim, #565f89); }
+
+/* ---- Top bar ---- */
+.evo-topbar {
+  position: sticky; top: 0; z-index: 30;
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 20px;
+  background: color-mix(in srgb, var(--bg-secondary, #16161e) 88%, transparent);
+  border-bottom: 1px solid var(--border-muted, #2a2b3c);
+  backdrop-filter: blur(8px);
+}
+.evo-crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; flex: 1; }
+.evo-crumb__sep { color: var(--fg-dim, #565f89); }
+.evo-crumb__root { color: var(--accent-primary, #7aa2f7); cursor: pointer; text-decoration: none; }
+.evo-crumb__root:hover { text-decoration: underline; }
+.evo-crumb__cur { color: var(--fg-secondary, #a9b1d6); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.evo-back {
+  display: none; align-items: center; gap: 4px;
+  font-size: 12px; padding: 4px 10px; cursor: pointer;
+  background: var(--bg-tertiary, #20212e); color: var(--fg-secondary, #a9b1d6);
+  border: 1px solid var(--border-normal, #3b3d52); border-radius: 6px;
+}
+.evo-back:hover { border-color: var(--border-active, #7aa2f7); }
+.is-session .evo-back { display: inline-flex; }
+.evo-theme select {
+  font-size: 12px; padding: 4px 8px; border-radius: 6px;
+  background: var(--bg-tertiary, #20212e); color: var(--fg-secondary, #a9b1d6);
+  border: 1px solid var(--border-normal, #3b3d52); cursor: pointer;
+}
+
+/* ---- Layout ---- */
+.evo-layout {
+  display: grid;
+  grid-template-columns: 38% 62%;
+  max-width: 1240px; margin: 0 auto;
+  padding: 0 20px;
+  gap: 36px;
+}
+
+/* ---- Left rail: eras ---- */
+.evo-rail { position: relative; }
+.evo-rail__sticky {
+  position: sticky; top: 72px;
+  padding: 28px 0 40px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+}
+.evo-rail__head { margin: 0 0 18px; }
+.evo-rail__kicker { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--fg-dim, #565f89); }
+.evo-rail__title { font-size: 18px; font-weight: 600; margin: 2px 0 0; color: var(--fg-primary, #c0caf5); }
+.evo-progress { height: 4px; border-radius: 4px; margin: 14px 0 22px; background: var(--bg-tertiary, #20212e); overflow: hidden; }
+.evo-progress__fill { height: 100%; width: 0%; border-radius: 4px; background: var(--accent-primary, #7aa2f7); transition: width .45s cubic-bezier(.4,0,.2,1); }
+
+.era {
+  position: relative; display: flex; gap: 14px;
+  padding: 0 0 18px 0; margin: 0;
+  opacity: .42; filter: saturate(.55);
+  transition: opacity .4s ease, filter .4s ease;
+  cursor: pointer;
+}
+/* connecting line between era markers */
+.era::after {
+  content: ''; position: absolute; left: 17px; top: 36px; bottom: -2px;
+  width: 2px; background: var(--border-muted, #2a2b3c);
+  transition: background .4s ease;
+}
+.era:last-child::after { display: none; }
+.era__marker {
+  flex: 0 0 auto; width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-secondary, #16161e);
+  border: 2px solid var(--border-normal, #3b3d52);
+  color: var(--fg-muted, #787c99);
+  transition: all .4s cubic-bezier(.4,0,.2,1);
+  z-index: 1;
+}
+.era__body { padding-top: 4px; min-width: 0; }
+.era__index { font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fg-dim, #565f89); }
+.era.is-past { opacity: .72; }
+.era.is-past .era__marker { color: var(--accent-primary, #7aa2f7); border-color: color-mix(in srgb, var(--accent-primary,#7aa2f7) 50%, var(--border-normal,#3b3d52)); }
+.era.is-past::after { background: color-mix(in srgb, var(--accent-primary,#7aa2f7) 40%, var(--border-muted,#2a2b3c)); }
+.era.is-active { opacity: 1; filter: none; }
+.era.is-active .era__marker {
+  color: var(--accent-on, #fff);
+  background: var(--accent-primary, #7aa2f7);
+  border-color: var(--accent-primary, #7aa2f7);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-primary, #7aa2f7) 22%, transparent);
+  transform: scale(1.06);
+}
+.era__title { font-size: 15px; font-weight: 600; color: var(--fg-primary, #c0caf5); margin-top: 1px; }
+.era__abstract { font-size: 12.5px; color: var(--fg-muted, #787c99); margin-top: 3px; }
+.era__scenes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.scene {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--bg-tertiary, #20212e); color: var(--fg-muted, #787c99);
+  border: 1px solid var(--border-muted, #2a2b3c);
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .4s ease, transform .4s ease, color .4s ease, border-color .4s ease;
+}
+.era.is-active .scene { color: var(--fg-secondary, #a9b1d6); border-color: var(--border-normal, #3b3d52); }
+.era.is-active .scene.enter, .era.is-past .scene { opacity: 1; transform: none; }
+
+/* ---- Right stream: milestones ---- */
+.evo-stream { position: relative; padding: 28px 0 60vh 44px; min-width: 0; }
+/* vertical timeline spine */
+.evo-stream::before {
+  content: ''; position: absolute; left: 17px; top: 36px; bottom: 60vh;
+  width: 2px; background: linear-gradient(
+    var(--border-normal, #3b3d52),
+    var(--border-muted, #2a2b3c));
+}
+.evo-date {
+  position: relative; font-size: 12px; font-weight: 600; letter-spacing: .06em;
+  color: var(--fg-dim, #565f89); margin: 28px 0 14px -44px; padding-left: 44px;
+}
+.evo-date:first-child { margin-top: 0; }
+
+.node {
+  position: relative; padding: 16px 18px; margin: 0 0 16px;
+  background: var(--bg-secondary, #16161e);
+  border: 1px solid var(--border-muted, #2a2b3c);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--bg-primary,#000) 40%, transparent);
+  transition: border-color .35s ease, transform .35s ease, box-shadow .35s ease;
+}
+.node:hover { transform: translateY(-2px); box-shadow: 0 8px 24px color-mix(in srgb, var(--bg-primary,#000) 45%, transparent); }
+/* timeline dot (icon circle) hanging into the spine gutter */
+.node__dot {
+  position: absolute; left: -44px; top: 14px;
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-secondary, #16161e);
+  border: 2px solid var(--border-normal, #3b3d52);
+  color: var(--fg-muted, #787c99);
+  transition: all .35s cubic-bezier(.4,0,.2,1); z-index: 1;
+}
+.node.is-active {
+  border-color: var(--accent-primary, #7aa2f7);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--accent-primary, #7aa2f7) 18%, transparent);
+}
+.node.is-active .node__dot {
+  color: var(--accent-on, #fff);
+  background: var(--accent-primary, #7aa2f7);
+  border-color: var(--accent-primary, #7aa2f7);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-primary, #7aa2f7) 20%, transparent);
+}
+.node__head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.node__title { font-size: 15.5px; font-weight: 600; margin: 0; color: var(--fg-primary, #c0caf5); }
+.node__note { font-size: 13px; color: var(--fg-muted, #787c99); margin: 8px 0 0; }
+.node__drill {
+  margin-top: 10px; font-size: 12px; cursor: pointer; user-select: none;
+  color: var(--accent-secondary, #bb9af7); background: none; border: none; padding: 0;
+}
+.node__drill:hover { text-decoration: underline; }
+
+.delta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  padding: 2px 9px 2px 7px; border-radius: 999px; white-space: nowrap;
+}
+.delta .evo-ico { opacity: .9; }
+.delta--pivot    { background: color-mix(in srgb, var(--accent-primary,#7aa2f7) 20%, transparent); color: var(--accent-primary,#7aa2f7); }
+.delta--refine   { background: color-mix(in srgb, var(--status-info,#7dcfff) 18%, transparent); color: var(--status-info,#7dcfff); }
+.delta--continue { background: color-mix(in srgb, var(--fg-muted,#787c99) 16%, transparent); color: var(--fg-muted,#787c99); }
+.delta--blocked  { background: color-mix(in srgb, var(--status-error,#f7768e) 18%, transparent); color: var(--status-error,#f7768e); }
+.delta--done     { background: color-mix(in srgb, var(--status-success,#9ece6a) 18%, transparent); color: var(--status-success,#9ece6a); }
+.delta--idle     { background: var(--bg-tertiary,#20212e); color: var(--fg-dim,#565f89); }
+
+/* substeps reveal automatically when the node is scroll-spy active (no click) */
+.node__children { margin: 12px 0 0; }
+.node__children-label {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--fg-dim, #565f89);
+  border-top: 1px solid var(--border-muted, #2a2b3c); padding-top: 10px;
+  transition: color .35s ease;
+}
+.node__children-label::before {
+  content: '▸'; display: inline-block; font-size: 10px;
+  transition: transform .35s cubic-bezier(.4,0,.2,1);
+}
+.node.is-active .node__children-label { color: var(--fg-muted, #787c99); }
+.node.is-active .node__children-label::before { transform: rotate(90deg); }
+.node__children-wrap {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .4s cubic-bezier(.4,0,.2,1);
+}
+.node.is-active .node__children-wrap { grid-template-rows: 1fr; }
+.node__children-inner { overflow: hidden; min-height: 0; }
+.substep { display: flex; gap: 8px; align-items: center; padding: 6px 0 0 14px; font-size: 12.5px; }
+.substep:first-child { padding-top: 10px; }
+.substep__title { color: var(--fg-secondary, #a9b1d6); }
+.substep__note { color: var(--fg-dim, #565f89); }
+
+/* ---- View switching ---- */
+.evo-view { display: none; animation: evo-fade .35s ease; }
+.evo-view.is-on { display: block; }
+@keyframes evo-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+.evo-empty { text-align: center; color: var(--fg-dim, #565f89); padding: 80px 20px; font-size: 14px; }
+.evo-footer { text-align: center; font-size: 11px; color: var(--fg-dim, #565f89); padding: 24px; }
+
+/* ---- Responsive: collapse left rail to a top mini progress ---- */
+@media (max-width: 820px) {
+  .evo-layout { grid-template-columns: 1fr; gap: 0; }
+  .evo-hero { padding: 36px 16px 28px; }
+  .evo-hero__stats { gap: 10px; }
+  .hero__stat { min-width: 70px; padding: 9px 12px; }
+  .evo-rail__sticky {
+    position: sticky; top: 56px; max-height: none; padding: 14px 0;
+    background: var(--bg-primary, #1a1b26); z-index: 20;
+    border-bottom: 1px solid var(--border-muted, #2a2b3c);
+  }
+  .era { display: none; padding-bottom: 0; }
+  .era::after { display: none; }
+  .era.is-active { display: flex; margin-bottom: 0; }
+  .era.is-active .era__scenes { display: none; }
+}
+</style>
+</head>
+<body>
+  <div class="evo-app" id="app">
+    <div class="evo-topbar">
+      <button class="evo-back" id="evo-back">← 返回总览</button>
+      <nav class="evo-crumb">
+        <a class="evo-crumb__root" id="crumb-root" href="#/">项目演进</a>
+        <span class="evo-crumb__sep">▸</span>
+        <span class="evo-crumb__cur" id="crumb-cur">项目演进总览</span>
+      </nav>
+      <div class="evo-theme">
+        <select id="theme-select" title="切换主题 ([ / ])"><option value="apple-system-dark">apple-system-dark</option><option value="apple-system-light" selected>apple-system-light</option><option value="tokyo-night">tokyo-night</option><option value="nord">nord</option><option value="catppuccin">catppuccin</option><option value="dracula">dracula</option><option value="gruvbox">gruvbox</option><option value="solarized">solarized</option><option value="one-dark">one-dark</option><option value="solarized-light">solarized-light</option><option value="gruvbox-light">gruvbox-light</option><option value="catppuccin-latte">catppuccin-latte</option><option value="github-light">github-light</option><option value="monokai">monokai</option><option value="synthwave">synthwave</option><option value="ocean">ocean</option><option value="sakura-pink-light">sakura-pink-light</option><option value="sakura-pink-dark">sakura-pink-dark</option><option value="sage-green-light">sage-green-light</option><option value="sage-green-dark">sage-green-dark</option><option value="lavender-light">lavender-light</option><option value="lavender-dark">lavender-dark</option><option value="misty-blue-light">misty-blue-light</option><option value="misty-blue-dark">misty-blue-dark</option><option value="milk-tea-light">milk-tea-light</option><option value="milk-tea-dark">milk-tea-dark</option><option value="lotus-pink-light">lotus-pink-light</option><option value="lotus-pink-dark">lotus-pink-dark</option><option value="matcha-light">matcha-light</option><option value="matcha-dark">matcha-dark</option><option value="peach-light">peach-light</option><option value="peach-dark">peach-dark</option></select>
+      </div>
+    </div>
+
+    <div class="evo-view is-on" id="view-project"></div>
+    <div class="evo-view" id="view-session"></div>
+
+    <div class="evo-footer">
+      GUI-Anything · 项目功能演进史 v1.0 ·
+      11 个里程碑 / 7 个 session ·
+      规则合成主线 ·
+      <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题 · <kbd>Esc</kbd> 返回
+    </div>
+  </div>
+
+  <script type="application/json" id="evo-data">{"version":"1.0","generatedAt":1782115446020,"aiUsed":false,"project":{"workspaceRoot":"~/project/Method/GUI-Anything","eras":[{"id":"era_0","order":0,"title":"GUI-Anything 项目概览与分析","abstract":"扫描仓库骨架与核心文档，输出 GUI-Anything 双栏侧边观察器的高层定位与模块划分。","icon":"layout","sceneAdds":["GUI-Anything 项目概览与分析"],"nodeIds":["f868caa6-7024-45c5-a7f3-54f6661ed003:exp_1"]},{"id":"era_1","order":1,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_1"]},{"id":"era_2","order":2,"title":"GUI-Anything 项目结构与核心模块概览","abstract":"从寒暄切换至项目理解任务","icon":"layout","sceneAdds":["GUI-Anything 项目结构与核心模块概览"],"nodeIds":["2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_2"]},{"id":"era_3","order":3,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["2452b848-206a-42b9-8948-2d16fdaa970b:exp_1"]},{"id":"era_4","order":4,"title":"GUI-Anything 项目分析","abstract":"从寒暄切入项目分析","icon":"layout","sceneAdds":["GUI-Anything 项目分析"],"nodeIds":["2452b848-206a-42b9-8948-2d16fdaa970b:exp_2"]},{"id":"era_5","order":5,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["90526dc5-5fcb-4503-89e7-a6514edff554:exp_1"]},{"id":"era_6","order":6,"title":"GUI-Anything 项目结构分析","abstract":"从寒暄切入项目分析","icon":"layout","sceneAdds":["GUI-Anything 项目结构分析","GUI-Anything 项目架构分析"],"nodeIds":["90526dc5-5fcb-4503-89e7-a6514edff554:exp_2","9fc135be-f828-4ced-a1cf-0712f98d3af5:exp_1"]},{"id":"era_7","order":7,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_1"]},{"id":"era_8","order":8,"title":"项目定位：Claude Code 侧车记忆层，静默旁路读协议","abstract":"从 greeting 进入探索，先给项目定位","icon":"search","sceneAdds":["项目定位：Claude Code 侧车记忆层，静默旁路读协议"],"nodeIds":["21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_2"]},{"id":"era_9","order":9,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["c0c46b5c-fdca-440e-804d-35264a2e8482:exp_1"]}],"nodes":[{"id":"f868caa6-7024-45c5-a7f3-54f6661ed003:exp_1","eraId":"era_0","sessionId":"f868caa6-7024-45c5-a7f3-54f6661ed003","title":"GUI-Anything 项目概览与分析","note":"扫描仓库骨架与核心文档，输出 GUI-Anything 双栏侧边观察器的高层定位与模块划分。","at":1779777777419,"delta":"continue","icon":"layout","children":[]},{"id":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_1","eraId":"era_1","sessionId":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832","title":"Awaiting task","note":"Ready when you are.","at":1779786389601,"delta":"idle","icon":"sparkles","children":[]},{"id":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_2","eraId":"era_2","sessionId":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832","title":"GUI-Anything 项目结构与核心模块概览","note":"从寒暄切换至项目理解任务","at":1779786442456,"delta":"pivot","icon":"layout","children":[]},{"id":"2452b848-206a-42b9-8948-2d16fdaa970b:exp_1","eraId":"era_3","sessionId":"2452b848-206a-42b9-8948-2d16fdaa970b","title":"Awaiting task","note":"Ready when you are.","at":1780916576422,"delta":"idle","icon":"sparkles","children":[]},{"id":"2452b848-206a-42b9-8948-2d16fdaa970b:exp_2","eraId":"era_4","sessionId":"2452b848-206a-42b9-8948-2d16fdaa970b","title":"GUI-Anything 项目分析","note":"从寒暄切入项目分析","at":1780916649954,"delta":"pivot","icon":"layout","children":[{"title":"HTML 功能点梳理","note":"从整体分析收窄到 HTML 功能点","at":1780917063780,"delta":"refine"}]},{"id":"90526dc5-5fcb-4503-89e7-a6514edff554:exp_1","eraId":"era_5","sessionId":"90526dc5-5fcb-4503-89e7-a6514edff554","title":"Awaiting task","note":"Ready when you are.","at":1781708022282,"delta":"idle","icon":"sparkles","children":[]},{"id":"90526dc5-5fcb-4503-89e7-a6514edff554:exp_2","eraId":"era_6","sessionId":"90526dc5-5fcb-4503-89e7-a6514edff554","title":"GUI-Anything 项目结构分析","note":"从寒暄切入项目分析","at":1781708103797,"delta":"pivot","icon":"layout","children":[]},{"id":"9fc135be-f828-4ced-a1cf-0712f98d3af5:exp_1","eraId":"era_6","sessionId":"9fc135be-f828-4ced-a1cf-0712f98d3af5","title":"GUI-Anything 项目架构分析","note":"GUI-Anything 是 Claude Code 的只读 Observer 副驾，核心含 Flow Observer（网页侧栏）、Wiki Curator（知识沉淀）和 Activity-Tree 模块，分层清晰，待补文档与测试。","at":1781708989965,"delta":"idle","icon":"layout","children":[]},{"id":"21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_1","eraId":"era_7","sessionId":"21cff55c-da37-4f19-8b8c-0c32fba37d17","title":"Awaiting task","note":"Ready when you are.","at":1781763834554,"delta":"idle","icon":"sparkles","children":[]},{"id":"21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_2","eraId":"era_8","sessionId":"21cff55c-da37-4f19-8b8c-0c32fba37d17","title":"项目定位：Claude Code 侧车记忆层，静默旁路读协议","note":"从 greeting 进入探索，先给项目定位","at":1781764020689,"delta":"pivot","icon":"search","children":[]},{"id":"c0c46b5c-fdca-440e-804d-35264a2e8482:exp_1","eraId":"era_9","sessionId":"c0c46b5c-fdca-440e-804d-35264a2e8482","title":"Awaiting task","note":"Ready when you are.","at":1781767050891,"delta":"idle","icon":"sparkles","children":[]}]},"sessions":[{"sessionId":"f868caa6-7024-45c5-a7f3-54f6661ed003","title":"GUI-Anything 项目概览与分析","startedAt":1779777777419,"eras":[{"id":"era_0","order":0,"title":"GUI-Anything 项目概览与分析","abstract":"扫描仓库骨架与核心文档，输出 GUI-Anything 双栏侧边观察器的高层定位与模块划分。","icon":"layout","sceneAdds":["GUI-Anything 项目概览与分析"],"nodeIds":["f868caa6-7024-45c5-a7f3-54f6661ed003:exp_1"]}],"nodes":[{"id":"f868caa6-7024-45c5-a7f3-54f6661ed003:exp_1","eraId":"era_0","sessionId":"f868caa6-7024-45c5-a7f3-54f6661ed003","title":"GUI-Anything 项目概览与分析","note":"扫描仓库骨架与核心文档，输出 GUI-Anything 双栏侧边观察器的高层定位与模块划分。","at":1779777777419,"delta":"continue","icon":"layout","children":[]}]},{"sessionId":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832","title":"GUI-Anything 项目结构与核心模块概览","startedAt":1779786389601,"eras":[{"id":"era_0","order":0,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_1"]},{"id":"era_1","order":1,"title":"GUI-Anything 项目结构与核心模块概览","abstract":"从寒暄切换至项目理解任务","icon":"layout","sceneAdds":["GUI-Anything 项目结构与核心模块概览"],"nodeIds":["2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_2"]}],"nodes":[{"id":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_1","eraId":"era_0","sessionId":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832","title":"Awaiting task","note":"Ready when you are.","at":1779786389601,"delta":"idle","icon":"sparkles","children":[]},{"id":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832:exp_2","eraId":"era_1","sessionId":"2db8cff0-d366-43aa-95d7-cd5d5f3ed832","title":"GUI-Anything 项目结构与核心模块概览","note":"从寒暄切换至项目理解任务","at":1779786442456,"delta":"pivot","icon":"layout","children":[]}]},{"sessionId":"2452b848-206a-42b9-8948-2d16fdaa970b","title":"HTML 功能点梳理","startedAt":1780916576422,"eras":[{"id":"era_0","order":0,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["2452b848-206a-42b9-8948-2d16fdaa970b:exp_1"]},{"id":"era_1","order":1,"title":"GUI-Anything 项目分析","abstract":"从寒暄切入项目分析","icon":"layout","sceneAdds":["GUI-Anything 项目分析"],"nodeIds":["2452b848-206a-42b9-8948-2d16fdaa970b:exp_2"]}],"nodes":[{"id":"2452b848-206a-42b9-8948-2d16fdaa970b:exp_1","eraId":"era_0","sessionId":"2452b848-206a-42b9-8948-2d16fdaa970b","title":"Awaiting task","note":"Ready when you are.","at":1780916576422,"delta":"idle","icon":"sparkles","children":[]},{"id":"2452b848-206a-42b9-8948-2d16fdaa970b:exp_2","eraId":"era_1","sessionId":"2452b848-206a-42b9-8948-2d16fdaa970b","title":"GUI-Anything 项目分析","note":"从寒暄切入项目分析","at":1780916649954,"delta":"pivot","icon":"layout","children":[{"title":"HTML 功能点梳理","note":"从整体分析收窄到 HTML 功能点","at":1780917063780,"delta":"refine"}]}]},{"sessionId":"90526dc5-5fcb-4503-89e7-a6514edff554","title":"GUI-Anything 项目结构分析","startedAt":1781708022282,"eras":[{"id":"era_0","order":0,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["90526dc5-5fcb-4503-89e7-a6514edff554:exp_1"]},{"id":"era_1","order":1,"title":"GUI-Anything 项目结构分析","abstract":"从寒暄切入项目分析","icon":"layout","sceneAdds":["GUI-Anything 项目结构分析"],"nodeIds":["90526dc5-5fcb-4503-89e7-a6514edff554:exp_2"]}],"nodes":[{"id":"90526dc5-5fcb-4503-89e7-a6514edff554:exp_1","eraId":"era_0","sessionId":"90526dc5-5fcb-4503-89e7-a6514edff554","title":"Awaiting task","note":"Ready when you are.","at":1781708022282,"delta":"idle","icon":"sparkles","children":[]},{"id":"90526dc5-5fcb-4503-89e7-a6514edff554:exp_2","eraId":"era_1","sessionId":"90526dc5-5fcb-4503-89e7-a6514edff554","title":"GUI-Anything 项目结构分析","note":"从寒暄切入项目分析","at":1781708103797,"delta":"pivot","icon":"layout","children":[]}]},{"sessionId":"9fc135be-f828-4ced-a1cf-0712f98d3af5","title":"GUI-Anything 项目架构分析","startedAt":1781708989965,"eras":[{"id":"era_0","order":0,"title":"GUI-Anything 项目架构分析","abstract":"GUI-Anything 是 Claude Code 的只读 Observer 副驾，核心含 Flow Observer（网页侧栏）、Wiki Curator（知识沉淀）和 Activity-Tree 模块，分层清晰，待补文档与测试。","icon":"layout","sceneAdds":["GUI-Anything 项目架构分析"],"nodeIds":["9fc135be-f828-4ced-a1cf-0712f98d3af5:exp_1"]}],"nodes":[{"id":"9fc135be-f828-4ced-a1cf-0712f98d3af5:exp_1","eraId":"era_0","sessionId":"9fc135be-f828-4ced-a1cf-0712f98d3af5","title":"GUI-Anything 项目架构分析","note":"GUI-Anything 是 Claude Code 的只读 Observer 副驾，核心含 Flow Observer（网页侧栏）、Wiki Curator（知识沉淀）和 Activity-Tree 模块，分层清晰，待补文档与测试。","at":1781708989965,"delta":"idle","icon":"layout","children":[]}]},{"sessionId":"21cff55c-da37-4f19-8b8c-0c32fba37d17","title":"项目定位：Claude Code 侧车记忆层，静默旁路读协议","startedAt":1781763834554,"eras":[{"id":"era_0","order":0,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_1"]},{"id":"era_1","order":1,"title":"项目定位：Claude Code 侧车记忆层，静默旁路读协议","abstract":"从 greeting 进入探索，先给项目定位","icon":"search","sceneAdds":["项目定位：Claude Code 侧车记忆层，静默旁路读协议"],"nodeIds":["21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_2"]}],"nodes":[{"id":"21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_1","eraId":"era_0","sessionId":"21cff55c-da37-4f19-8b8c-0c32fba37d17","title":"Awaiting task","note":"Ready when you are.","at":1781763834554,"delta":"idle","icon":"sparkles","children":[]},{"id":"21cff55c-da37-4f19-8b8c-0c32fba37d17:exp_2","eraId":"era_1","sessionId":"21cff55c-da37-4f19-8b8c-0c32fba37d17","title":"项目定位：Claude Code 侧车记忆层，静默旁路读协议","note":"从 greeting 进入探索，先给项目定位","at":1781764020689,"delta":"pivot","icon":"search","children":[]}]},{"sessionId":"c0c46b5c-fdca-440e-804d-35264a2e8482","title":"Awaiting task","startedAt":1781767050891,"eras":[{"id":"era_0","order":0,"title":"Awaiting task","abstract":"Ready when you are.","icon":"sparkles","sceneAdds":["Awaiting task"],"nodeIds":["c0c46b5c-fdca-440e-804d-35264a2e8482:exp_1"]}],"nodes":[{"id":"c0c46b5c-fdca-440e-804d-35264a2e8482:exp_1","eraId":"era_0","sessionId":"c0c46b5c-fdca-440e-804d-35264a2e8482","title":"Awaiting task","note":"Ready when you are.","at":1781767050891,"delta":"idle","icon":"sparkles","children":[]}]}]}</script>
+  <script type="application/json" id="evo-theme-data">{"apple-system-dark":"--bg-primary: #0F0F11; --bg-secondary: #1A1A1C; --bg-tertiary: #222224; --bg-highlight: #2C2C2E; --fg-primary: #EDEDF0; --fg-secondary: #A0A0A5; --fg-muted: #727276; --fg-dim: #48484A; --status-success: #6FAF82; --status-warning: #B89A62; --status-error: #B8726C; --status-info: #6FA8D7; --accent-primary: #6FA8D7; --accent-secondary: #8E8AA8; --accent-tertiary: #3D5A73; --border-normal: #333336; --border-active: #6FA8D7; --border-muted: #252528","apple-system-light":"--bg-primary: #F2F2F5; --bg-secondary: #FFFFFF; --bg-tertiary: #F7F7FA; --bg-highlight: #E8E8ED; --fg-primary: #1C1C1E; --fg-secondary: #48484A; --fg-muted: #636366; --fg-dim: #AEAEB2; --status-success: #4E9464; --status-warning: #A88440; --status-error: #A85E58; --status-info: #4A85AD; --accent-primary: #4A85AD; --accent-secondary: #6E6A88; --accent-tertiary: #6E8FA8; --border-normal: #C8C8CC; --border-active: #4A85AD; --border-muted: #E4E4E8","tokyo-night":"--bg-primary: #1a1b26; --bg-secondary: #24283b; --bg-tertiary: #1f2335; --bg-highlight: #3d4259; --fg-primary: #c0caf5; --fg-secondary: #a9b1d6; --fg-muted: #565f89; --fg-dim: #3b4261; --status-success: #9ece6a; --status-warning: #e0af68; --status-error: #f7768e; --status-info: #7aa2f7; --accent-primary: #7aa2f7; --accent-secondary: #bb9af7; --accent-tertiary: #7dcfff; --border-normal: #3d4259; --border-active: #7aa2f7; --border-muted: #2f3449","nord":"--bg-primary: #2e3440; --bg-secondary: #3b4252; --bg-tertiary: #434c5e; --bg-highlight: #4c566a; --fg-primary: #eceff4; --fg-secondary: #e5e9f0; --fg-muted: #d8dee9; --fg-dim: #4c566a; --status-success: #a3be8c; --status-warning: #ebcb8b; --status-error: #bf616a; --status-info: #81a1c1; --accent-primary: #88c0d0; --accent-secondary: #b48ead; --accent-tertiary: #5e81ac; --border-normal: #4c566a; --border-active: #88c0d0; --border-muted: #3b4252","catppuccin":"--bg-primary: #1e1e2e; --bg-secondary: #313244; --bg-tertiary: #45475a; --bg-highlight: #585b70; --fg-primary: #cdd6f4; --fg-secondary: #bac2de; --fg-muted: #a6adc8; --fg-dim: #585b70; --status-success: #a6e3a1; --status-warning: #f9e2af; --status-error: #f38ba8; --status-info: #89b4fa; --accent-primary: #89dceb; --accent-secondary: #cba6f7; --accent-tertiary: #f5c2e7; --border-normal: #585b70; --border-active: #89dceb; --border-muted: #45475a","dracula":"--bg-primary: #282a36; --bg-secondary: #44475a; --bg-tertiary: #373844; --bg-highlight: #6272a4; --fg-primary: #f8f8f2; --fg-secondary: #e6e6e6; --fg-muted: #6272a4; --fg-dim: #44475a; --status-success: #50fa7b; --status-warning: #f1fa8c; --status-error: #ff5555; --status-info: #8be9fd; --accent-primary: #bd93f9; --accent-secondary: #ff79c6; --accent-tertiary: #8be9fd; --border-normal: #6272a4; --border-active: #bd93f9; --border-muted: #44475a","gruvbox":"--bg-primary: #282828; --bg-secondary: #3c3836; --bg-tertiary: #504945; --bg-highlight: #665c54; --fg-primary: #ebdbb2; --fg-secondary: #d5c4a1; --fg-muted: #bdae93; --fg-dim: #7c6f64; --status-success: #b8bb26; --status-warning: #fabd2f; --status-error: #fb4934; --status-info: #83a598; --accent-primary: #fe8019; --accent-secondary: #d3869b; --accent-tertiary: #8ec07c; --border-normal: #665c54; --border-active: #fe8019; --border-muted: #504945","solarized":"--bg-primary: #002b36; --bg-secondary: #073642; --bg-tertiary: #073642; --bg-highlight: #586e75; --fg-primary: #fdf6e3; --fg-secondary: #eee8d5; --fg-muted: #93a1a1; --fg-dim: #586e75; --status-success: #859900; --status-warning: #b58900; --status-error: #dc322f; --status-info: #268bd2; --accent-primary: #2aa198; --accent-secondary: #6c71c4; --accent-tertiary: #cb4b16; --border-normal: #586e75; --border-active: #2aa198; --border-muted: #073642","one-dark":"--bg-primary: #282c34; --bg-secondary: #21252b; --bg-tertiary: #2c313a; --bg-highlight: #3e4451; --fg-primary: #abb2bf; --fg-secondary: #9da5b4; --fg-muted: #5c6370; --fg-dim: #3e4451; --status-success: #98c379; --status-warning: #e5c07b; --status-error: #e06c75; --status-info: #61afef; --accent-primary: #61afef; --accent-secondary: #c678dd; --accent-tertiary: #56b6c2; --border-normal: #3e4451; --border-active: #61afef; --border-muted: #2c313a","solarized-light":"--bg-primary: #fdf6e3; --bg-secondary: #eee8d5; --bg-tertiary: #eee8d5; --bg-highlight: #93a1a1; --fg-primary: #002b36; --fg-secondary: #073642; --fg-muted: #586e75; --fg-dim: #93a1a1; --status-success: #859900; --status-warning: #b58900; --status-error: #dc322f; --status-info: #268bd2; --accent-primary: #2aa198; --accent-secondary: #6c71c4; --accent-tertiary: #cb4b16; --border-normal: #93a1a1; --border-active: #2aa198; --border-muted: #eee8d5","gruvbox-light":"--bg-primary: #fbf1c7; --bg-secondary: #ebdbb2; --bg-tertiary: #d5c4a1; --bg-highlight: #bdae93; --fg-primary: #3c3836; --fg-secondary: #504945; --fg-muted: #665c54; --fg-dim: #928374; --status-success: #79740e; --status-warning: #b57614; --status-error: #cc241d; --status-info: #076678; --accent-primary: #af3a03; --accent-secondary: #8f3f71; --accent-tertiary: #427b58; --border-normal: #bdae93; --border-active: #af3a03; --border-muted: #d5c4a1","catppuccin-latte":"--bg-primary: #eff1f5; --bg-secondary: #e6e9ef; --bg-tertiary: #dce0e8; --bg-highlight: #ccd0da; --fg-primary: #4c4f69; --fg-secondary: #5c5f77; --fg-muted: #6c6f85; --fg-dim: #9ca0b0; --status-success: #40a02b; --status-warning: #df8e1d; --status-error: #d20f39; --status-info: #1e66f5; --accent-primary: #04a5e5; --accent-secondary: #8839ef; --accent-tertiary: #ea76cb; --border-normal: #ccd0da; --border-active: #04a5e5; --border-muted: #dce0e8","github-light":"--bg-primary: #ffffff; --bg-secondary: #f6f8fa; --bg-tertiary: #f6f8fa; --bg-highlight: #e1e4e8; --fg-primary: #24292e; --fg-secondary: #586069; --fg-muted: #6a737d; --fg-dim: #959da5; --status-success: #28a745; --status-warning: #ffd33d; --status-error: #d73a49; --status-info: #0366d6; --accent-primary: #0366d6; --accent-secondary: #6f42c1; --accent-tertiary: #005cc5; --border-normal: #e1e4e8; --border-active: #0366d6; --border-muted: #f6f8fa","monokai":"--bg-primary: #272822; --bg-secondary: #3e3d32; --bg-tertiary: #49483e; --bg-highlight: #75715e; --fg-primary: #f8f8f2; --fg-secondary: #f8f8f0; --fg-muted: #75715e; --fg-dim: #49483e; --status-success: #a6e22e; --status-warning: #e6db74; --status-error: #f92672; --status-info: #66d9ef; --accent-primary: #ae81ff; --accent-secondary: #f92672; --accent-tertiary: #fd971f; --border-normal: #49483e; --border-active: #ae81ff; --border-muted: #3e3d32","synthwave":"--bg-primary: #2a2139; --bg-secondary: #241b2f; --bg-tertiary: #34294f; --bg-highlight: #495495; --fg-primary: #f92aad; --fg-secondary: #ffffff; --fg-muted: #848bbd; --fg-dim: #495495; --status-success: #72f1b8; --status-warning: #fede5d; --status-error: #ff7edb; --status-info: #36f9f6; --accent-primary: #ff7edb; --accent-secondary: #fe4450; --accent-tertiary: #72f1b8; --border-normal: #495495; --border-active: #ff7edb; --border-muted: #34294f","ocean":"--bg-primary: #0d1117; --bg-secondary: #161b22; --bg-tertiary: #21262d; --bg-highlight: #30363d; --fg-primary: #c9d1d9; --fg-secondary: #8b949e; --fg-muted: #6e7681; --fg-dim: #484f58; --status-success: #3fb950; --status-warning: #d29922; --status-error: #f85149; --status-info: #58a6ff; --accent-primary: #1f6feb; --accent-secondary: #a371f7; --accent-tertiary: #56d364; --border-normal: #30363d; --border-active: #1f6feb; --border-muted: #21262d","sakura-pink-light":"--bg-primary: #f5dde2; --bg-secondary: #ecc8d2; --bg-tertiary: #dfaebd; --bg-highlight: #cf94a5; --fg-primary: #3d2832; --fg-secondary: #5a3f4a; --fg-muted: #8a6f7a; --fg-dim: #b89aa3; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #c45c75; --accent-secondary: #8a5fa8; --accent-tertiary: #5d8aa8; --border-normal: #cf94a5; --border-active: #c45c75; --border-muted: #dfaebd","sakura-pink-dark":"--bg-primary: #7a4a55; --bg-secondary: #6b3f49; --bg-tertiary: #5d353e; --bg-highlight: #4f2c34; --fg-primary: #f5e5e8; --fg-secondary: #dccbcf; --fg-muted: #a89098; --fg-dim: #7a6770; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #f0a8b8; --accent-secondary: #d4a8e0; --accent-tertiary: #a8c8e0; --border-normal: #5d353e; --border-active: #f0a8b8; --border-muted: #6b3f49","sage-green-light":"--bg-primary: #d8e8d6; --bg-secondary: #bedbb8; --bg-tertiary: #a3c89c; --bg-highlight: #86b07f; --fg-primary: #283d2a; --fg-secondary: #3f5a42; --fg-muted: #6f8a72; --fg-dim: #9ab09c; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #6a9e72; --accent-secondary: #9e6a72; --accent-tertiary: #6a7a9e; --border-normal: #86b07f; --border-active: #6a9e72; --border-muted: #a3c89c","sage-green-dark":"--bg-primary: #4a6450; --bg-secondary: #3f5645; --bg-tertiary: #34483a; --bg-highlight: #2a3a30; --fg-primary: #e8f0e6; --fg-secondary: #cbd5c8; --fg-muted: #92a08f; --fg-dim: #6d7a6b; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #a8d4a8; --accent-secondary: #d4a8b8; --accent-tertiary: #a8b8d4; --border-normal: #34483a; --border-active: #a8d4a8; --border-muted: #3f5645","lavender-light":"--bg-primary: #ddd5e8; --bg-secondary: #c8bcdb; --bg-tertiary: #b3a3cd; --bg-highlight: #9d8bbf; --fg-primary: #2d2640; --fg-secondary: #453d5d; --fg-muted: #766b8e; --fg-dim: #a09abb; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #8a6fb0; --accent-secondary: #b06f8a; --accent-tertiary: #6fb0a5; --border-normal: #9d8bbf; --border-active: #8a6fb0; --border-muted: #b3a3cd","lavender-dark":"--bg-primary: #5a4f6e; --bg-secondary: #4d4360; --bg-tertiary: #3f3650; --bg-highlight: #322a40; --fg-primary: #ede8f5; --fg-secondary: #d2cce0; --fg-muted: #9d96b0; --fg-dim: #73687f; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #c8b8e0; --accent-secondary: #e0b8c8; --accent-tertiary: #b8e0d4; --border-normal: #3f3650; --border-active: #c8b8e0; --border-muted: #4d4360","misty-blue-light":"--bg-primary: #c8d6e8; --bg-secondary: #aec0db; --bg-tertiary: #92a9cd; --bg-highlight: #7591bf; --fg-primary: #1f2c40; --fg-secondary: #34445d; --fg-muted: #65788e; --fg-dim: #94a4bb; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #5a7a9e; --accent-secondary: #9e7a5a; --accent-tertiary: #7a9e5a; --border-normal: #7591bf; --border-active: #5a7a9e; --border-muted: #92a9cd","misty-blue-dark":"--bg-primary: #3d4f6a; --bg-secondary: #33435a; --bg-tertiary: #29374a; --bg-highlight: #1f2b3a; --fg-primary: #e6edf5; --fg-secondary: #c5cfdc; --fg-muted: #8b96a8; --fg-dim: #646e7e; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #a8c0dc; --accent-secondary: #dcc0a8; --accent-tertiary: #c0dca8; --border-normal: #29374a; --border-active: #a8c0dc; --border-muted: #33435a","milk-tea-light":"--bg-primary: #ecdcc4; --bg-secondary: #dcc4a3; --bg-tertiary: #c8a982; --bg-highlight: #b08c63; --fg-primary: #3d2e1c; --fg-secondary: #5a4630; --fg-muted: #8a7458; --fg-dim: #b59f85; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #a8825a; --accent-secondary: #5a82a8; --accent-tertiary: #825aa8; --border-normal: #b08c63; --border-active: #a8825a; --border-muted: #c8a982","milk-tea-dark":"--bg-primary: #6e5a40; --bg-secondary: #5d4c36; --bg-tertiary: #4d3f2c; --bg-highlight: #3d3122; --fg-primary: #f5ecdd; --fg-secondary: #dccfba; --fg-muted: #a89678; --fg-dim: #7a6a52; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #d8b890; --accent-secondary: #90b8d8; --accent-tertiary: #b890d8; --border-normal: #4d3f2c; --border-active: #d8b890; --border-muted: #5d4c36","lotus-pink-light":"--bg-primary: #ecc8d6; --bg-secondary: #dcaec3; --bg-tertiary: #c891ad; --bg-highlight: #b27592; --fg-primary: #3d2030; --fg-secondary: #5a3548; --fg-muted: #8a6378; --fg-dim: #b894a3; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #b6608e; --accent-secondary: #608eb6; --accent-tertiary: #8eb660; --border-normal: #b27592; --border-active: #b6608e; --border-muted: #c891ad","lotus-pink-dark":"--bg-primary: #6e3f55; --bg-secondary: #5d3548; --bg-tertiary: #4d2c3c; --bg-highlight: #3d2230; --fg-primary: #f5e0e8; --fg-secondary: #dcc5d0; --fg-muted: #a88898; --fg-dim: #7a5e6e; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #e8a8c4; --accent-secondary: #a8c4e8; --accent-tertiary: #c4e8a8; --border-normal: #4d2c3c; --border-active: #e8a8c4; --border-muted: #5d3548","matcha-light":"--bg-primary: #d4e3c4; --bg-secondary: #bcd1a3; --bg-tertiary: #a3bd82; --bg-highlight: #86a163; --fg-primary: #28381c; --fg-secondary: #3f5230; --fg-muted: #6e8258; --fg-dim: #9aab85; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #7a9658; --accent-secondary: #96587a; --accent-tertiary: #587a96; --border-normal: #86a163; --border-active: #7a9658; --border-muted: #a3bd82","matcha-dark":"--bg-primary: #4f6440; --bg-secondary: #425636; --bg-tertiary: #36482c; --bg-highlight: #2a3a22; --fg-primary: #ecf2e2; --fg-secondary: #cdd6c0; --fg-muted: #94a085; --fg-dim: #6e7a62; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #b8d490; --accent-secondary: #d490b8; --accent-tertiary: #90b8d4; --border-normal: #36482c; --border-active: #b8d490; --border-muted: #425636","peach-light":"--bg-primary: #f4d6b8; --bg-secondary: #ecbe92; --bg-tertiary: #dfa672; --bg-highlight: #cd8c54; --fg-primary: #3d2614; --fg-secondary: #5a3c25; --fg-muted: #8a6f54; --fg-dim: #b8997e; --status-success: #5f8a6c; --status-warning: #b87a3a; --status-error: #b04a55; --status-info: #4d7896; --accent-primary: #c8835a; --accent-secondary: #5ac883; --accent-tertiary: #835ac8; --border-normal: #cd8c54; --border-active: #c8835a; --border-muted: #dfa672","peach-dark":"--bg-primary: #7a553f; --bg-secondary: #684735; --bg-tertiary: #56392a; --bg-highlight: #442d20; --fg-primary: #f5e5d3; --fg-secondary: #dcc8b3; --fg-muted: #a88f72; --fg-dim: #7a644f; --status-success: #a8c89a; --status-warning: #e8c878; --status-error: #e89898; --status-info: #9ac0d8; --accent-primary: #e8b890; --accent-secondary: #90e8b8; --accent-tertiary: #b890e8; --border-normal: #56392a; --border-active: #e8b890; --border-muted: #684735"}</script>
+  <script>
+(function () {
+  'use strict';
+  var DATA = JSON.parse(document.getElementById('evo-data').textContent);
+  var THEMES = JSON.parse(document.getElementById('evo-theme-data').textContent);
+  var ICONS = {"eye":"<path d=\"M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z\"/><circle cx=\"12\" cy=\"12\" r=\"3\"/>","book":"<path d=\"M12 7v14\"/><path d=\"M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z\"/>","bar-chart":"<path d=\"M3 3v16a2 2 0 0 0 2 2h16\"/><path d=\"M18 17V9\"/><path d=\"M13 17V5\"/><path d=\"M8 17v-3\"/>","git-branch":"<line x1=\"6\" x2=\"6\" y1=\"3\" y2=\"15\"/><circle cx=\"18\" cy=\"6\" r=\"3\"/><circle cx=\"6\" cy=\"18\" r=\"3\"/><path d=\"M18 9a9 9 0 0 1-9 9\"/>","wrench":"<path d=\"M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z\"/>","rocket":"<path d=\"M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91 0z\"/><path d=\"M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z\"/><path d=\"M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0\"/><path d=\"M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5\"/>","search":"<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>","code":"<polyline points=\"16 18 22 12 16 6\"/><polyline points=\"8 6 2 12 8 18\"/>","database":"<ellipse cx=\"12\" cy=\"5\" rx=\"9\" ry=\"3\"/><path d=\"M3 5v14a9 3 0 0 0 18 0V5\"/><path d=\"M3 12a9 3 0 0 0 18 0\"/>","layout":"<rect width=\"7\" height=\"9\" x=\"3\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"14\" y=\"3\" rx=\"1\"/><rect width=\"7\" height=\"9\" x=\"14\" y=\"12\" rx=\"1\"/><rect width=\"7\" height=\"5\" x=\"3\" y=\"16\" rx=\"1\"/>","terminal":"<polyline points=\"4 17 10 11 4 5\"/><line x1=\"12\" x2=\"20\" y1=\"19\" y2=\"19\"/>","bug":"<path d=\"m8 2 1.88 1.88\"/><path d=\"M14.12 3.88 16 2\"/><path d=\"M9 7.13v-1a3.003 3.003 0 1 1 6 0v1\"/><path d=\"M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6\"/><path d=\"M12 20v-9\"/><path d=\"M6.53 9C4.6 8.8 3 7.1 3 5\"/><path d=\"M6 13H2\"/><path d=\"M3 21c0-2.1 1.7-3.9 3.8-4\"/><path d=\"M20.97 5c0 2.1-1.6 3.8-3.5 4\"/><path d=\"M22 13h-4\"/><path d=\"M17.2 17c2.1.1 3.8 1.9 3.8 4\"/>","sparkles":"<path d=\"M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z\"/><path d=\"M20 3v4\"/><path d=\"M22 5h-4\"/><path d=\"M4 17v2\"/><path d=\"M5 18H3\"/>","flag":"<path d=\"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z\"/><line x1=\"4\" x2=\"4\" y1=\"22\" y2=\"15\"/>","check-circle":"<path d=\"M21.801 10A10 10 0 1 1 17 3.335\"/><path d=\"m9 11 3 3L22 4\"/>","alert-triangle":"<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/>","refresh":"<path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M3 21v-5h5\"/>","arrow-right":"<path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/>","file-text":"<path d=\"M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z\"/><path d=\"M14 2v4a2 2 0 0 0 2 2h4\"/><path d=\"M16 13H8\"/><path d=\"M16 17H8\"/><path d=\"M10 9H8\"/>","folder":"<path d=\"M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z\"/>","zap":"<path d=\"M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z\"/>","shield":"<path d=\"M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z\"/>","package":"<path d=\"M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z\"/><path d=\"M12 22V12\"/><polyline points=\"3.29 7 12 12 20.71 7\"/><path d=\"m7.5 4.27 9 5.15\"/>","compass":"<path d=\"m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z\"/><circle cx=\"12\" cy=\"12\" r=\"10\"/>","minus":"<path d=\"M5 12h14\"/>"};
+  var DELTA_ICON = {"pivot":"git-branch","refine":"refresh","continue":"arrow-right","blocked":"alert-triangle","done":"check-circle","idle":"minus"};
+
+  var sessionsById = {};
+  DATA.sessions.forEach(function (s) { sessionsById[s.sessionId] = s; });
+
+  /* ---------- icons ---------- */
+  function icon(name, cls) {
+    var paths = name && ICONS[name];
+    var klass = 'evo-ico' + (cls ? ' ' + cls : '');
+    if (!paths) {
+      // progressive enhancement: let Iconify (if loaded) resolve a Lucide name
+      return '<span class="' + klass + ' iconify" data-icon="lucide:' + esc(name || 'flag') + '"></span>';
+    }
+    return '<svg class="' + klass + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      paths + '</svg>';
+  }
+  function deltaIcon(delta) { return icon(DELTA_ICON[delta] || 'flag', 'evo-ico--sm'); }
+
+  /* ---------- theme ---------- */
+  function applyTheme(name) {
+    var vars = THEMES[name];
+    if (!vars) return;
+    document.documentElement.setAttribute('style', vars);
+    try { localStorage.setItem('evo-theme', name); } catch (e) {}
+  }
+
+  /* ---------- helpers ---------- */
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function monthLabel(at) {
+    var d = new Date(at);
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+  }
+
+  /* ---------- rendering ---------- */
+  function renderEras(eras) {
+    if (!eras.length) return '<div class="evo-empty">暂无演化主线</div>';
+    return eras.map(function (era, i) {
+      var scenes = (era.sceneAdds || []).map(function (s) {
+        return '<span class="scene">' + esc(s) + '</span>';
+      }).join('');
+      return '<div class="era" data-era-id="' + esc(era.id) + '">' +
+        '<div class="era__marker">' + icon(era.icon || 'flag') + '</div>' +
+        '<div class="era__body">' +
+          '<div class="era__index">纪元 ' + (i + 1) + '</div>' +
+          '<div class="era__title">' + esc(era.title) + '</div>' +
+          (era.abstract ? '<div class="era__abstract">' + esc(era.abstract) + '</div>' : '') +
+          (scenes ? '<div class="era__scenes">' + scenes + '</div>' : '') +
+        '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderSubsteps(children) {
+    if (!children || !children.length) return '';
+    var rows = children.map(function (c) {
+      return '<div class="substep">' +
+        '<span class="delta delta--' + esc(c.delta) + '">' + deltaIcon(c.delta) + esc(c.delta) + '</span>' +
+        '<span class="substep__title">' + esc(c.title) + '</span>' +
+        (c.note ? '<span class="substep__note">— ' + esc(c.note) + '</span>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="node__children">' +
+      '<div class="node__children-label">' + children.length + ' 个细化步骤</div>' +
+      '<div class="node__children-wrap"><div class="node__children-inner">' + rows + '</div></div>' +
+      '</div>';
+  }
+
+  function renderNodes(nodes, opts) {
+    if (!nodes.length) return '<div class="evo-empty">暂无时间节点</div>';
+    var html = '';
+    var lastMonth = null;
+    nodes.forEach(function (node) {
+      var m = monthLabel(node.at);
+      if (m && m !== lastMonth) { html += '<div class="evo-date">' + esc(m) + '</div>'; lastMonth = m; }
+      var drill = opts.drillable && sessionsById[node.sessionId]
+        ? '<button class="node__drill" data-session="' + esc(node.sessionId) + '">下钻到该 session ' + icon('arrow-right', 'evo-ico--sm') + '</button>'
+        : '';
+      html += '<article class="node" data-node-id="' + esc(node.id) + '" data-era-id="' + esc(node.eraId) + '">' +
+        '<div class="node__dot">' + icon(node.icon || DELTA_ICON[node.delta] || 'flag') + '</div>' +
+        '<div class="node__head">' +
+          '<span class="delta delta--' + esc(node.delta) + '">' + deltaIcon(node.delta) + esc(node.delta) + '</span>' +
+          '<h3 class="node__title">' + esc(node.title) + '</h3>' +
+        '</div>' +
+        (node.note ? '<p class="node__note">' + esc(node.note) + '</p>' : '') +
+        renderSubsteps(node.children) +
+        drill +
+        '</article>';
+    });
+    return html;
+  }
+
+  function renderHero(opts) {
+    var stats = (opts.stats || []).map(function (s) {
+      return '<div class="hero__stat"><span class="hero__stat-num">' + esc(s.num) + '</span>' +
+        '<span class="hero__stat-label">' + esc(s.label) + '</span></div>';
+    }).join('');
+    return '<header class="evo-hero">' +
+      '<div class="evo-hero__inner">' +
+        '<div class="evo-hero__badge">' + icon(opts.heroIcon || 'compass', 'evo-ico--lg') +
+          '<span>' + esc(opts.kicker) + '</span></div>' +
+        '<h1 class="evo-hero__title">' + esc(opts.heroTitle || opts.title) + '</h1>' +
+        (opts.heroSub ? '<p class="evo-hero__sub">' + esc(opts.heroSub) + '</p>' : '') +
+        (stats ? '<div class="evo-hero__stats">' + stats + '</div>' : '') +
+      '</div>' +
+    '</header>';
+  }
+
+  function renderView(container, model, opts) {
+    container.innerHTML =
+      renderHero(opts) +
+      '<div class="evo-layout">' +
+        '<aside class="evo-rail"><div class="evo-rail__sticky">' +
+          '<div class="evo-rail__head">' +
+            '<div class="evo-rail__kicker">' + esc(opts.kicker) + '</div>' +
+            '<div class="evo-rail__title">' + esc(opts.title) + '</div>' +
+          '</div>' +
+          '<div class="evo-progress"><div class="evo-progress__fill"></div></div>' +
+          '<div class="evo-eras">' + renderEras(model.eras) + '</div>' +
+        '</div></aside>' +
+        '<section class="evo-stream">' + renderNodes(model.nodes, opts) + '</section>' +
+      '</div>';
+  }
+
+  /* ---------- scroll-spy ---------- */
+  var spyScroll = null;
+  var spyResize = null;
+  function spy(container, model) {
+    if (spyScroll) { window.removeEventListener('scroll', spyScroll); spyScroll = null; }
+    if (spyResize) { window.removeEventListener('resize', spyResize); spyResize = null; }
+    var nodeEls = container.querySelectorAll('.node');
+    var eraEls = container.querySelectorAll('.era');
+    var fill = container.querySelector('.evo-progress__fill');
+    if (!nodeEls.length) return;
+
+    var eraOrder = model.eras.map(function (e) { return e.id; });
+    var activeEl = null;
+
+    // 折叠基准坐标：把每个节点顶部记到「全部折叠时」的文档坐标，判定只用这组常量。
+    // 自动展开/收起会改变实时布局，但这里不读实时高度，所以判定永远不会被展开
+    // 反过来扰动 —— 彻底切断「展开→改判定→再展开」的抖动环。
+    var baseTop = [];
+    function measure() {
+      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var ai = activeEl ? Array.prototype.indexOf.call(nodeEls, activeEl) : -1;
+      var inner = activeEl ? activeEl.querySelector('.node__children-inner') : null;
+      var ext = inner ? inner.getBoundingClientRect().height : 0;
+      for (var i = 0; i < nodeEls.length; i++) {
+        var t = nodeEls[i].getBoundingClientRect().top + y;
+        if (ai > -1 && i > ai) t -= ext; // 扣掉当前展开节点对下方的下推，还原折叠基准
+        baseTop[i] = t;
+      }
+    }
+
+    function setActive(nodeEl) {
+      if (nodeEl === activeEl) return; // 同一节点不重置，避免 substep 展开动画反复重启
+      activeEl = nodeEl;
+      nodeEls.forEach(function (n) { n.classList.toggle('is-active', n === nodeEl); });
+      var eraId = nodeEl.getAttribute('data-era-id');
+      var activeIdx = eraOrder.indexOf(eraId);
+      eraEls.forEach(function (el) {
+        var idx = eraOrder.indexOf(el.getAttribute('data-era-id'));
+        el.classList.toggle('is-active', el.getAttribute('data-era-id') === eraId);
+        el.classList.toggle('is-past', idx > -1 && activeIdx > -1 && idx < activeIdx);
+        if (el.getAttribute('data-era-id') === eraId) {
+          var scenes = el.querySelectorAll('.scene');
+          scenes.forEach(function (sc, i) { setTimeout(function () { sc.classList.add('enter'); }, i * 80); });
+        }
+      });
+      if (fill) {
+        var total = nodeEls.length;
+        var pos = Array.prototype.indexOf.call(nodeEls, nodeEl) + 1;
+        fill.style.width = Math.round((pos / total) * 100) + '%';
+      }
+    }
+
+    // 阈值接力：只有当「下一个」节点的基准顶部越过参考线，才推进到它（上一个随之
+    // 折叠、下一个展开）；回滚同理。基于折叠基准常量做单向推进，边界处不存在两点
+    // 并列来回选的情况，交接干净、绝不抖动。
+    function pick() {
+      var y = window.pageYOffset || document.documentElement.scrollTop || 0;
+      var docLine = y + window.innerHeight * 0.4;
+      var idx = activeEl ? Array.prototype.indexOf.call(nodeEls, activeEl) : 0;
+      if (idx < 0) idx = 0;
+      while (idx < nodeEls.length - 1 && baseTop[idx + 1] <= docLine) idx++; // 下一个已到线 → 推进
+      while (idx > 0 && baseTop[idx] > docLine) idx--;                       // 当前已退回线上 → 回退
+      setActive(nodeEls[idx]);
+    }
+
+    var ticking = false;
+    spyScroll = function () {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () { ticking = false; pick(); });
+    };
+    spyResize = function () { measure(); pick(); };
+    measure();              // 此刻 DOM 尚未激活、全部折叠，得到纯净基准
+    window.addEventListener('scroll', spyScroll, { passive: true });
+    window.addEventListener('resize', spyResize);
+    pick();
+  }
+
+  /* ---------- routing ---------- */
+  var projectView = document.getElementById('view-project');
+  var sessionView = document.getElementById('view-session');
+  var app = document.getElementById('app');
+  var crumbCur = document.getElementById('crumb-cur');
+
+  function showProject() {
+    app.classList.remove('is-session');
+    sessionView.classList.remove('is-on');
+    projectView.classList.add('is-on');
+    crumbCur.textContent = '项目演进总览';
+    var p = DATA.project;
+    var subSteps = p.nodes.reduce(function (a, n) { return a + ((n.children && n.children.length) || 0); }, 0);
+    renderView(projectView, p, {
+      kicker: 'Project Evolution', title: '抽象演化主线', drillable: true,
+      heroIcon: 'compass', heroTitle: '项目功能演进史',
+      heroSub: '从散点的意图变化，连成一条能力生长的主线。',
+      stats: [
+        { num: p.eras.length, label: '纪元' },
+        { num: p.nodes.length, label: '里程碑' },
+        { num: DATA.sessions.length, label: 'Session' },
+        { num: subSteps, label: '细化步骤' },
+      ],
+    });
+    spy(projectView, p);
+    window.scrollTo(0, 0);
+  }
+
+  function showSession(id) {
+    var s = sessionsById[id];
+    if (!s) { location.hash = '#/'; return; }
+    app.classList.add('is-session');
+    projectView.classList.remove('is-on');
+    sessionView.classList.add('is-on');
+    crumbCur.textContent = s.title || id;
+    var subSteps = s.nodes.reduce(function (a, n) { return a + ((n.children && n.children.length) || 0); }, 0);
+    renderView(sessionView, s, {
+      kicker: 'Session', title: s.title || id, drillable: false,
+      heroIcon: (s.eras[0] && s.eras[0].icon) || 'eye',
+      heroTitle: s.title || id, heroSub: '单次 session 内部的意图演化轨迹。',
+      stats: [
+        { num: s.eras.length, label: '阶段' },
+        { num: s.nodes.length, label: '里程碑' },
+        { num: subSteps, label: '细化步骤' },
+      ],
+    });
+    spy(sessionView, s);
+    window.scrollTo(0, 0);
+  }
+
+  function route() {
+    var h = location.hash || '#/';
+    var m = h.match(/^#\/session\/(.+)$/);
+    if (m) showSession(decodeURIComponent(m[1]));
+    else showProject();
+  }
+
+  /* ---------- events ---------- */
+  document.addEventListener('click', function (e) {
+    var drill = e.target.closest && e.target.closest('.node__drill');
+    if (drill) { location.hash = '#/session/' + encodeURIComponent(drill.getAttribute('data-session')); return; }
+    var era = e.target.closest && e.target.closest('.era');
+    if (era) {
+      var eid = era.getAttribute('data-era-id');
+      var target = document.querySelector('.evo-view.is-on .node[data-era-id="' + eid + '"]');
+      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+
+  document.getElementById('crumb-root').addEventListener('click', function (e) {
+    e.preventDefault(); location.hash = '#/';
+  });
+  document.getElementById('evo-back').addEventListener('click', function () { location.hash = '#/'; });
+
+  var themeSel = document.getElementById('theme-select');
+  themeSel.addEventListener('change', function () { applyTheme(themeSel.value); });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    var on = document.querySelector('.evo-view.is-on');
+    if (!on) return;
+    var nodes = Array.prototype.slice.call(on.querySelectorAll('.node'));
+    var idx = nodes.findIndex(function (n) { return n.classList.contains('is-active'); });
+    if (e.key === 'j' || e.key === 'k') {
+      e.preventDefault();
+      var next = e.key === 'j' ? Math.min(nodes.length - 1, idx + 1) : Math.max(0, idx - 1);
+      if (nodes[next]) nodes[next].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else if (e.key === 'Enter') {
+      if (idx > -1) {
+        var drill = nodes[idx].querySelector('.node__drill');
+        if (drill) drill.click();
+      }
+    } else if (e.key === 'Escape') {
+      if (location.hash && location.hash !== '#/') location.hash = '#/';
+    } else if (e.key === '[' || e.key === ']') {
+      var names = Object.keys(THEMES);
+      var ci = names.indexOf(themeSel.value);
+      var ni = e.key === ']' ? (ci + 1) % names.length : (ci - 1 + names.length) % names.length;
+      themeSel.value = names[ni]; applyTheme(names[ni]);
+    }
+  });
+
+  /* ---------- boot ---------- */
+  var saved;
+  try { saved = localStorage.getItem('evo-theme'); } catch (e) {}
+  var initial = saved || DATA.theme || themeSel.value;
+  if (THEMES[initial]) { themeSel.value = initial; applyTheme(initial); }
+
+  window.addEventListener('hashchange', route);
+  route();
+})();
+</script>
+  <!-- Progressive enhancement only: inline SVGs above already render fully offline.
+       Iconify resolves any icon name outside the inline catalog when online. -->
+  <script async src="https://code.iconify.design/3/3.1.1/iconify.min.js"></script>
+</body>
+</html>

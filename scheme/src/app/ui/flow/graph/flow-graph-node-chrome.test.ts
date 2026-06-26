@@ -9,7 +9,7 @@ function node(overrides: Partial<FlowGraphNode> = {}): FlowGraphNode {
   return {
     id: 's:1',
     explorationId: 'exp_1',
-    label: 'Fix flowchart',
+    label: 'Fix Focus',
     intentKey: 'implement',
     status: 'complete',
     startedAt: 1,
@@ -23,7 +23,7 @@ describe('flow-graph-node-chrome', () => {
   it('splits intent badge and title for task intents', () => {
     expect(resolveGraphNodeChromeParts(node(), 'en')).toEqual({
       badge: 'Implement',
-      title: 'Fix flowchart',
+      title: 'Fix Focus',
       isIdle: false,
     });
   });
@@ -34,7 +34,7 @@ describe('flow-graph-node-chrome', () => {
       'en',
     )).toEqual({
       badge: null,
-      title: 'Fix flowchart',
+      title: 'Fix Focus',
       isIdle: true,
     });
   });

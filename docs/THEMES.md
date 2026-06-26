@@ -1,11 +1,18 @@
 # Flow Observer 主题系统
 
-Flow Observer 支持 **32 种**配色主题：推荐 **Apple System**（light/dark）+ 7 深色 + 4 浅色 + 3 彩色 + 16 莫兰迪（8 hue × light/dark）。
+Flow Observer 支持 **33 种**配色主题：默认透明主题 + Apple System（light/dark）+ 7 深色 + 4 浅色 + 3 彩色 + 16 莫兰迪（8 hue × light/dark）。
 
 ## 推荐默认
 
-### **Apple System · Dark**（默认）
-macOS/iOS 语义色，低饱和 chrome + 系统蓝 accent
+### **Transparent**（默认）
+透明背景，保留 Tokyo Night 的前景和语义色，融入用户终端底色
+```bash
+FLOW_THEME=transparent
+```
+
+## Apple System
+
+### **Apple System · Dark**
 ```bash
 FLOW_THEME=apple-system-dark
 ```
@@ -15,7 +22,7 @@ FLOW_THEME=apple-system-dark
 FLOW_THEME=apple-system-light
 ```
 
-按 `[` `]` 在全部 32 种主题间循环；按 `J` 仅在莫兰迪 16 主题内循环（同 hue 的 light/dark 相邻）。
+按 `[` `]` 在全部 33 种主题间循环；按 `J` 仅在莫兰迪 16 主题内循环（同 hue 的 light/dark 相邻）。
 
 ## 语义 Token
 

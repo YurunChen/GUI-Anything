@@ -5,8 +5,21 @@
 
 import { useEffect, useState } from 'react';
 import { themeManager } from './themes/theme-manager';
+import {
+  chromeHasDecorMotion,
+  resolveThemeChrome,
+  resolveThemeDecorInterval,
+  resolveThemeProfile,
+  type ThemeChrome,
+  type ThemeProfile,
+} from './themes/theme-profile';
+import { useFlowMotionFrame, isFlowMotionEnabled } from './hooks/useFlowMotion';
 import type { ColorScheme, ThemeName } from './themes';
 import { buildSemanticColors, type SemanticColors } from './themes/semantic-map';
+import {
+  buildResolvedTuiTheme,
+  type ResolvedTuiTheme,
+} from './themes/resolved-theme';
 
 // 导出主题管理器供组件使用
 export { themeManager };
@@ -28,6 +41,8 @@ function cloneScheme(src: ColorScheme): ColorScheme {
 export const colors: ColorScheme = cloneScheme(themeManager.getColors());
 
 export const semantic: SemanticColors = buildSemanticColors(colors);
+
+export let tuiTheme: ResolvedTuiTheme = buildResolvedTuiTheme(themeManager.getCurrentTheme());
 
 export const phaseIcons: Record<string, string> = {
   exploring: '🔍',
@@ -77,6 +92,8 @@ const themeSubscribers = new Set<() => void>();
 export function applyTheme(themeName: ThemeName): void {
   themeManager.setTheme(themeName);
   const next = themeManager.getColors();
+  const nextSemantic = buildSemanticColors(next);
+  tuiTheme = buildResolvedTuiTheme(themeManager.getCurrentTheme());
 
   // Mutate top-level groups in place
   Object.assign(colors.bg, next.bg);
@@ -86,16 +103,18 @@ export function applyTheme(themeName: ThemeName): void {
   Object.assign(colors.border, next.border);
   Object.assign(colors.wiki, next.wiki);
 
-  Object.assign(semantic.label, buildSemanticColors(next).label);
-  Object.assign(semantic.fill, buildSemanticColors(next).fill);
-  semantic.separator = next.border.muted;
-  semantic.separatorActive = next.border.active;
-  semantic.tint = next.accent.primary;
-  semantic.tintMuted = next.accent.tertiary;
-  semantic.activity = buildSemanticColors(next).activity;
-  semantic.destructive = next.status.error;
-  semantic.warning = next.status.warning;
-  Object.assign(semantic.wiki, next.wiki);
+  Object.assign(semantic.label, nextSemantic.label);
+  Object.assign(semantic.fill, nextSemantic.fill);
+  semantic.separator = nextSemantic.separator;
+  semantic.separatorActive = nextSemantic.separatorActive;
+  semantic.tint = nextSemantic.tint;
+  semantic.tintMuted = nextSemantic.tintMuted;
+  semantic.activity = nextSemantic.activity;
+  semantic.destructive = nextSemantic.destructive;
+  semantic.warning = nextSemantic.warning;
+  semantic.success = nextSemantic.success;
+  semantic.info = nextSemantic.info;
+  Object.assign(semantic.wiki, nextSemantic.wiki);
 
   // Rebuild derived records
   Object.assign(phaseColors, {
@@ -135,6 +154,35 @@ export function useThemeVersion(): number {
   }, []);
   return version;
 }
+
+/** Color + chrome for the active theme (`[` `]`). */
+export function useThemeProfile(): ThemeProfile {
+  useThemeVersion();
+  return resolveThemeProfile(themeManager.getCurrentTheme());
+}
+
+/** Full TUI presentation package for the active theme. */
+export function useTuiTheme(): ResolvedTuiTheme {
+  useThemeVersion();
+  return tuiTheme;
+}
+
+/** Symbols + spinner motion for the active color theme (`[` `]`). */
+export function useThemeChrome(): ThemeChrome {
+  return useTuiTheme().chrome;
+}
+
+/** Decorative motion tick for kinetic chrome (section glyphs, fresh accent). */
+export function useThemeMotionFrame(active: boolean = true): number {
+  useThemeVersion();
+  const chrome = resolveThemeChrome(themeManager.getCurrentTheme());
+  const interval = resolveThemeDecorInterval(chrome);
+  const enabled = active && chromeHasDecorMotion(chrome) && isFlowMotionEnabled();
+  return useFlowMotionFrame(enabled, interval);
+}
+
+export type { ThemeChrome, ThemeProfile } from './themes/theme-profile';
+export type { ResolvedTuiTheme } from './themes/resolved-theme';
 
 /**
  * Format elapsed milliseconds to human-readable string.

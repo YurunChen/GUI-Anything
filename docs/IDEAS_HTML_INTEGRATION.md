@@ -102,7 +102,7 @@
 
 - 数据源：`~/.flow-wiki/` 下的知识条目 JSON
 - 渲染：D3.js force layout 或更轻量的 vis-network（~50KB）
-- 可作为 `--posthoc` 模式的增强输出，或独立的 `--knowledge-graph` 命令
+- 可作为独立的 `--knowledge-graph` 命令
 
 ---
 

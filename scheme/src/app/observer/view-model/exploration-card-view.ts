@@ -1,6 +1,10 @@
 import type { Exploration } from '../../../data/protocol/observer-protocol';
-import { truncateFlowText } from '../../../utils/flow-text';
+import { foldFlowTextPreview, formatFlowText, truncateFlowText } from '../../../utils/flow-text';
+import type { ObserverLocale } from '../../../constants/observer-locale';
+import { sessionIntentDisplayLabel } from '../../../constants/session-intent-keys';
 import { getObserverMessages } from '../../ui/i18n/observer-messages';
+
+export const QUESTION_PREVIEW_MAX_LINES = 3;
 
 export type CardDisplayMode = 'compact' | 'expanded';
 
@@ -39,27 +43,6 @@ export interface LiveFootnoteView {
 
 export function buildLiveFootnote(input: LiveFootnoteInput): LiveFootnoteView {
   const base = getStatusInfo(input.status, input.spinnerFrame);
-  const m = getObserverMessages();
-
-  if (input.status === 'running') {
-    return {
-      statusBadge: base.badge,
-      statusTone: base.tone,
-      toolCount: input.toolCount,
-      errorCount: input.errorCount,
-      toolSummary: input.toolSummary,
-    };
-  }
-
-  if (input.isGenerating) {
-    return {
-      statusBadge: `${input.spinnerFrame} ${m.summarizing}`,
-      statusTone: 'running',
-      toolCount: input.toolCount,
-      errorCount: input.errorCount,
-      toolSummary: input.toolSummary,
-    };
-  }
 
   return {
     statusBadge: base.badge,
@@ -70,14 +53,23 @@ export function buildLiveFootnote(input: LiveFootnoteInput): LiveFootnoteView {
   };
 }
 
-export function shouldShowInlineSummary(
+/** Timeline cards follow the original model: summary appears only after the turn has output. */
+export function shouldShowSummarySection(
   displayMode: CardDisplayMode,
   status: Exploration['status'],
-  _isGenerating: boolean,
 ): boolean {
   if (displayMode === 'compact') return false;
-  if (status === 'running') return false;
   return status === 'complete' || status === 'interrupted';
+}
+
+export function shouldRenderTimelineSummary(input: {
+  displayMode: CardDisplayMode;
+  status: Exploration['status'];
+  isGenerating: boolean;
+  summary?: string;
+}): boolean {
+  if (!shouldShowSummarySection(input.displayMode, input.status)) return false;
+  return true;
 }
 
 export interface CompactLineInput {
@@ -87,6 +79,22 @@ export interface CompactLineInput {
   toolCount: number;
   isGenerating: boolean;
   wikiPersistLabel?: string;
+  compactSeparator?: string;
+}
+
+export function resolveQuestionBody(input: {
+  question: string;
+  contentColumns: number;
+  expanded: boolean;
+}): { text: string; truncated: boolean } {
+  if (input.expanded) {
+    return { text: formatFlowText(input.question) || 'N/A', truncated: false };
+  }
+  return foldFlowTextPreview(
+    input.question,
+    input.contentColumns,
+    QUESTION_PREVIEW_MAX_LINES,
+  );
 }
 
 export function buildCompactLine(input: CompactLineInput): string {
@@ -95,6 +103,41 @@ export function buildCompactLine(input: CompactLineInput): string {
   const statusLabel = compactStatusLabel(input);
   const toolPart = `${input.toolCount} ${m.toolsUnit}`;
   const parts = [question, statusLabel, toolPart];
+  if (input.wikiPersistLabel) parts.push(input.wikiPersistLabel);
+  return parts.join(input.compactSeparator ?? ' · ');
+}
+
+export function buildTimelineCardHeader(input: {
+  question: string;
+  flowchart?: { intentKey: string; nodeTitle: string };
+  contentColumns: number;
+  locale?: ObserverLocale;
+}): { badge: string; title: string } {
+  const badge = input.flowchart
+    ? sessionIntentDisplayLabel(input.flowchart.intentKey, input.locale) ?? 'Task'
+    : 'Task';
+  const rawTitle = input.flowchart?.nodeTitle?.trim() || input.question.trim() || 'N/A';
+  const titleWidth = Math.max(8, input.contentColumns - badge.length - 4);
+  return {
+    badge,
+    title: truncateFlowText(formatFlowText(rawTitle), titleWidth),
+  };
+}
+
+export function buildTimelineMetaLine(input: {
+  statusBadge: string;
+  toolCount: number;
+  errorCount: number;
+  toolSummary?: string;
+  wikiPersistLabel?: string;
+  toolsUnit?: string;
+}): string {
+  const parts = [
+    input.statusBadge,
+    `${input.toolCount} ${input.toolsUnit ?? 'tools'}`,
+  ];
+  if (input.toolSummary) parts.push(input.toolSummary);
+  if (input.errorCount > 0) parts.push(`${input.errorCount} errors`);
   if (input.wikiPersistLabel) parts.push(input.wikiPersistLabel);
   return parts.join(' · ');
 }

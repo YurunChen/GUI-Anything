@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import {
   formatFlowText,
+  foldFlowTextPreview,
   formatSummaryForTui,
   lineDisplayWidth,
   truncateFlowText,
@@ -39,5 +40,21 @@ describe('truncateFlowText', () => {
     const cut = truncateFlowText('终端 UI 架构', 10);
     expect(lineDisplayWidth(cut)).toBeLessThanOrEqual(10);
     expect(cut.endsWith('…')).toBe(true);
+  });
+});
+
+describe('foldFlowTextPreview', () => {
+  it('keeps short text without truncation', () => {
+    const { text, truncated } = foldFlowTextPreview('hello', 40, 3);
+    expect(truncated).toBe(false);
+    expect(text).toBe('hello');
+  });
+
+  it('folds to max lines with ellipsis on overflow', () => {
+    const long = 'word '.repeat(40).trim();
+    const { text, truncated } = foldFlowTextPreview(long, 12, 3);
+    expect(truncated).toBe(true);
+    expect(text.split('\n').length).toBe(3);
+    expect(text.endsWith('…')).toBe(true);
   });
 });

@@ -1,0 +1,30 @@
+<svg width="1100" height="760" viewBox="0 0 1100 760" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GUI-Anything two-pane preview">
+  <rect width="1100" height="760" fill="#FFF7D6"/>
+  <path d="M0 80H1100M0 160H1100M0 240H1100M0 320H1100M0 400H1100M0 480H1100M0 560H1100M0 640H1100M100 0V760M200 0V760M300 0V760M400 0V760M500 0V760M600 0V760M700 0V760M800 0V760M900 0V760M1000 0V760" stroke="#111" stroke-opacity=".08" stroke-width="2"/>
+  <rect x="74" y="70" width="890" height="560" fill="#95D5FF" stroke="#111" stroke-width="8"/>
+  <rect x="104" y="100" width="890" height="560" fill="#fff" stroke="#111" stroke-width="8"/>
+  <rect x="104" y="100" width="890" height="68" fill="#B7FF5A" stroke="#111" stroke-width="8"/>
+  <circle cx="146" cy="134" r="12" fill="#FF6B35" stroke="#111" stroke-width="6"/>
+  <circle cx="188" cy="134" r="12" fill="#FFD166" stroke="#111" stroke-width="6"/>
+  <circle cx="230" cy="134" r="12" fill="#FF4F9A" stroke="#111" stroke-width="6"/>
+  <text x="552" y="145" text-anchor="middle" fill="#111" font-family="Arial Black, Arial, sans-serif" font-size="26" font-weight="900">GA FLOW</text>
+  <rect x="136" y="206" width="398" height="396" fill="#111" stroke="#111" stroke-width="7"/>
+  <rect x="564" y="206" width="398" height="396" fill="#FFF7D6" stroke="#111" stroke-width="7"/>
+  <text x="164" y="250" fill="#fff" font-family="Menlo, Consolas, monospace" font-size="24" font-weight="800">Claude Code</text>
+  <text x="592" y="250" fill="#111" font-family="Menlo, Consolas, monospace" font-size="24" font-weight="800">Flow Observer</text>
+  <text x="164" y="316" fill="#fff" font-family="Menlo, Consolas, monospace" font-size="24">You: refactor auth</text>
+  <text x="164" y="370" fill="#B7BDC8" font-family="Menlo, Consolas, monospace" font-size="22">▸ Read src/auth/*.ts</text>
+  <text x="164" y="420" fill="#B7BDC8" font-family="Menlo, Consolas, monospace" font-size="22">▸ Edit middleware.ts</text>
+  <text x="164" y="470" fill="#B7BDC8" font-family="Menlo, Consolas, monospace" font-size="22">▸ Run bun test</text>
+  <text x="164" y="520" fill="#B7FF5A" font-family="Menlo, Consolas, monospace" font-size="22">✓ Tests pass</text>
+  <rect x="594" y="292" width="320" height="86" fill="#B7FF5A" stroke="#111" stroke-width="6"/>
+  <text x="620" y="328" fill="#111" font-family="Arial Black, Arial, sans-serif" font-size="20" font-weight="900">IMPLEMENT · PIVOT</text>
+  <text x="620" y="358" fill="#111" font-family="Menlo, Consolas, monospace" font-size="16">3 tools · wiki C001 saved</text>
+  <rect x="594" y="410" width="320" height="92" fill="#FFD166" stroke="#111" stroke-width="6"/>
+  <text x="620" y="446" fill="#111" font-family="Arial Black, Arial, sans-serif" font-size="20" font-weight="900">KNOWLEDGE C012</text>
+  <text x="620" y="476" fill="#111" font-family="Menlo, Consolas, monospace" font-size="16">Session refresh policy</text>
+  <rect x="594" y="534" width="88" height="38" fill="#95D5FF" stroke="#111" stroke-width="5"/>
+  <rect x="710" y="534" width="112" height="38" fill="#FF4F9A" stroke="#111" stroke-width="5"/>
+  <rect x="850" y="534" width="64" height="38" fill="#FF6B35" stroke="#111" stroke-width="5"/>
+  <text x="106" y="714" fill="#111" font-family="Arial Black, Arial, sans-serif" font-size="58" font-weight="900">ONE COMMAND. TWO PANES.</text>
+</svg>

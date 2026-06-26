@@ -11,28 +11,33 @@ import type { ActivityTree } from '../../../domain/types';
 import type {
   Exploration,
   PersistResult,
-  FlowchartHint,
   FlowGraphSnapshot,
   SessionScopedId,
   SummaryItem,
   SessionIntentState,
   InspirationRecord,
+  WikiMatch,
 } from '../../../data/protocol/observer-protocol';
+import type { WorkspaceTreeSnapshot } from '../../../data/protocol/workspace-tree';
 import type { SessionPresentationMode } from '../../../services/session/session-runtime-policy';
 import type { WikiWriteChromeView } from '../../observer/view-model/wiki-write-chrome';
 
-import { semantic, themeManager, applyTheme, useThemeVersion } from '../theme';
+import { themeManager, applyTheme, useThemeVersion, useTuiTheme } from '../theme';
+import { useThemeSwitchBanner } from '../themes/use-theme-switch-banner';
 import { LiveObserverFlowBody } from '../live-observer-flow-body';
 import { buildShellChromeProps } from '../../observer/view-model/shell-props';
 import { getObserverMessages } from '../i18n/observer-messages';
 
 import { CommandBar } from './CommandBar';
 import { HelpOverlay } from './HelpOverlay';
-import type { ObserverHotkeyContext } from './observer-hotkeys';
+import { nextObserverViewMode, type ObserverHotkeyContext, type ObserverViewMode } from './observer-hotkeys';
 import { dispatchObserverKey } from './observer-key-dispatch';
 import { NotesSidePanel } from './NotesSidePanel';
 import {
   NOTES_SIDEBAR_MIN_TERMINAL_COLS,
+  OBSERVER_MIN_TERMINAL_COLS,
+  OBSERVER_MIN_TERMINAL_ROWS,
+  isObserverTerminalTooSmall,
   resolveNotesSidebarWidth,
 } from '../../../constants/flow-constants';
 import { ObserverStatusBar } from './ObserverStatusBar';
@@ -42,49 +47,51 @@ interface FlowObserverShellProps {
   explorations: Exploration[];
   tree: ActivityTree | null;
   sessionId: string;
-  sessionPath?: string;
-  allowWikiLiveSearch?: boolean;
   tokenDisplay: string;
   runtimeModel: string;
   wikiExtractedCount: number;
   explorationSummaries: Record<string, string>;
-  flowchartHints: Record<string, FlowchartHint>;
   graphSnapshot: FlowGraphSnapshot;
   explorationPersistStatus: Record<string, 'saved' | 'updated' | 'skipped' | 'failed' | 'pending'>;
   pendingSummaryCount: number;
   pendingByExplorationId?: Record<string, boolean>;
   persistResults?: Record<string, PersistResult>;
   wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
+  wikiMatchesByExploration: Record<string, WikiMatch | null>;
   sessionPresentationMode?: SessionPresentationMode;
   sessionBannerHint?: string;
   summaryItems?: Record<SessionScopedId, SummaryItem>;
+  workspaceTree?: WorkspaceTreeSnapshot | null;
   sessionIntent?: SessionIntentState | null;
   flowBodyVisible?: boolean;
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
   onSendSnapshot?: (note?: string) => void;
   onFileWikiAudit?: () => { filed: boolean; targetId?: string };
+  onOpenHtml?: () => Promise<{ opened: boolean; path?: string; error?: string }>;
   notifyStatus?: string;
 }
 
-function resolveSpinnerIntervalMs(): number {
+function resolveSpinnerIntervalMs(): number | undefined {
   const raw = (process.env.FLOW_NO_ANIMATIONS || '').trim().toLowerCase();
   if (raw === '1' || raw === 'true' || raw === 'yes') return 400;
-  return 160;
+  return undefined;
 }
 
 export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const flowBodyVisible = props.flowBodyVisible ?? true;
-  const { width: terminalWidth } = useTerminalDimensions();
+  const { width: terminalWidth, height: terminalHeight } = useTerminalDimensions();
   useThemeVersion();
+  const tuiTheme = useTuiTheme();
+  const { banner: themeSwitchBanner, trigger: triggerThemeSwitchBanner } = useThemeSwitchBanner();
   const messages = getObserverMessages();
-
   const [showNotes, setShowNotes] = useState(false);
   const [inspirationInputFocused, setInspirationInputFocused] = useState(false);
   const [showThemeNotification, setShowThemeNotification] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [observerMode, setObserverMode] = useState<'exploration' | 'flowchart'>('exploration');
+  const [observerMode, setObserverMode] = useState<ObserverViewMode>('timeline');
   const [calmMode, setCalmMode] = useState(false);
+  const [questionExpandedId, setQuestionExpandedId] = useState<string | null>(null);
   const [chromeHint, setChromeHint] = useState<string | undefined>();
   const chromeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,6 +104,19 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     () => Math.max(24, terminalWidth - notesSidebarWidth - flowSpacing.contentPadX * 2),
     [terminalWidth, notesSidebarWidth],
   );
+  const latestExplorationId = props.explorations.at(-1)?.id ?? null;
+  const terminalTooSmall = isObserverTerminalTooSmall(terminalWidth, terminalHeight);
+
+  useEffect(() => {
+    setQuestionExpandedId((prev) => (prev === latestExplorationId ? prev : null));
+  }, [latestExplorationId]);
+
+  const toggleLatestQuestionExpand = useCallback(() => {
+    if (!latestExplorationId) return;
+    setQuestionExpandedId((prev) => (
+      prev === latestExplorationId ? null : latestExplorationId
+    ));
+  }, [latestExplorationId]);
 
   const flashChromeHint = useCallback((text: string) => {
     if (chromeHintTimerRef.current) {
@@ -135,7 +155,11 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     runtimeModel: props.runtimeModel,
     tokenDisplay: props.tokenDisplay,
     notifyStatus: chromeHint ?? props.notifyStatus,
-    themeNotification: showThemeNotification ? themeManager.getThemeDisplayName() : undefined,
+    themeNotification: themeSwitchBanner
+      ? `${themeSwitchBanner.frame} ${themeSwitchBanner.familyLabel} · ${themeSwitchBanner.themeLabel}`
+      : showThemeNotification
+        ? themeManager.getThemeDisplayName()
+        : undefined,
     terminalWidth,
     pendingSummaryCount: props.pendingSummaryCount,
     explorationSummaries: props.explorationSummaries,
@@ -155,11 +179,13 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     calmMode,
     notifyAvailable: !!props.onSendSnapshot,
     wikiAuditAvailable: !!props.onFileWikiAudit,
+    htmlExportAvailable: !!props.onOpenHtml,
   }), [
     calmMode,
     inspirationInputFocused,
     observerMode,
     props.onFileWikiAudit,
+    props.onOpenHtml,
     props.onSendSnapshot,
     showNotes,
   ]);
@@ -174,23 +200,34 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     }
   }, [flashChromeHint, messages, props]);
 
-  const applyThemeKind = useCallback((kind: 'morandi' | 'prev' | 'next') => {
+  const handleOpenHtml = useCallback(() => {
+    if (!props.onOpenHtml) return;
+    void props.onOpenHtml()
+      .then((result) => {
+        if (result.opened && result.path) {
+          flashChromeHint(messages.htmlExportOpened(result.path));
+        } else {
+          flashChromeHint(messages.htmlExportFailed(result.error ?? 'unknown error'));
+        }
+      })
+      .catch((err) => {
+        flashChromeHint(messages.htmlExportFailed(String(err)));
+      });
+  }, [flashChromeHint, messages, props]);
+
+  const applyThemeKind = useCallback((kind: 'prev' | 'next') => {
     try {
-      let peek;
-      if (kind === 'morandi') {
-        peek = themeManager.nextMorandiTheme();
-      } else if (kind === 'prev') {
-        peek = themeManager.previousTheme();
-      } else {
-        peek = themeManager.nextTheme();
-      }
+      const peek = kind === 'prev'
+        ? themeManager.previousTheme()
+        : themeManager.nextTheme();
       applyTheme(peek);
+      triggerThemeSwitchBanner(peek, themeManager.getThemeDisplayName(peek));
       setShowThemeNotification(true);
       setTimeout(() => setShowThemeNotification(false), 1500);
     } catch (err) {
       try { process.stderr.write(`Theme switch failed: ${String(err)}\n`); } catch { /* ignore */ }
     }
-  }, []);
+  }, [triggerThemeSwitchBanner]);
 
   const toggleNotes = useCallback(() => {
     setShowNotes((prev) => {
@@ -210,6 +247,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       inspirationInputFocused,
       notifyAvailable: !!props.onSendSnapshot,
       wikiAuditAvailable: !!props.onFileWikiAudit,
+      htmlExportAvailable: !!props.onOpenHtml,
     });
     if (!action) return;
 
@@ -235,14 +273,22 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       case 'toggle_calm':
         setCalmMode((prev) => !prev);
         break;
+      case 'toggle_question_expand':
+        if (observerMode === 'timeline') {
+          toggleLatestQuestionExpand();
+        }
+        break;
       case 'toggle_mode':
-        setObserverMode((prev) => (prev === 'exploration' ? 'flowchart' : 'exploration'));
+        setObserverMode(nextObserverViewMode);
         break;
       case 'send_snapshot':
         props.onSendSnapshot?.();
         break;
       case 'file_wiki_audit':
         handleFileWikiAudit();
+        break;
+      case 'open_html':
+        handleOpenHtml();
         break;
       case 'theme':
         applyThemeKind(action.kind);
@@ -253,16 +299,19 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   }, [
     applyThemeKind,
     handleFileWikiAudit,
+    handleOpenHtml,
     inspirationInputFocused,
+    observerMode,
     props,
     showHelp,
     showNotes,
+    toggleLatestQuestionExpand,
     toggleNotes,
   ]));
 
   return (
-    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: semantic.fill.base }}>
-      <ObserverStatusBar {...chrome.statusBar} />
+    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: tuiTheme.semantic.fill.base }}>
+      <ObserverStatusBar {...chrome.statusBar} viewMode={observerMode} />
 
       <box style={{ flexGrow: 1, flexDirection: 'row', minHeight: 0 }}>
         <box style={{ flexGrow: 1, flexDirection: 'column', minWidth: 0 }}>
@@ -280,30 +329,38 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
           >
             {!flowBodyVisible ? (
               <box style={{ flexDirection: 'column' }}>
-                <text fg={semantic.label.primary}>{messages.replayOnlyTitle}</text>
-                <text fg={semantic.label.secondary} style={{ marginTop: 1 }}>
+                <text fg={tuiTheme.semantic.label.primary}>{messages.replayOnlyTitle}</text>
+                <text fg={tuiTheme.semantic.label.secondary} style={{ marginTop: 1 }}>
                   {messages.replayOnlyBody}
+                </text>
+              </box>
+            ) : terminalTooSmall ? (
+              <box style={{ flexDirection: 'column' }}>
+                <text fg={tuiTheme.semantic.warning}>
+                  {messages.observerTooSmall(OBSERVER_MIN_TERMINAL_COLS, OBSERVER_MIN_TERMINAL_ROWS)}
+                </text>
+                <text fg={tuiTheme.semantic.label.quaternary} style={{ marginTop: 1 }}>
+                  {messages.observerPaneFocus}
                 </text>
               </box>
             ) : (
               <LiveObserverFlowBody
-                sessionId={props.sessionId}
-                sessionPath={props.sessionPath}
-                allowWikiLiveSearch={props.allowWikiLiveSearch}
                 explorations={props.explorations}
                 summaries={props.explorationSummaries}
                 summaryItems={props.summaryItems}
-                flowchartHints={props.flowchartHints}
+                workspaceTree={props.workspaceTree}
                 graphSnapshot={props.graphSnapshot}
-                wikiPersistStatus={props.explorationPersistStatus}
                 wikiPersistResults={props.persistResults}
                 wikiWriteChromeByExploration={props.wikiWriteChromeByExploration}
+                wikiMatchesByExploration={props.wikiMatchesByExploration}
                 pendingSummaryCount={props.pendingSummaryCount}
                 pendingByExplorationId={props.pendingByExplorationId}
                 availableWidth={timelineWidth}
+                availableHeight={Math.max(8, terminalHeight - 8)}
                 sessionBannerHint={props.sessionBannerHint}
                 mode={observerMode}
                 calmMode={calmMode}
+                questionExpandedId={questionExpandedId}
                 spinnerIntervalMs={spinnerIntervalMs}
               />
             )}
@@ -327,6 +384,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         <CommandBar
           terminalWidth={terminalWidth}
           context={hotkeyContext}
+          active={Boolean(chromeHint || themeSwitchBanner || showThemeNotification)}
         />
       )}
     </box>

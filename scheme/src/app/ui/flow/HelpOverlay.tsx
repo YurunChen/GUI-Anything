@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../theme';
+import { useTuiTheme } from '../theme';
 import { flowSpacing } from './flow-ui/flow-spacing';
 import { getObserverMessages } from '../i18n/observer-messages';
 import { buildHelpLinesFromHotkeys, type ObserverHotkeyContext } from './observer-hotkeys';
@@ -23,6 +23,7 @@ export function buildHelpBody(ctx: ObserverHotkeyContext): string {
 }
 
 export function HelpOverlay({ hotkeyContext }: HelpOverlayProps): ReactNode {
+  const theme = useTuiTheme();
   const body = buildHelpBody(hotkeyContext);
 
   return (
@@ -31,17 +32,17 @@ export function HelpOverlay({ hotkeyContext }: HelpOverlayProps): ReactNode {
         width: '100%',
         flexShrink: 0,
         flexDirection: 'column',
-        backgroundColor: semantic.fill.elevated,
+        backgroundColor: theme.semantic.fill.elevated,
         paddingLeft: flowSpacing.chromePadX,
         paddingRight: flowSpacing.chromePadX,
         paddingTop: 1,
         paddingBottom: 1,
         border: ['top'],
-        borderColor: semantic.separator,
+        borderColor: theme.semantic.separator,
         borderStyle: 'single',
       }}
     >
-      <text wrapMode="none" fg={semantic.label.secondary}>
+      <text wrapMode="none" fg={theme.semantic.label.secondary}>
         {body}
       </text>
     </box>

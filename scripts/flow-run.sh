@@ -66,6 +66,9 @@ while [[ $# -gt 0 ]]; do
       echo "  FLOW_LOG_FILE          Log file (default: \$ROOT_DIR/logs/observer.log)"
       echo "  FLOW_LOG_DISABLED      1 = stderr only, no file"
       echo "  FLOW_SESSION_ID        Pin observer to Claude session UUID"
+      echo "  CLAUDE_MODEL           Observer summary/wiki model; set from --model when provided"
+      echo "  FLOW_SUMMARY_MODEL     Override observer summary subagent model"
+      echo "  FLOW_WIKI_MODEL        Override wiki agent model"
       echo "  wiki/sessions/_index.json  Continue binding (workspace-scoped)"
       echo "  FLOW_ZELLIJ_SESSION  Zellij session name (default: unique)"
       echo "  FLOW_ZELLIJ_AUTOCLEANUP   1=cleanup on exit (default)"
@@ -160,6 +163,16 @@ latest_session_name() {
   list_zellij_sessions_plain | awk 'NF>0 {print $1; exit}'
 }
 
+# ponytail: drop EXITED sessions only; active flows in other tabs stay untouched
+cleanup_exited_zellij_sessions() {
+  local name
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    zellij kill-session "$name" >/dev/null 2>&1 || true
+    zellij delete-session "$name" >/dev/null 2>&1 || true
+  done < <(list_zellij_sessions_plain | awk '/EXITED/ {print $1}')
+}
+
 # CodeWhale-style shutdown: SIGTERM grace, then SIGKILL backstop (mcp.rs / shell.rs).
 pkill_pattern() {
   local signal="$1"
@@ -205,6 +218,7 @@ cleanup_flow_sessions() {
 
 cleanup_stale_launchers() {
   [[ "${FLOW_ZELLIJ_AUTOCLEANUP:-${FLOW_AUTOCLEANUP:-1}}" == "1" ]] || return 0
+  cleanup_exited_zellij_sessions
   local self="$$"
   local stale_pids=()
   local pid
@@ -220,10 +234,6 @@ cleanup_stale_launchers() {
     sleep 0.6
     kill -KILL "${stale_pids[@]}" 2>/dev/null || true
   fi
-
-  pkill_pattern TERM "zellij --layout .*gui-anything-flow/layouts" || true
-  sleep 0.3
-  pkill_pattern KILL "zellij --layout .*gui-anything-flow/layouts" || true
 }
 
 preflight_cleanup_session() {
@@ -265,10 +275,19 @@ build_observer_cmd() {
     "FLOW_ROOT_DIR=\"$ROOT_DIR\""
     "FLOW_RESUME_MODE=\"$mode\""
     "FLOW_ZELLIJ_SESSION=\"$SESSION_NAME\""
-    "FLOW_THEME=\"${FLOW_THEME:-tokyo-night}\""
+    "FLOW_THEME=\"${FLOW_THEME:-transparent}\""
   )
   if [[ -n "${SESSION_ID:-}" ]]; then
     cmd+=("FLOW_SESSION_ID=\"$SESSION_ID\"")
+  fi
+  if [[ -n "$MODEL" ]]; then
+    cmd+=("CLAUDE_MODEL=\"$MODEL\"")
+  fi
+  if [[ -n "${FLOW_SUMMARY_MODEL:-}" ]]; then
+    cmd+=("FLOW_SUMMARY_MODEL=\"$FLOW_SUMMARY_MODEL\"")
+  fi
+  if [[ -n "${FLOW_WIKI_MODEL:-}" ]]; then
+    cmd+=("FLOW_WIKI_MODEL=\"$FLOW_WIKI_MODEL\"")
   fi
   local log_file="${FLOW_LOG_FILE:-$ROOT_DIR/logs/observer.log}"
   cmd+=("FLOW_LOG_FILE=\"$log_file\"")
@@ -289,6 +308,11 @@ if [[ "$CLEANUP_ONLY" == "1" ]]; then
   cleanup_flow_sessions
   echo "[flow-run] Cleanup done."
   exit 0
+fi
+
+if [[ ! -t 1 ]]; then
+  echo "flow-run: needs an interactive terminal (run \`ga flow\` in Terminal/iTerm, not a pipe)" >&2
+  exit 1
 fi
 
 cleanup_stale_launchers
@@ -476,4 +500,5 @@ on_script_exit() {
 trap on_script_exit EXIT INT TERM HUP
 start_terminal_watchdog
 
+echo "[flow-run] Attaching zellij..."
 zellij --layout "$LAYOUT_FILE" attach --create "$SESSION_NAME" options --on-force-close "$ZELLIJ_ON_FORCE_CLOSE"

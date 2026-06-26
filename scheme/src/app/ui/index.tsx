@@ -16,21 +16,22 @@ import type { ActivityTree } from '../../domain/types';
 import { treeNodes, TreeNode } from './tree-node';
 import { FlowView } from './flow-view';
 import {
-  colors, phaseIcons, phaseColors, formatElapsed,
+  phaseIcons, formatElapsed, useTuiTheme, type ResolvedTuiTheme,
 } from './theme';
 
 /**
  * Mini progress bar: filled ▓ and empty ░ based on tool count.
  */
 function MiniProgressBar({ value, max, width }: { value: number; max: number; width: number }): ReactNode {
+  const theme = useTuiTheme();
   if (max === 0) return null;
   const pct = Math.min(value / max, 1);
   const filled = Math.floor(pct * width);
   const empty = width - filled;
   return (
     <text>
-      <span fg={colors.status.success}>{'▓'.repeat(filled)}</span>
-      <span fg={colors.fg.dim}>{'░'.repeat(empty)}</span>
+      <span fg={theme.semantic.success}>{'▓'.repeat(filled)}</span>
+      <span fg={theme.semantic.label.quaternary}>{'░'.repeat(empty)}</span>
     </text>
   );
 }
@@ -41,6 +42,7 @@ interface ActivityPanelProps {
 }
 
 export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): ReactNode {
+  const theme = useTuiTheme();
   const [tree, setTree] = useState<ActivityTree | null>(null);
   const [running, setRunning] = useState(true);
   const [elapsed, setElapsed] = useState(0);
@@ -92,7 +94,7 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
 
   const icon = tree ? phaseIcons[tree.phase.current] ?? '⏸' : '⏸';
   const phase = tree ? tree.phase.current : 'idle';
-  const phaseColor = tree ? phaseColors[tree.phase.current] ?? colors.fg.muted : colors.fg.muted;
+  const phaseColor = resolvePhaseColor(phase, theme);
   const toolCalls = tree?.stats.toolCallCount ?? 0;
   const repeats = tree?.stats.repeatCount ?? 0;
   const timeStr = formatElapsed(elapsed);
@@ -115,24 +117,24 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
   const viewLabel = viewMode === 'flow' ? 'Flow' : 'Tree';
 
   return (
-    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: colors.bg.primary }}>
+    <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: theme.semantic.fill.base }}>
 
       {/* ── Header ── */}
-      <box style={{ width: '100%', backgroundColor: colors.bg.secondary, paddingLeft: 1, paddingRight: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
+      <box style={{ width: '100%', backgroundColor: theme.semantic.fill.grouped, paddingLeft: 1, paddingRight: 1, flexDirection: 'row', justifyContent: 'space-between' }}>
         <text>
-          <span fg={running ? colors.status.info : colors.status.success}>
+          <span fg={running ? theme.semantic.info : theme.semantic.success}>
             {running ? '▶ Running' : '✓ Complete'}
           </span>
-          <span fg={colors.fg.dim}> │ </span>
+          <span fg={theme.semantic.label.quaternary}> │ </span>
           <span fg={phaseColor}>{icon} {phase.charAt(0).toUpperCase() + phase.slice(1)}</span>
-          <span fg={colors.fg.dim}> │ </span>
-          <span fg={colors.fg.secondary}>⏱ {timeStr}</span>
-          {enableFlow && <span fg={colors.fg.dim}> │ </span>}
-          {enableFlow && <span fg={colors.accent.primary}>[{viewLabel}]</span>}
+          <span fg={theme.semantic.label.quaternary}> │ </span>
+          <span fg={theme.semantic.label.secondary}>⏱ {timeStr}</span>
+          {enableFlow && <span fg={theme.semantic.label.quaternary}> │ </span>}
+          {enableFlow && <span fg={theme.semantic.tint}>[{viewLabel}]</span>}
         </text>
-        <text fg={colors.fg.muted}>
+        <text fg={theme.semantic.label.tertiary}>
           Tools: {toolCalls}{'  '}Nodes: {nodeCount}
-          {repeats > 0 ? <span fg={colors.status.warning}>  ⚡ Repeats: {repeats}</span> : ''}
+          {repeats > 0 ? <span fg={theme.semantic.warning}>  ⚡ Repeats: {repeats}</span> : ''}
         </text>
         <MiniProgressBar value={toolCalls} max={Math.max(toolCalls, 1)} width={8} />
       </box>
@@ -141,14 +143,14 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
       {tree && tree.alerts.length > 0 && (
         <box style={{
           width: '100%',
-          backgroundColor: colors.bg.tertiary,
+          backgroundColor: theme.semantic.fill.elevated,
           paddingLeft: 1, paddingRight: 1,
           border: true,
-          borderColor: colors.status.warning,
+          borderColor: theme.semantic.warning,
         }}>
           <text>
             {tree.alerts.map((alert, i) => (
-              <span key={i} fg={alert.severity === 'error' ? colors.status.error : colors.status.warning}>
+              <span key={i} fg={alert.severity === 'error' ? theme.semantic.destructive : theme.semantic.warning}>
                 {i > 0 ? '  ' : ''}⚡ {alert.tool} repeated {alert.count} times
                 {alert.severity === 'error' ? ' — possible loop!' : ''}
               </span>
@@ -158,10 +160,10 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
       )}
 
       {/* ── Content ── */}
-      <box style={{ flexGrow: 1, flexDirection: 'column', border: true, borderColor: colors.border.normal }}>
+      <box style={{ flexGrow: 1, flexDirection: 'column', border: true, borderColor: theme.semantic.separator }}>
         <scrollbox style={{ flexGrow: 1, padding: 1 }}>
           {items.length === 0 ? (
-            <text fg={colors.fg.muted}>Waiting for Claude to respond...</text>
+            <text fg={theme.semantic.label.tertiary}>Waiting for Claude to respond...</text>
           ) : viewMode === 'flow' ? (
             <FlowView tree={tree} running={running} elapsed={elapsed} />
           ) : (
@@ -173,18 +175,31 @@ export function ActivityPanel({ prompt, enableFlow }: ActivityPanelProps): React
       </box>
 
       {/* ── Footer ── */}
-      <box style={{ width: '100%', backgroundColor: colors.bg.secondary, paddingLeft: 1, paddingRight: 1 }}>
+      <box style={{ width: '100%', backgroundColor: theme.semantic.fill.grouped, paddingLeft: 1, paddingRight: 1 }}>
         {topFiles.length > 0 && (
-          <text fg={colors.fg.muted}>
+          <text fg={theme.semantic.label.tertiary}>
             Files: {topFiles.join('  |  ')}
           </text>
         )}
-        <text fg={colors.fg.dim}>
+        <text fg={theme.semantic.label.quaternary}>
           {enableFlow ? 't:toggle flow/tree ' : ''}q:quit
         </text>
       </box>
     </box>
   );
+}
+
+function resolvePhaseColor(phase: string, theme: ResolvedTuiTheme): string {
+  switch (phase) {
+    case 'exploring':
+      return theme.semantic.info;
+    case 'executing':
+      return theme.semantic.warning;
+    case 'verifying':
+      return theme.semantic.success;
+    default:
+      return theme.semantic.label.tertiary;
+  }
 }
 
 export async function renderTUI(prompt: string, enableFlow?: boolean): Promise<void> {

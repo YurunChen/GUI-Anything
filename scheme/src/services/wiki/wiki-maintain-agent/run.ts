@@ -53,7 +53,6 @@ export async function runWikiMaintainSkill(
     const printResult = await runClaudePrintPrompt(promptText, {
       model: resolveWikiModel(),
       timeoutMs: 120_000,
-      taskIdPrefix: 'wiki_maintain_print',
       cwd: claudeCwd,
     });
     if (!printResult.ok) {
@@ -69,7 +68,6 @@ export async function runWikiMaintainSkill(
   const result = await runClaudeAgentPrompt(promptText, {
     model: resolveWikiModel(),
     timeoutMs: 180_000,
-    taskIdPrefix: 'wiki_maintain_skill',
     permissionMode: 'acceptEdits',
     allowedTools: ['Read', 'Edit', 'Write'],
     addDir: resolveWikiAgentAddDirs(wikiRoot),

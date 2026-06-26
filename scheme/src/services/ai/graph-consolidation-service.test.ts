@@ -7,7 +7,7 @@ const digest: GraphDigest = {
     { id: 's1:a', title: 'A', status: 'complete', parentIds: [], summary: 's1', updatedAt: 1 },
     { id: 's1:b', title: 'B', status: 'complete', parentIds: ['s1:a'], summary: 's2', updatedAt: 1 },
   ],
-  edges: [{ from: 's1:a', to: 's1:b', kind: 'trunk' }],
+  edges: [{ from: 's1:a', to: 's1:b', relationship: 'main' }],
   generatedAt: 1,
 };
 

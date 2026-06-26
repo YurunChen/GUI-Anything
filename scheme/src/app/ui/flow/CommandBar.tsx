@@ -4,7 +4,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../theme';
+import { useTuiTheme } from '../theme';
 import { COMPACT_LAYOUT_WIDTH } from '../../../constants/flow-constants';
 import { flowSpacing } from './flow-ui/flow-spacing';
 import {
@@ -19,9 +19,12 @@ export type CommandBarContext = ObserverHotkeyContext;
 export interface CommandBarProps {
   terminalWidth: number;
   context: CommandBarContext;
+  /** Temporary chrome activity, e.g. theme switch or exported HTML notice. */
+  active?: boolean;
 }
 
-export function CommandBar({ terminalWidth, context }: CommandBarProps): ReactNode {
+export function CommandBar({ terminalWidth, context, active = false }: CommandBarProps): ReactNode {
+  const commandTheme = useTuiTheme().modes.commandBar;
   const contentWidth = Math.max(24, terminalWidth - flowSpacing.chromePadX * 2);
   const isCompact = terminalWidth > 0 && terminalWidth < COMPACT_LAYOUT_WIDTH;
   const hints = buildObserverHotkeyHints(context);
@@ -36,17 +39,17 @@ export function CommandBar({ terminalWidth, context }: CommandBarProps): ReactNo
         width: '100%',
         flexDirection: 'column',
         flexShrink: 0,
-        backgroundColor: semantic.fill.elevated,
+        backgroundColor: commandTheme.backgroundColor,
         paddingLeft: flowSpacing.chromePadX,
         paddingRight: flowSpacing.chromePadX,
         paddingTop: 0,
         paddingBottom: 0,
         border: ['top'],
-        borderColor: semantic.separator,
+        borderColor: active ? commandTheme.activeBorderColor : commandTheme.borderColor,
         borderStyle: 'single',
       }}
     >
-      <text wrapMode="none" fg={semantic.label.tertiary}>
+      <text wrapMode="none" fg={commandTheme.textFg}>
         {body}
       </text>
     </box>

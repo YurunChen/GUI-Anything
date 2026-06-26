@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../../theme';
+import { useTuiTheme } from '../../theme';
 
 export type FlowCardVariant = 'flat' | 'elevated' | 'active';
 
@@ -13,6 +13,7 @@ interface FlowCardProps {
 }
 
 export function FlowCard({ variant = 'flat', children }: FlowCardProps): ReactNode {
+  const theme = useTuiTheme();
   const isActive = variant === 'active';
   const isElevated = variant === 'elevated';
 
@@ -26,9 +27,9 @@ export function FlowCard({ variant = 'flat', children }: FlowCardProps): ReactNo
         paddingRight: 2,
         paddingTop: 1,
         paddingBottom: 1,
-        backgroundColor: isElevated ? semantic.fill.elevated : semantic.fill.base,
+        backgroundColor: isElevated ? theme.semantic.fill.elevated : theme.semantic.fill.base,
         border: isActive ? ['left'] : false,
-        borderColor: isActive ? semantic.tint : semantic.separator,
+        borderColor: isActive ? theme.semantic.tint : theme.semantic.separator,
       }}
     >
       {children}

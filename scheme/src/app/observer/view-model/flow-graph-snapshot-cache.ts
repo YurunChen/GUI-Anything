@@ -11,7 +11,7 @@
  *   - One of the static inputs (summaries / hints / wikiPersistStatus) changed.
  */
 
-import { buildFlowGraphSnapshot as _buildFlowGraphSnapshot, type BuildFlowGraphInput } from './flow-graph-builder';
+import { buildFlowGraphSnapshot as _buildFlowGraphSnapshot, type BuildFlowGraphInput } from '../../../data/protocol/session-flow-projector';
 import type { FlowGraphSnapshot } from '../../../data/protocol/observer-protocol';
 import { buildGraphFingerprint } from '../../../utils/graph-fingerprint';
 

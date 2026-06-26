@@ -223,6 +223,24 @@ Agent wrote this on disk.
   it('updates existing entry on prior hit instead of creating C002', async () => {
     const repo = new KnowledgeRepository(tmpDir);
     const service = new WikiMaintenanceService(repo);
+    const resolveSpy = spyOn(wikiAgentRun, 'resolveWikiDecisionAsync').mockResolvedValue({
+      decision: {
+        action: 'update',
+        target_id: 'C001',
+        type: 'context',
+        slug: 'project-analysis',
+        sections: {
+          summary: 'Second session adds Flow Observer wiki agent details.',
+          solution: 'Wiki Agent maintains knowledge asynchronously.',
+        },
+        related_ids: [],
+        tags: [],
+        reason: 'prior_hit',
+      },
+      source: 'skill',
+      manifest: null,
+      agentWroteDisk: false,
+    });
 
     const exploration = {
       id: 'exp_new',
@@ -266,6 +284,7 @@ Agent wrote this on disk.
     expect(all[0].id).toBe('C001');
     expect(all[0].content).toContain('Wiki Agent');
     expect(all[0].content).toMatch(/version:\s*2/m);
+    resolveSpy.mockRestore();
   });
 });
 

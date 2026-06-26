@@ -81,6 +81,21 @@ export const tokyoNight: ColorScheme = {
   },
 };
 
+// Transparent - 保留 Tokyo Night 前景/语义色，背景交给终端
+export const transparent: ColorScheme = {
+  ...tokyoNight,
+  bg: {
+    primary: 'transparent',
+    secondary: 'transparent',
+    tertiary: 'transparent',
+    highlight: 'transparent',
+  },
+  wiki: {
+    ...tokyoNight.wiki,
+    background: tokyoNight.bg.tertiary,
+  },
+};
+
 // Nord - 冷色系蓝灰主题
 export const nord: ColorScheme = {
   bg: {
@@ -619,6 +634,7 @@ import {
 import { appleSystemDark, appleSystemLight } from './apple-system';
 
 export type ThemeName =
+  | 'transparent'
   | 'apple-system-dark' | 'apple-system-light'
   | 'tokyo-night' | 'nord' | 'catppuccin' | 'dracula' | 'gruvbox' | 'solarized' | 'one-dark'
   | 'solarized-light' | 'gruvbox-light' | 'catppuccin-latte' | 'github-light'
@@ -633,6 +649,7 @@ export type ThemeName =
   | 'peach-light'       | 'peach-dark';
 
 export const themes: Record<ThemeName, ColorScheme> = {
+  'transparent': transparent,
   'apple-system-dark': appleSystemDark,
   'apple-system-light': appleSystemLight,
   // 深色主题
@@ -690,9 +707,9 @@ export function resolveThemeName(name: string): ThemeName | undefined {
   return undefined;
 }
 
-// 从环境变量获取主题，默认为 tokyo-night
+// 从环境变量获取主题，默认为 transparent
 export function getActiveTheme(): ColorScheme {
-  const raw = process.env.FLOW_THEME || 'tokyo-night';
+  const raw = process.env.FLOW_THEME || 'transparent';
   const resolved = resolveThemeName(raw);
-  return resolved ? themes[resolved] : tokyoNight;
+  return resolved ? themes[resolved] : transparent;
 }

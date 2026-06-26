@@ -58,16 +58,25 @@ export function hasMissingSummaries(
   explorations: Exploration[],
   items: Record<SessionScopedId, SummaryItem>,
 ): boolean {
+  return countMissingSummaries(sessionId, explorations, items) > 0;
+}
+
+export function countMissingSummaries(
+  sessionId: string,
+  explorations: Exploration[],
+  items: Record<SessionScopedId, SummaryItem>,
+): number {
   const sid = sessionId.trim();
-  if (!sid) return false;
+  if (!sid) return 0;
+  let count = 0;
   for (const exploration of explorations) {
     if (exploration.status !== 'complete' || exploration.nodes.length === 0) continue;
     const id = makeSessionScopedId(sid, exploration.id);
     const item = items[id];
     if (item?.status === 'ready' && item.text?.trim()) continue;
-    return true;
+    count += 1;
   }
-  return false;
+  return count;
 }
 
 /** Continue + full wiki coverage → replay; otherwise live (incl. gap-fill). */

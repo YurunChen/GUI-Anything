@@ -1,4 +1,4 @@
-import { semantic } from '../../theme';
+import type { ResolvedTuiTheme } from '../../theme';
 
 export interface GraphTheme {
   laneGap: number;
@@ -31,36 +31,27 @@ export interface GraphTheme {
   };
 }
 
-/** Read fresh semantic colors (supports theme hot-switch). */
-export function buildGraphTheme(): GraphTheme {
+export function buildGraphTheme(theme: ResolvedTuiTheme): GraphTheme {
+  const focus = theme.modes.focus;
   return {
     laneGap: 4,
     maxVisibleNodes: 120,
-    chars: {
-      trunk: '│',
-      down: '↓',
-      forkRepair: '├─',
-      forkAlternative: '┬─',
-      merge: '└─',
-      deadEnd: '╰─',
-      focus: '◆',
-      normal: '•',
-    },
+    chars: focus.glyphs,
     color: {
-      rail: semantic.separator,
-      focusRail: semantic.separatorActive,
-      trunk: semantic.separatorActive,
-      branchRepair: semantic.warning,
-      branchAlternative: semantic.label.secondary,
-      merge: semantic.tintMuted,
-      deadEnd: semantic.destructive,
-      label: semantic.label.primary,
-      muted: semantic.label.secondary,
-      focusLabel: semantic.label.primary,
-      statusComplete: semantic.label.secondary,
-      statusRunning: semantic.activity,
-      statusInterrupted: semantic.warning,
-      statusError: semantic.destructive,
+      rail: focus.railFg,
+      focusRail: focus.activeRailFg,
+      trunk: focus.activeRailFg,
+      branchRepair: focus.branchRepairFg,
+      branchAlternative: focus.branchAlternativeFg,
+      merge: focus.mergeFg,
+      deadEnd: focus.deadEndFg,
+      label: focus.labelFg,
+      muted: focus.mutedFg,
+      focusLabel: focus.focusLabelFg,
+      statusComplete: focus.statusCompleteFg,
+      statusRunning: focus.statusRunningFg,
+      statusInterrupted: focus.statusInterruptedFg,
+      statusError: focus.statusErrorFg,
     },
   };
 }

@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../../theme';
+import { useTuiTheme } from '../../theme';
 import { FlowTextBlock } from '../FlowTextBlock';
 import { FlowSectionLabelSpan } from './FlowSectionLabel';
 
@@ -16,14 +16,16 @@ interface SummaryBlockProps {
 export function SummaryBlock({
   label = 'Summary',
   body,
-  bodyFg = semantic.label.secondary,
+  bodyFg,
 }: SummaryBlockProps): ReactNode {
+  const theme = useTuiTheme();
+  const resolvedBodyFg = bodyFg ?? theme.modes.timeline.summary.body.fg;
   return (
     <box style={{ width: '100%', flexDirection: 'column' }}>
       <text>
         <FlowSectionLabelSpan>{`${label}  `}</FlowSectionLabelSpan>
       </text>
-      <FlowTextBlock text={body} fg={bodyFg} />
+      <FlowTextBlock text={body} fg={resolvedBodyFg} />
     </box>
   );
 }

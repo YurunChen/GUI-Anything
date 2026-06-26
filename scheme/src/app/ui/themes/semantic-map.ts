@@ -1,39 +1,43 @@
 /**
  * Semantic color tokens — theme-agnostic aliases over ColorScheme.
- * Components should prefer `semantic` over raw accent/status for chrome and labels.
+ * Maps tui-design slots: fg.default/muted, bg.base/surface/overlay, accent, status.
  *
- * Tokyo Night role mapping (default theme):
- * - tint / focus accent / ▸ marker → accent.primary (#7aa2f7)
- * - label.tertiary / footnotes → fg.muted (#565f89)
- * - label.primary body → fg.primary (#c0caf5)
- * - wiki.titleColor → wiki.title only (Knowledge section), not global headings
- * - destructive / warning → status.error / status.warning only
+ * Layering (dark): base (primary) → grouped (secondary) → elevated (tertiary) → highlight.
  */
 
 import type { ColorScheme } from './index';
 
 export interface SemanticColors {
   label: {
+    /** fg.default — body */
     primary: string;
+    /** fg.secondary */
     secondary: string;
+    /** fg.muted — metadata, section labels */
     tertiary: string;
+    /** fg.dim — footnotes */
     quaternary: string;
   };
   fill: {
+    /** bg.base */
     base: string;
+    /** bg.surface — panels, grouped cards */
     grouped: string;
+    /** bg.overlay — nested inset, wiki */
     elevated: string;
+    /** bg.selection — row highlight */
     highlight: string;
   };
   separator: string;
   separatorActive: string;
-  /** Interactive / link emphasis — use sparingly */
   tint: string;
   tintMuted: string;
-  /** Running / summarizing activity — muted, not accent blue */
+  /** Running / fresh — secondary emphasis, not primary accent */
   activity: string;
   destructive: string;
   warning: string;
+  success: string;
+  info: string;
   wiki: ColorScheme['wiki'];
 }
 
@@ -58,6 +62,8 @@ export function buildSemanticColors(scheme: ColorScheme): SemanticColors {
     activity: scheme.fg.secondary,
     destructive: scheme.status.error,
     warning: scheme.status.warning,
+    success: scheme.status.success,
+    info: scheme.status.info,
     wiki: { ...scheme.wiki },
   };
 }

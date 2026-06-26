@@ -1,6 +1,4 @@
-import { getSessionBundleService } from '../../../services/session/session-bundle-service';
 import type {
-  ExplorationId,
   IntentBucketLedger,
   PersistResult,
   SessionIntentState,
@@ -9,23 +7,19 @@ import type {
 } from '../../../data/protocol/observer-protocol';
 import { makeSessionScopedId } from '../../../data/protocol/observer-protocol';
 import { normalizeSummaryItems } from '../../../data/protocol/summary-contract';
-import { shouldCurateWikiForIntent } from '../../../constants/session-intent-keys';
-import { IntentBucketService, isLegacyPerTurnWikiEnabled } from '../../../services/wiki/intent-bucket-service';
-import { getWikiCuratorService } from '../../../services/wiki/wiki-curator-service';
-import { resolveWikiPersistPhase, isSummaryReadyForWiki, type WikiPersistStatus } from '../../../services/wiki/wiki-persist-policy';
+import { isLegacyPerTurnWikiEnabled } from '../../../services/wiki/intent-bucket-service';
+import { resolveWikiPersistPhase, type WikiPersistStatus } from '../../../services/wiki/wiki-persist-policy';
 import {
   DefaultWikiPersistenceService,
 } from '../../../services/wiki/persistence-service';
 import { DefaultInspirationNoteService } from '../../../services/wiki/inspiration-note-service';
-import { intentBeforeExploration } from '../view-model/intent-prior-state';
+import { WikiCurationRuntime } from '../../../services/wiki/wiki-curation-runtime';
 import { resolveWikiWriteChrome } from '../view-model/wiki-write-chrome';
 import type { WikiWriteChromeView } from '../view-model/wiki-write-chrome';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { Exploration, InspirationRecord } from '../../../data/protocol/observer-protocol';
-import { createLogger } from '../../../utils/logger';
 
 const SWEEP_IDLE_MS = 30_000;
-const wikiLog = createLogger('wiki');
 
 interface WikiCuratorState {
   extractedCount: number;
@@ -47,8 +41,7 @@ export function useWikiCurator(
     recentInspirations: [],
   });
 
-  const bucketServiceRef = useRef(new IntentBucketService());
-  const curatorRef = useRef(getWikiCuratorService());
+  const curationRuntimeRef = useRef(new WikiCurationRuntime());
   const legacyPersistRef = useRef<DefaultWikiPersistenceService | null>(null);
   const inspirationNoteServiceRef = useRef<DefaultInspirationNoteService | null>(null);
   const recordedSummariesRef = useRef(new Set<SessionScopedId>());
@@ -77,7 +70,7 @@ export function useWikiCurator(
     lastSessionRef.current = sid;
     recordedSummariesRef.current.clear();
     legacyPersistRef.current!.resetSession(sid);
-    const ledger = sid ? bucketServiceRef.current.load(sid) : null;
+    const ledger = curationRuntimeRef.current.loadLedger(sid);
     if (ledger) {
       for (const bucket of Object.values(ledger.buckets)) {
         for (const explorationId of bucket.explorationIds) {
@@ -101,21 +94,14 @@ export function useWikiCurator(
   ) => {
     setState((prev) => ({ ...prev, inFlightIntentKey: intentKey }));
     try {
-      const result = await curatorRef.current.curateIntent({
+      const { result, ledger } = await curationRuntimeRef.current.curateIntent({
         sessionId: runSessionId,
         intentKey,
         anchorExplorationId,
-        summaries: items,
+        items,
         explorations,
       });
       if (!mountedRef.current || runSessionId !== lastSessionRef.current) return;
-      wikiLog.info('wiki curate done', {
-        sessionId: runSessionId,
-        intentKey,
-        status: result.status,
-      });
-      const ledger = bucketServiceRef.current.load(runSessionId);
-      syncWriteFieldsFromLedger(runSessionId, ledger);
       const saved = result.status === 'saved' || result.status === 'updated';
       setState((prev) => ({
         ...prev,
@@ -134,54 +120,16 @@ export function useWikiCurator(
     if (!sessionId) return;
     if (isLegacyPerTurnWikiEnabled()) return;
 
-    const items = normalizeSummaryItems(sessionId, summaryItems);
-    let ledger = bucketServiceRef.current.load(sessionId);
+    const { items, ledger, requests } = curationRuntimeRef.current.recordReadySummaries({
+      sessionId,
+      explorations,
+      summaryItems,
+      sessionIntent,
+      recordedSummaries: recordedSummariesRef.current,
+    });
 
-    for (const exploration of explorations) {
-      if (exploration.status !== 'complete') continue;
-      const scopedId = makeSessionScopedId(sessionId, exploration.id);
-      const item = items[scopedId];
-      if (!item?.flowchart || !isSummaryReadyForWiki(item)) {
-        wikiLog.debug('skip summary for wiki bucketing', {
-          sessionId,
-          explorationId: exploration.id,
-          hasFlowchart: Boolean(item?.flowchart),
-          summaryReady: item ? isSummaryReadyForWiki(item) : false,
-        });
-        continue;
-      }
-      if (recordedSummariesRef.current.has(scopedId)) continue;
-
-      const priorIntent = intentBeforeExploration(sessionIntent, exploration.id);
-      const record = bucketServiceRef.current.recordSummary({
-        sessionId,
-        explorationId: exploration.id,
-        hint: item.flowchart,
-        priorIntent,
-        nodeTitle: item.flowchart.nodeTitle,
-      });
-      ledger = record.ledger;
-      recordedSummariesRef.current.add(scopedId);
-
-      if (record.curateIntentKey && record.anchorExplorationId) {
-        const eligible = shouldCurateWikiForIntent(record.curateIntentKey);
-        wikiLog.info('intent bucket closed (pivot)', {
-          sessionId,
-          explorationId: record.anchorExplorationId,
-          intentKey: record.curateIntentKey,
-          eligible,
-        });
-        if (eligible) {
-          void runCurate(record.curateIntentKey, record.anchorExplorationId, sessionId, items);
-        } else {
-          ledger = closeIneligibleIntentBucket(
-            bucketServiceRef.current,
-            sessionId,
-            record.curateIntentKey,
-            record.anchorExplorationId,
-          );
-        }
-      }
+    for (const request of requests) {
+      void runCurate(request.intentKey, request.anchorExplorationId, sessionId, items);
     }
 
     setState((prev) => ({ ...prev, ledger }));
@@ -210,26 +158,18 @@ export function useWikiCurator(
 
     sweepTimerRef.current = setTimeout(() => {
       if (!mountedRef.current || sessionId !== lastSessionRef.current) return;
-      const ledger = bucketServiceRef.current.load(sessionId);
-      const openBucket = bucketServiceRef.current.getOpenUncuratedBucket(ledger);
-      if (!openBucket) return;
-
-      const anchorId = openBucket.explorationIds[openBucket.explorationIds.length - 1];
-      if (!anchorId) return;
-      if (Date.now() - lastCompleteAtRef.current < SWEEP_IDLE_MS) return;
-
-      if (shouldCurateWikiForIntent(openBucket.intentKey)) {
-        void runCurate(openBucket.intentKey, anchorId, sessionId, items);
-      } else {
-        closeIneligibleIntentBucket(
-          bucketServiceRef.current,
-          sessionId,
-          openBucket.intentKey,
-          anchorId,
-        );
+      const idle = curationRuntimeRef.current.resolveIdleSweep({
+        sessionId,
+        now: Date.now(),
+        lastCompleteAt: lastCompleteAtRef.current,
+        idleMs: SWEEP_IDLE_MS,
+      });
+      if (idle.request) {
+        void runCurate(idle.request.intentKey, idle.request.anchorExplorationId, sessionId, items);
+      } else if (idle.ledger) {
         setState((prev) => ({
           ...prev,
-          ledger: bucketServiceRef.current.load(sessionId),
+          ledger: idle.ledger,
         }));
       }
     }, SWEEP_IDLE_MS + 100);
@@ -321,37 +261,6 @@ export function useWikiCurator(
     saveInspiration,
     refreshInspirations,
   };
-}
-
-function syncWriteFieldsFromLedger(sessionId: string, ledger: IntentBucketLedger | null): void {
-  if (!ledger) return;
-  const repo = getSessionBundleService();
-  for (const bucket of Object.values(ledger.buckets)) {
-    if (!bucket.persistResult || !bucket.anchorExplorationId) continue;
-    repo.patchExploration(sessionId, bucket.anchorExplorationId, {
-      write: {
-        origin: 'saved',
-        status: bucket.persistResult.status,
-        reason: bucket.persistResult.reason,
-        targetId: bucket.persistResult.id,
-        targetPath: bucket.persistResult.path,
-        completedAt: bucket.curatedAt ?? Date.now(),
-      },
-    });
-  }
-}
-
-function closeIneligibleIntentBucket(
-  bucketService: IntentBucketService,
-  sessionId: string,
-  intentKey: string,
-  anchorExplorationId: ExplorationId,
-): IntentBucketLedger {
-  return bucketService.markCurated(sessionId, intentKey, anchorExplorationId, {
-    id: makeSessionScopedId(sessionId, anchorExplorationId),
-    status: 'skipped',
-    reason: 'intent_not_wiki_eligible',
-  });
 }
 
 function buildWikiWriteChromeMap(

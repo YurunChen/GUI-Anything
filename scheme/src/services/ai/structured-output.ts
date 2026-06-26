@@ -21,7 +21,7 @@ import {
   formatSessionIntentKeyCatalogForPrompt,
   normalizeSessionIntentKey,
 } from '../../constants/session-intent-keys';
-import { getObserverMessages } from '../../app/ui/i18n/observer-messages';
+import { getSummaryMessages } from '../../constants/summary-messages';
 
 /**
  * 结构化 Summary 输出格式
@@ -388,7 +388,7 @@ export function generateCalmDisplaySummary(context: {
   hasOutput: boolean;
   outputPreview?: string;
 }): string {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   const preview = context.outputPreview?.trim();
   if (preview) return preview;
   if (context.hasOutput) return m.calmNoBriefSummary;

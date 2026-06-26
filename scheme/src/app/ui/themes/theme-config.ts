@@ -60,5 +60,5 @@ export function getDefaultTheme(): ThemeName {
     if (resolved) return resolved;
   }
 
-  return 'tokyo-night';
+  return 'transparent';
 }

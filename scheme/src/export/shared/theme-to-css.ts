@@ -4,9 +4,12 @@
  */
 
 import type { ColorScheme } from '../../app/ui/themes/index';
+import { buildWebThemeTokens, webThemeTokensToCssVars } from './web-theme-tokens';
 
 /** 将 ColorScheme 转换为 CSS 变量声明（分号分隔，便于前端解析） */
 export function colorSchemeToCssVars(theme: ColorScheme): string {
+  const webTokens = buildWebThemeTokens(theme);
+
   return [
     `--bg-primary: ${theme.bg.primary}`,
     `--bg-secondary: ${theme.bg.secondary}`,
@@ -26,6 +29,7 @@ export function colorSchemeToCssVars(theme: ColorScheme): string {
     `--border-normal: ${theme.border.normal}`,
     `--border-active: ${theme.border.active}`,
     `--border-muted: ${theme.border.muted}`,
+    ...webThemeTokensToCssVars(webTokens),
   ].join('; ');
 }
 

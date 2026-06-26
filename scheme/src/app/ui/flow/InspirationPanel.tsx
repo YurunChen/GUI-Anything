@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import { useState, useRef, useCallback } from 'react';
 import type { TextareaRenderable } from '@opentui/core';
 import { useTerminalDimensions } from '@opentui/react';
-import { semantic } from '../theme';
+import { useTuiTheme } from '../theme';
 import type { InspirationRecord } from '../../../data/protocol/observer-protocol';
 import { getNotesSectionLayout } from '../../../constants/flow-constants';
 import { lineDisplayWidth, truncateFlowText } from '../../../utils/flow-text';
@@ -38,6 +38,7 @@ export function InspirationPanel({
   onSave,
 }: InspirationPanelProps): ReactNode {
   const m = getObserverMessages();
+  const theme = useTuiTheme();
   const textareaRef = useRef<TextareaRenderable>(null);
 
   const handleSave = useCallback(() => {
@@ -76,14 +77,14 @@ export function InspirationPanel({
           }}
           onMouseDown={handleInputAreaClick}
         >
-          <text fg={semantic.label.secondary}>{m.notesWriteLabel}</text>
+          <text fg={theme.semantic.label.secondary}>{m.notesWriteLabel}</text>
           <box
             style={{
               flexDirection: 'column',
               marginTop: 1,
               border: true,
-              borderColor: focused ? semantic.separatorActive : semantic.separator,
-              backgroundColor: semantic.fill.base,
+              borderColor: focused ? theme.semantic.separatorActive : theme.semantic.separator,
+              backgroundColor: theme.semantic.fill.base,
               paddingLeft: 1,
               paddingRight: 1,
             }}
@@ -97,13 +98,13 @@ export function InspirationPanel({
               style={{
                 height: 3,
                 wrapMode: 'word',
-                backgroundColor: 'transparent',
-                textColor: semantic.label.primary,
+                backgroundColor: theme.semantic.fill.base,
+                textColor: theme.semantic.label.primary,
               }}
             />
           </box>
           {focused && (
-            <text fg={semantic.label.quaternary} style={{ marginTop: 1, paddingLeft: 1 }}>
+            <text fg={theme.semantic.label.quaternary} style={{ marginTop: 1, paddingLeft: 1 }}>
               {m.notesEnterSave}
             </text>
           )}
@@ -154,6 +155,7 @@ function NotesList({
   messages: ReturnType<typeof getObserverMessages>;
 }): ReactNode {
   const { height: terminalHeight } = useTerminalDimensions();
+  const theme = useTuiTheme();
   const { maxItems } = getNotesSectionLayout(terminalHeight);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
 
@@ -170,7 +172,7 @@ function NotesList({
   return (
     <box style={{ flexDirection: 'column', marginBottom: 1 }}>
       {inspirations.length === 0 ? (
-        <text fg={semantic.label.tertiary} style={{ marginTop: 1 }}>{messages.notesEmpty}</text>
+        <text fg={theme.semantic.label.tertiary} style={{ marginTop: 1 }}>{messages.notesEmpty}</text>
       ) : (
         <box style={{ flexDirection: 'column', paddingLeft: 1 }}>
           {inspirations.slice(0, maxItems).map((item, index) => {
@@ -192,7 +194,7 @@ function NotesList({
                   marginTop: 1,
                   paddingLeft: 1,
                   paddingRight: 1,
-                  backgroundColor: isExpanded ? semantic.fill.grouped : 'transparent',
+                  backgroundColor: isExpanded ? theme.semantic.fill.grouped : theme.semantic.fill.base,
                 }}
                 onMouseDown={() => {
                   if (canExpand) handleClick(index);
@@ -201,10 +203,10 @@ function NotesList({
                 {isExpanded && canExpand ? (
                   <FlowTextBlock
                     text={body ? `${expandedHead}\n${body}` : expandedHead}
-                    fg={semantic.label.primary}
+                    fg={theme.semantic.label.primary}
                   />
                 ) : (
-                  <text wrapMode="none" fg={semantic.label.secondary}>
+                  <text wrapMode="none" fg={theme.semantic.label.secondary}>
                     {collapsedLine}
                   </text>
                 )}
@@ -216,4 +218,3 @@ function NotesList({
     </box>
   );
 }
-

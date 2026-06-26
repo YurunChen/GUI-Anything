@@ -5,6 +5,8 @@
 THEME=$1
 
 ALL_THEMES=(
+  # 默认透明
+  transparent
   # 深色
   tokyo-night nord catppuccin dracula gruvbox solarized one-dark
   # 浅色
@@ -25,8 +27,10 @@ print_usage() {
   echo "Usage: ./scripts/set-theme.sh <theme-name>"
   echo ""
   echo "Available themes:"
+  echo "  ── Default ──────────────────────────"
+  echo "  transparent     透明背景（默认）"
   echo "  ── Dark ─────────────────────────────"
-  echo "  tokyo-night     深蓝灰（推荐默认）"
+  echo "  tokyo-night     深蓝灰"
   echo "  nord            冷色系蓝灰"
   echo "  catppuccin      温暖紫粉"
   echo "  dracula         经典紫色"

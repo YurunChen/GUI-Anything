@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../../theme';
+import { useTuiTheme } from '../../theme';
 
 interface FlowTagRowProps {
   tags: string[];
@@ -12,28 +12,22 @@ interface FlowTagRowProps {
   variant?: 'default' | 'wiki';
 }
 
-function wikiTagColors(): string[] {
-  return [
-    semantic.wiki.tagColor,
-    semantic.wiki.matchColor,
-    semantic.wiki.labelColor,
-    semantic.wiki.titleColor,
-  ];
-}
-
 export function FlowTagRow({ tags, maxTags = 6, variant = 'default' }: FlowTagRowProps): ReactNode {
+  const tuiTheme = useTuiTheme();
   const visible = tags.filter(Boolean).slice(0, maxTags);
   if (visible.length === 0) return null;
 
-  const accentColors = variant === 'wiki' ? wikiTagColors() : null;
-  const bracketColor = variant === 'wiki' ? semantic.wiki.labelColor : semantic.label.quaternary;
+  const accentColors = variant === 'wiki' ? tuiTheme.modes.wiki.tagColors : null;
+  const bracketColor = variant === 'wiki'
+    ? tuiTheme.modes.wiki.tagBracketFg
+    : tuiTheme.semantic.label.quaternary;
 
   return (
     <text>
       {visible.map((tag, idx) => {
         const tagColor = accentColors
           ? accentColors[idx % accentColors.length]
-          : semantic.label.secondary;
+          : tuiTheme.semantic.label.secondary;
 
         return (
           <span key={`${tag}_${idx}`}>

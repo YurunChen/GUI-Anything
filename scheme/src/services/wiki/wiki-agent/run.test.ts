@@ -140,10 +140,10 @@ describe('shouldRuleCreateFromDigest', () => {
 });
 
 describe('resolveWikiModel', () => {
-  it('defaults to sonnet when no env set', () => {
+  it('uses the Claude CLI default when no env set', () => {
     delete process.env.FLOW_WIKI_MODEL;
     delete process.env.CLAUDE_MODEL;
-    expect(resolveWikiModel()).toBe('sonnet');
+    expect(resolveWikiModel()).toBeUndefined();
   });
 
   it('prefers FLOW_WIKI_MODEL', () => {

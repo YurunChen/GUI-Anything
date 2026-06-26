@@ -50,11 +50,9 @@ export function shouldUseClaudeWikiAgent(): boolean {
   return true;
 }
 
-const DEFAULT_WIKI_MODEL = 'sonnet';
-
-export function resolveWikiModel(): string {
+export function resolveWikiModel(): string | undefined {
   const model = (process.env.FLOW_WIKI_MODEL || process.env.CLAUDE_MODEL || '').trim();
-  return model || DEFAULT_WIKI_MODEL;
+  return model || undefined;
 }
 
 /**
@@ -113,7 +111,6 @@ export async function runWikiAgentSkill(input: WikiAgentRunInput): Promise<{
   const result = await runClaudeAgentPrompt(promptText, {
     model: input.model ?? resolveWikiModel(),
     timeoutMs: 120_000,
-    taskIdPrefix: 'wiki_skill',
     permissionMode: 'acceptEdits',
     allowedTools: ['Read', 'Edit', 'Write'],
     addDir: resolveWikiAgentAddDirs(wikiRoot),
@@ -254,7 +251,6 @@ export async function runWikiAgentClaude(input: WikiAgentRunInput): Promise<{
   const result = await runClaudePrintPrompt(promptText, {
     model: input.model ?? resolveWikiModel(),
     timeoutMs: 60_000,
-    taskIdPrefix: 'wiki_agent',
   });
 
   if (!result.ok) {

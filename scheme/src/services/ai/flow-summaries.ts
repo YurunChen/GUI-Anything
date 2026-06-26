@@ -5,9 +5,8 @@
  */
 
 import { spawn } from 'node:child_process';
-import type { WikiPersistMeta, WikiPersistType } from '../wiki/auto-extractor';
-import { typeIcons } from '../../app/ui/theme';
-import { getObserverMessages } from '../../app/ui/i18n/observer-messages';
+import type { WikiPersistMeta } from '../wiki/auto-extractor';
+import { flowNodeTypeIcons, getSummaryMessages } from '../../constants/summary-messages';
 import {
   validateStructuredSummaryOutput,
   toWikiPersistMeta,
@@ -25,19 +24,16 @@ import { createLogger } from '../../utils/logger';
 
 const log = createLogger('summary');
 
-/** Default model for the Summary subagent when none is configured (env can override). */
-const DEFAULT_SUMMARY_MODEL = 'sonnet';
-
 /**
  * Resolve which model the Summary/Wiki subagent should use.
- * Priority: explicit arg → FLOW_SUMMARY_MODEL → CLAUDE_MODEL → DEFAULT_SUMMARY_MODEL.
- * Avoids silently falling back to a weak/fast default model that produces degenerate summaries.
+ * Priority: explicit arg → FLOW_SUMMARY_MODEL → CLAUDE_MODEL → Claude CLI default.
+ * Returning undefined intentionally omits --model so subagents inherit the user's Claude default.
  */
-export function resolveSummaryModel(explicit?: string): string {
+export function resolveSummaryModel(explicit?: string): string | undefined {
   const fromArg = explicit?.trim();
   if (fromArg) return fromArg;
   const env = (process.env.FLOW_SUMMARY_MODEL || process.env.CLAUDE_MODEL || '').trim();
-  return env || DEFAULT_SUMMARY_MODEL;
+  return env || undefined;
 }
 
 // Local type definition (replaces FlowNodeRow from sqlite-store)
@@ -52,142 +48,11 @@ interface FlowNodeRow {
   result_preview: string | null;
 }
 
-// ── Claude Task Executor with timeout/concurrency control ──
-
-type TaskStatus = 'queued' | 'running' | 'completed' | 'failed' | 'timeout';
-
-interface QueuedTask<T> {
-  id: string;
-  status: TaskStatus;
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-  reject: (reason: Error) => void;
-  timeoutMs: number;
-  startTime?: number;
-}
-
-class ClaudeTaskExecutor {
-  private maxConcurrency: number;
-  private defaultTimeoutMs: number;
-  private queue: QueuedTask<unknown>[] = [];
-  private running: Map<string, QueuedTask<unknown>> = new Map();
-  private taskCounter = 0;
-
-  constructor(options?: { maxConcurrency?: number; defaultTimeoutMs?: number }) {
-    this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 2);
-    this.defaultTimeoutMs = Math.max(5000, options?.defaultTimeoutMs ?? 45000);
-  }
-
-  get stats() {
-    return {
-      queued: this.queue.length,
-      running: this.running.size,
-      maxConcurrency: this.maxConcurrency,
-    };
-  }
-
-  execute<T>(
-    runFn: (abortSignal: AbortSignal) => Promise<T>,
-    options?: { timeoutMs?: number; taskId?: string }
-  ): Promise<T> {
-    const taskId = options?.taskId ?? `task_${++this.taskCounter}_${Date.now()}`;
-    const timeoutMs = options?.timeoutMs ?? this.defaultTimeoutMs;
-
-    let resolve: (value: T) => void;
-    let reject: (reason: Error) => void;
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-
-    const task: QueuedTask<T> = {
-      id: taskId,
-      status: 'queued',
-      promise,
-      resolve: resolve!,
-      reject: reject!,
-      timeoutMs,
-    };
-
-    this.queue.push(task as QueuedTask<unknown>);
-    this.processQueue();
-
-    return promise;
-  }
-
-  private processQueue(): void {
-    while (this.running.size < this.maxConcurrency && this.queue.length > 0) {
-      const task = this.queue.shift();
-      if (!task) break;
-      this.runTask(task);
-    }
-  }
-
-  private runTask(task: QueuedTask<unknown>): void {
-    task.status = 'running';
-    task.startTime = Date.now();
-    this.running.set(task.id, task);
-
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      abortController.abort();
-      task.status = 'timeout';
-      this.running.delete(task.id);
-      task.reject(new Error(`Task ${task.id} timed out after ${task.timeoutMs}ms`));
-      this.processQueue();
-    }, task.timeoutMs);
-
-    // Wrap user function to handle cleanup
-    const originalPromise = (task as any)._runFn?.(abortController.signal);
-    if (!originalPromise) {
-      // Internal spawn-based execution
-      this.runSpawnTask(task, abortController, timeoutId);
-      return;
-    }
-
-    originalPromise
-      .then((result: unknown) => {
-        clearTimeout(timeoutId);
-        if (task.status !== 'running') return;
-        task.status = 'completed';
-        this.running.delete(task.id);
-        task.resolve(result);
-        this.processQueue();
-      })
-      .catch((error: Error) => {
-        clearTimeout(timeoutId);
-        if (task.status !== 'running') return;
-        task.status = 'failed';
-        this.running.delete(task.id);
-        task.reject(error);
-        this.processQueue();
-      });
-  }
-
-  private runSpawnTask(
-    task: QueuedTask<unknown>,
-    abortController: AbortController,
-    timeoutId: NodeJS.Timeout
-  ): void {
-    // This is a placeholder - actual spawn logic is in the wrapper below
-    clearTimeout(timeoutId);
-    task.reject(new Error('Internal: runSpawnTask should not be called directly'));
-    this.processQueue();
-  }
-}
-
-// Global executor instance (singleton)
-const claudeExecutor = new ClaudeTaskExecutor({
-  maxConcurrency: 2,
-  defaultTimeoutMs: 45000,
-});
-
 // Wrapper for spawn-based Claude execution with proper timeout/cleanup
 interface SpawnOptions {
   args: string[];
   promptText: string;
   timeoutMs?: number;
-  taskId?: string;
 }
 
 interface SpawnResult {
@@ -382,7 +247,7 @@ function formatNodesForClaude(prompt: string, nodes: FlowNodeRow[]): string {
   let text = `# User Request\n${prompt}\n\n# Session Timeline\n\n`;
 
   for (const node of nodes) {
-    const icon = typeIcons[node.type] ?? '·';
+    const icon = flowNodeTypeIcons[node.type] ?? '·';
     const time = new Date(node.timestamp).toLocaleTimeString();
     const phase = node.phase ? `[${node.phase.toUpperCase()}] ` : '';
 
@@ -443,7 +308,7 @@ export function isTrivialGreetingExploration(
 }
 
 export function buildGreetingFlowchartHint(): FlowchartHint {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   return {
     nodeId: 'greeting',
     nodeTitle: m.trivialGreetingIntentTitle,
@@ -460,7 +325,7 @@ export function buildTrivialGreetingSummaryResult(
   question: string,
   nodes: ExplorationSummaryNode[],
 ): ExplorationSummaryAIResult {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   const reply = [...nodes].reverse().find(
     (n) => n.type === 'response' || n.type === 'result',
   )?.label?.trim() || '';
@@ -478,7 +343,7 @@ export function buildTrivialGreetingSummaryResult(
 }
 
 export function formatSessionIntentForPrompt(intent: SessionIntentState | null | undefined): string {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   if (!intent) {
     return m.sessionIntentEmpty;
   }
@@ -516,7 +381,7 @@ function formatExplorationForClaude(question: string, nodes: ExplorationSummaryN
 }
 
 function formatExplorationHistory(history: ExplorationHistoryContext[]): string {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   if (history.length === 0) {
     return m.sessionHistoryEmpty;
   }
@@ -563,20 +428,6 @@ export interface ExplorationSummaryAIResult {
   displaySummary: string;
   persist: WikiPersistMeta | null;
   flowchart?: FlowchartHint;
-}
-
-function normalizeWikiPersistType(value: unknown): WikiPersistType {
-  if (value === 'error' || value === 'snippet' || value === 'decision' || value === 'context' || value === 'none') {
-    return value;
-  }
-  return 'none';
-}
-
-function clamp01(n: unknown): number {
-  if (typeof n !== 'number' || !Number.isFinite(n)) {
-    return 0.5;
-  }
-  return Math.min(1, Math.max(0, n));
 }
 
 /** Parse Claude stdout into display line + optional Wiki persist metadata.
@@ -639,7 +490,9 @@ export async function generateFlowSummaryAI(
   model?: string,
 ): Promise<{ title: string; content: string; nodeRefs: string[] }> {
   const nodeRefs = nodes.map(n => n.id);
-  const args = ['--print', '--model', resolveSummaryModel(model)];
+  const args = ['--print'];
+  const resolvedModel = resolveSummaryModel(model);
+  if (resolvedModel) args.push('--model', resolvedModel);
 
   const promptText = `${SUMMARY_PROMPT}\n\n---\n\n${formatNodesForClaude(prompt, nodes)}`;
 
@@ -647,7 +500,6 @@ export async function generateFlowSummaryAI(
     args,
     promptText,
     timeoutMs: 60000, // Flow summary may need more time
-    taskId: `flow_${Date.now()}`,
   });
 
   if (result.timedOut) {
@@ -682,7 +534,8 @@ export async function generateExplorationSummaryAI(
 
   const priorIntentKey = sessionIntent?.intentKey ?? null;
   const resolvedModel = resolveSummaryModel(model);
-  const args = ['--print', '--model', resolvedModel];
+  const args = ['--print'];
+  if (resolvedModel) args.push('--model', resolvedModel);
 
   const promptText = `${getExplorationSummaryPrompt()}
 
@@ -699,7 +552,6 @@ ${formatExplorationForClaude(question, nodes)}`;
     args,
     promptText,
     timeoutMs: 45000,
-    taskId: `exp_${Date.now()}`,
   });
 
   if (result.timedOut || result.exitCode !== 0 || !result.output.trim()) {
@@ -731,7 +583,6 @@ export async function runClaudePrintPrompt(
   options?: {
     model?: string;
     timeoutMs?: number;
-    taskIdPrefix?: string;
     cwd?: string;
   },
 ): Promise<{ ok: boolean; output: string; reason?: string }> {
@@ -741,7 +592,6 @@ export async function runClaudePrintPrompt(
     args,
     promptText,
     timeoutMs: options?.timeoutMs ?? 45000,
-    taskId: `${options?.taskIdPrefix || 'flow'}_${Date.now()}`,
     cwd: options?.cwd,
   });
   if (result.timedOut) {
@@ -756,7 +606,6 @@ export async function runClaudePrintPrompt(
 export interface ClaudeAgentPromptOptions {
   model?: string;
   timeoutMs?: number;
-  taskIdPrefix?: string;
   permissionMode?: 'acceptEdits' | 'default' | 'plan';
   allowedTools?: string[];
   addDir?: string[];
@@ -786,7 +635,6 @@ export async function runClaudeAgentPrompt(
     args,
     promptText,
     timeoutMs: options?.timeoutMs ?? 90_000,
-    taskId: `${options?.taskIdPrefix || 'agent'}_${Date.now()}`,
     cwd: options?.cwd,
   });
   if (result.timedOut) {

@@ -3,15 +3,16 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../../theme';
+import { useTuiTheme } from '../../theme';
 
 interface FlowSectionHeaderProps {
   children: string;
 }
 
 export function FlowSectionHeader({ children }: FlowSectionHeaderProps): ReactNode {
+  const theme = useTuiTheme();
   return (
-    <text fg={semantic.label.quaternary} style={{ marginBottom: 0, paddingLeft: 1 }}>
+    <text fg={theme.modes.timeline.summary.labelFallbackFg} style={{ marginBottom: 0, paddingLeft: 1 }}>
       {children.toUpperCase()}
     </text>
   );

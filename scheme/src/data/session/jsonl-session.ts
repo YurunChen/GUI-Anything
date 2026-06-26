@@ -8,7 +8,13 @@ import type { CliEventEnvelope, ParseContext } from '../../domain/protocol';
 import { parseClaudeJsonLine } from '../protocol/jsonl-line-parser';
 import { ActivityTreeBuilder } from '../../domain/tree-builder';
 import { truncate, toPreview } from '../../utils/string';
-import type { Exploration, ExplorationNode, SessionStats } from './session-types';
+import type {
+  Exploration,
+  ExplorationNode,
+  FileActivity,
+  FileActivityAction,
+  SessionStats,
+} from './session-types';
 
 export type { Exploration, ExplorationNode, SessionStats } from './session-types';
 
@@ -122,12 +128,24 @@ function isOperationalMetaText(text: string): boolean {
   );
 }
 
+function extractSlashCommandText(text: string): string {
+  const commandName = text.match(/<command-name>\s*([^<]+?)\s*<\/command-name>/i)?.[1];
+  if (commandName?.trim()) return commandName.trim();
+
+  const commandMessage = text.match(/<command-message>\s*([^<]+?)\s*<\/command-message>/i)?.[1];
+  if (!commandMessage?.trim()) return '';
+  const normalized = commandMessage.trim();
+  return normalized.startsWith('/') ? normalized : `/${normalized}`;
+}
+
 function firstTextContent(message: unknown): string {
   if (!message || typeof message !== 'object') return '';
   const m = message as { content?: unknown };
   const content = m.content;
   if (typeof content === 'string') {
     const cleaned = normalize(stripAnsi(content));
+    const command = extractSlashCommandText(cleaned);
+    if (command) return command;
     return isOperationalMetaText(cleaned) ? '' : cleaned;
   }
   if (!Array.isArray(content)) return '';
@@ -136,6 +154,8 @@ function firstTextContent(message: unknown): string {
     const b = block as { type?: unknown; text?: unknown };
     if (b.type === 'text' && typeof b.text === 'string') {
       const cleaned = normalize(stripAnsi(b.text));
+      const command = extractSlashCommandText(cleaned);
+      if (command) return command;
       if (!isOperationalMetaText(cleaned)) return cleaned;
     }
   }
@@ -169,6 +189,204 @@ function detectPhaseForTool(toolName: string, toolInput: unknown): 'explore' | '
 function markPhase(exploration: Exploration, phase: 'explore' | 'execute' | 'verify'): void {
   exploration.phaseSeen[phase] = true;
   exploration.currentPhase = phase;
+}
+
+function objectField(input: unknown, key: string): unknown {
+  if (!input || typeof input !== 'object') return undefined;
+  return (input as Record<string, unknown>)[key];
+}
+
+function stringField(input: unknown, key: string): string {
+  const value = objectField(input, key);
+  return typeof value === 'string' ? value : '';
+}
+
+function numberField(input: unknown, key: string): number {
+  const value = objectField(input, key);
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function lineCount(value: string): number {
+  if (!value) return 0;
+  return value.split('\n').length;
+}
+
+function compactPath(value: string): string {
+  const clean = value.replace(/\\/g, '/').replace(/\/+/g, '/').replace(/\/$/, '');
+  const parts = clean.split('/').filter(Boolean);
+  if (parts.length === 0) return value.trim();
+  if (!clean.startsWith('/') && parts.length <= 3) return parts.join('/');
+  const tail = parts.slice(-3).join('/');
+  return clean.startsWith('/') ? `…/${tail}` : tail;
+}
+
+function shellWords(command: string): string[] {
+  const words: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+  let escaping = false;
+
+  for (const ch of command) {
+    if (escaping) {
+      current += ch;
+      escaping = false;
+      continue;
+    }
+    if (ch === '\\' && quote !== "'") {
+      escaping = true;
+      continue;
+    }
+    if ((ch === '"' || ch === "'") && quote === null) {
+      quote = ch;
+      continue;
+    }
+    if (ch === quote) {
+      quote = null;
+      continue;
+    }
+    if (/\s/.test(ch) && quote === null) {
+      if (current) {
+        words.push(current);
+        current = '';
+      }
+      continue;
+    }
+    current += ch;
+  }
+
+  if (current) words.push(current);
+  return words;
+}
+
+function isShellOperator(value: string): boolean {
+  return value === '|' || value === '||' || value === '&&' || value === ';' || value === '>' || value === '>>' || value === '<';
+}
+
+function looksLikePath(value: string): boolean {
+  if (!value || value.startsWith('-') || isShellOperator(value)) return false;
+  if (value.includes('=') && !value.includes('/')) return false;
+  return value === '.'
+    || value === '..'
+    || value.startsWith('/')
+    || value.startsWith('./')
+    || value.startsWith('../')
+    || value.includes('/');
+}
+
+function basenameCommand(value: string): string {
+  return value.split('/').pop()?.toLowerCase() ?? value.toLowerCase();
+}
+
+function firstPathAfterCommand(words: string[], commandIndex: number): string | undefined {
+  for (let index = commandIndex + 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (isShellOperator(word)) break;
+    if (looksLikePath(word)) return word;
+  }
+  return undefined;
+}
+
+function lastPathAfterCommand(words: string[], commandIndex: number): string | undefined {
+  let result: string | undefined;
+  for (let index = commandIndex + 1; index < words.length; index += 1) {
+    const word = words[index];
+    if (isShellOperator(word)) break;
+    if (looksLikePath(word)) result = word;
+  }
+  return result;
+}
+
+function extractBashTargetPath(command: string): string | undefined {
+  const words = shellWords(command);
+  for (let index = 0; index < words.length; index += 1) {
+    const name = basenameCommand(words[index]);
+    if (name === 'ls' || name === 'find' || name === 'fd') {
+      return firstPathAfterCommand(words, index);
+    }
+    if (name === 'rg' || name === 'grep') {
+      return lastPathAfterCommand(words, index);
+    }
+  }
+  return undefined;
+}
+
+function buildFileActivity(toolName: string, input: unknown, phase: 'explore' | 'execute' | 'verify'): FileActivity | undefined {
+  const name = toolName.toLowerCase();
+  const make = (action: FileActivityAction, summary: string, filePath?: string): FileActivity => ({
+    action,
+    status: 'running',
+    path: filePath || undefined,
+    summary,
+  });
+
+  if (name === 'read') {
+    const filePath = stringField(input, 'file_path') || stringField(input, 'path');
+    if (!filePath) return undefined;
+    const limit = numberField(input, 'limit');
+    const offset = numberField(input, 'offset') || 1;
+    const range = limit > 0 ? ` - lines ${offset}-${offset + limit - 1}` : '';
+    return make('read', `${compactPath(filePath)}${range}`, filePath);
+  }
+
+  if (name === 'grep') {
+    const pattern = stringField(input, 'pattern');
+    const glob = stringField(input, 'glob');
+    const filePath = stringField(input, 'path');
+    const target = glob || (filePath ? compactPath(filePath) : '');
+    const summary = pattern
+      ? `"${truncate(pattern, 30)}"${target ? ` in ${target}` : ''}`
+      : 'Grep';
+    return make('search', summary, filePath || undefined);
+  }
+
+  if (name === 'glob') {
+    const pattern = stringField(input, 'pattern');
+    const filePath = stringField(input, 'path');
+    const summary = pattern
+      ? `"${truncate(pattern, 30)}"${filePath ? ` in ${compactPath(filePath)}` : ''}`
+      : 'Glob';
+    return make('search', summary, filePath || undefined);
+  }
+
+  if (name === 'edit' || name === 'notebookedit') {
+    const filePath = stringField(input, 'file_path') || stringField(input, 'path');
+    if (!filePath) return undefined;
+    const oldLines = lineCount(stringField(input, 'old_string'));
+    const newLines = lineCount(stringField(input, 'new_string'));
+    const detail = oldLines > 0 && newLines > 0
+      ? oldLines === newLines
+        ? ` - ${oldLines} line${oldLines === 1 ? '' : 's'}`
+        : ` - ${oldLines} -> ${newLines} lines`
+      : '';
+    return make('edit', `${compactPath(filePath)}${detail}`, filePath);
+  }
+
+  if (name === 'multiedit') {
+    const filePath = stringField(input, 'file_path') || stringField(input, 'path');
+    if (!filePath) return undefined;
+    const edits = objectField(input, 'edits');
+    const count = Array.isArray(edits) ? edits.length : 0;
+    return make('edit', `${compactPath(filePath)}${count > 0 ? ` - ${count} edits` : ''}`, filePath);
+  }
+
+  if (name === 'write') {
+    const filePath = stringField(input, 'file_path') || stringField(input, 'path');
+    if (!filePath) return undefined;
+    const lines = lineCount(stringField(input, 'content'));
+    return make('write', `${compactPath(filePath)}${lines > 0 ? ` - ${lines} lines` : ''}`, filePath);
+  }
+
+  if (name === 'bash') {
+    const command = stringField(input, 'command');
+    const description = stringField(input, 'description');
+    const summary = description && command
+      ? `${description}: ${command}`
+      : description || command || 'Bash';
+    const targetPath = command ? extractBashTargetPath(command) : undefined;
+    return make(phase === 'verify' ? 'run' : 'search', truncate(summary, 80), targetPath);
+  }
+
+  return undefined;
 }
 
 /**
@@ -316,7 +534,7 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
     const type = entry.type;
     const timestamp = parseTimestamp(entry.timestamp);
 
-    if (type === 'user' && entry.isMeta !== true) {
+    if (type === 'user') {
       const message = entry.message as { content?: unknown } | undefined;
       const blocks = Array.isArray(message?.content) ? message?.content as Array<Record<string, unknown>> : [];
 
@@ -332,6 +550,9 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
 
         if (existing) {
           existing.status = isError ? 'error' : 'ok';
+          if (existing.fileActivity) {
+            existing.fileActivity.status = isError ? 'error' : 'ok';
+          }
           if (isError) {
             existing.errorCategory = 'tool';
             current.errorCounts.tool += 1;
@@ -353,6 +574,8 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
         }
       }
       if (handledToolResult) continue;
+
+      if (entry.isMeta === true) continue;
 
       const question = firstTextContent(message);
       if (!question) continue;
@@ -388,6 +611,7 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
               ? (block.input as Record<string, unknown>).command as string
               : undefined;
           const phase = detectPhaseForTool(toolName, block.input);
+          const fileActivity = buildFileActivity(toolName, block.input, phase);
           const node: ExplorationNode = {
             id: `exp_node_${++seq}`,
             timestamp,
@@ -396,7 +620,8 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
             phase,
             label: `${toolName} ${inputPreview}`.trim(),
             rawCommand: rawCommand?.trim() || undefined,
-            toolCallId: typeof block.id === 'string' ? block.id : undefined
+            toolCallId: typeof block.id === 'string' ? block.id : undefined,
+            fileActivity,
           };
           current.nodes.push(node);
           markPhase(current, phase);

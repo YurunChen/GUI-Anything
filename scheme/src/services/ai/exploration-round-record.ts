@@ -3,7 +3,7 @@
  */
 
 import type { ExplorationSummaryNode } from './flow-summaries';
-import { getObserverMessages } from '../../app/ui/i18n/observer-messages';
+import { getSummaryMessages } from '../../constants/summary-messages';
 
 function latestAssistantText(nodes: ExplorationSummaryNode[]): string {
   const latest = [...nodes].reverse().find(
@@ -33,7 +33,7 @@ export function isGenericAssistantGreeting(text: string): boolean {
 export function formatAssistantReplyExcerpt(nodes: ExplorationSummaryNode[], maxLen = 1200): string {
   const text = latestAssistantText(nodes);
   if (!text) return '';
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   if (text.length <= maxLen) return m.assistantReplyLine(text);
   return m.assistantReplyLine(`${text.slice(0, maxLen - 1)}…`);
 }
@@ -43,7 +43,7 @@ export function buildExplorationRoundRecord(
   question: string,
   nodes: ExplorationSummaryNode[],
 ): string {
-  const m = getObserverMessages();
+  const m = getSummaryMessages();
   const q = question.trim();
   const toolCount = nodes.filter((n) => n.type === 'tool').length;
   const reply = latestAssistantText(nodes);

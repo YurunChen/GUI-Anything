@@ -11,6 +11,7 @@ import type {
 import { bundleSummaryFlags } from '../../data/wiki/session-bundle-mappers';
 import type { SessionBindingIntent } from '../session/session-binding-policy';
 import {
+  countMissingSummaries,
   deriveSessionRuntime,
   hasMissingSummaries,
   type SessionRuntime,
@@ -28,6 +29,23 @@ export interface SummaryOrchestratorState {
   pendingCount: number;
   summariesReadyKey: string;
   bundleSummaryByExplorationId: Record<string, boolean>;
+}
+
+export type SummaryGenerateDecision =
+  | { action: 'idle'; pendingCount: number }
+  | { action: 'pending'; pendingCount: number }
+  | {
+      action: 'run';
+      pendingCount: number;
+      existing: Record<SessionScopedId, SummaryItem>;
+      priorBundleSummaryFlags: Record<string, boolean>;
+    };
+
+export interface SummaryGenerateFinishResult {
+  generatedItems: Record<SessionScopedId, SummaryItem>;
+  items: Record<SessionScopedId, SummaryItem>;
+  bundleSummaryByExplorationId: Record<string, boolean>;
+  pendingCount: number;
 }
 
 export class SummaryOrchestrator {
@@ -98,6 +116,70 @@ export class SummaryOrchestrator {
     }
     if (this.summaryService.pendingCount() > 0) return false;
     return hasMissingSummaries(input.sessionId, input.explorations, input.items);
+  }
+
+  planGenerate(input: {
+    allowRegen: boolean;
+    sessionId: string;
+    summariesReadyKey: string;
+    sessionPath: string;
+    explorations: Exploration[];
+    items: Record<SessionScopedId, SummaryItem>;
+    bundleSummaryByExplorationId: Record<string, boolean>;
+  }): SummaryGenerateDecision {
+    if (!shouldGenerateMissingSummaries({
+      allowRegen: input.allowRegen,
+      sessionId: input.sessionId,
+      summariesReadyKey: input.summariesReadyKey,
+      sessionPath: input.sessionPath,
+    })) {
+      return { action: 'idle', pendingCount: 0 };
+    }
+
+    const pendingCount = this.summaryService.pendingCount();
+    if (pendingCount > 0) {
+      return { action: 'pending', pendingCount };
+    }
+
+    const missingCount = countMissingSummaries(input.sessionId, input.explorations, input.items);
+    if (missingCount === 0) {
+      return { action: 'idle', pendingCount: 0 };
+    }
+
+    return {
+      action: 'run',
+      pendingCount: missingCount,
+      existing: { ...input.items },
+      priorBundleSummaryFlags: { ...input.bundleSummaryByExplorationId },
+    };
+  }
+
+  async generateAndFinish(input: {
+    sessionId: string;
+    sessionPath: string;
+    explorations: Exploration[];
+    existing: Record<SessionScopedId, SummaryItem>;
+    priorBundleSummaryFlags: Record<string, boolean>;
+    summaryModel?: string;
+  }): Promise<SummaryGenerateFinishResult> {
+    const generatedItems = await this.summaryService.generateMissing({
+      sessionId: input.sessionId,
+      explorations: input.explorations,
+      jsonlPath: input.sessionPath,
+      existing: input.existing,
+      summaryModel: input.summaryModel,
+    });
+    const finished = await this.finishGenerate({
+      sessionId: input.sessionId,
+      sessionPath: input.sessionPath,
+      existing: input.existing,
+      generatedItems,
+      priorBundleSummaryFlags: input.priorBundleSummaryFlags,
+    });
+    return {
+      generatedItems,
+      ...finished,
+    };
   }
 
   async finishGenerate(input: {

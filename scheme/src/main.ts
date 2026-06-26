@@ -6,7 +6,6 @@ async function main() {
   const isObserverMode = args.includes('--observer');
   const isFlowMode = args.includes('--flow');
   const isLiveMode = args.includes('--live');
-  const isPostHoc = args.includes('--posthoc');
   const isExportHtml = args.includes('--export-html');
   const isThemePlayground = args.includes('--theme-playground');
   const isKnowledgeGraph = args.includes('--knowledge-graph');
@@ -50,11 +49,6 @@ async function main() {
       theme: argValue('--theme'),
     });
     return;
-  }
-
-  if (isPostHoc) {
-    console.error('Removed: --posthoc tree view. Use dual-pane flow (`ga flow`) or `bun run src/main.ts --live` for the live observer.');
-    process.exit(1);
   }
 
   if (isLiveMode || isObserverMode) {

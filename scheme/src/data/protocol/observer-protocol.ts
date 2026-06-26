@@ -2,6 +2,8 @@ import type { ActivityTree } from '../../domain/types';
 import type {
   Exploration,
   ExplorationNode,
+  FileActivity,
+  FileActivityAction,
   SessionStats,
 } from '../session/session-types';
 import type {
@@ -15,7 +17,7 @@ export type SessionId = string;
 export type ExplorationId = string;
 export type SessionScopedId = `${SessionId}:${ExplorationId}`;
 
-export type { ActivityTree, Exploration, ExplorationNode, SessionStats };
+export type { ActivityTree, Exploration, ExplorationNode, FileActivity, FileActivityAction, SessionStats };
 export type { WikiExtractionResult, WikiMatch, WikiPersistMeta };
 /** User inspiration notes stored under wiki/notes/ */
 export type InspirationRecord = DailyNoteRecord;
@@ -143,7 +145,7 @@ export interface FlowEnv {
 }
 
 export type FlowGraphNodeStatus = 'running' | 'complete' | 'interrupted' | 'error';
-export type FlowGraphEdgeKind = 'trunk' | 'fork_repair' | 'fork_alternative' | 'merge' | 'dead_end';
+export type FlowGraphEdgeRelationship = 'main' | 'repair' | 'side' | 'merge';
 
 export interface FlowGraphMetaBadges {
   tools: number;
@@ -167,7 +169,7 @@ export interface FlowGraphNode {
 export interface FlowGraphEdge {
   from: SessionScopedId;
   to: SessionScopedId;
-  kind: FlowGraphEdgeKind;
+  relationship: FlowGraphEdgeRelationship;
 }
 
 export interface FlowGraphSnapshot {

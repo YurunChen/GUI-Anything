@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { shouldShowRequest } from './WikiMatchCard';
 import {
   formatKnowledgeExcerpt,
-} from '../../../services/wiki/wiki-text-utils';
+} from '../../../utils/wiki-text';
 
 describe('formatKnowledgeExcerpt', () => {
   it('strips frontmatter and uses 摘要 section', () => {

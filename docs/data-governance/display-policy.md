@@ -45,7 +45,7 @@
 | **cached** | 从 session bundle 读出 | hydrate → `source: cache` |
 | **fallback** | 降级路径 | `source: fallback`，或 replay excerpt |
 
-Live 生成中用 `live_preview` 占位，**不显示**标签。
+Live 生成中用 `live_preview` 更新 intent/title，但 SUMMARY 正文先显示 loading 行；等 AI summary ready 后再替换为最终文本，**不显示**标签。
 
 ## 缓存与 JSONL mtime
 
@@ -61,7 +61,7 @@ Live 生成中用 `live_preview` 占位，**不显示**标签。
 
 ## UI 规则
 
-- **时间线卡片**：Summarizing 时 meta 与 SUMMARY 区显示 `◷ ◶ ◵ ◴` spinner（`pendingSummaryCount > 0` 时驱动，与 running 共用 `pulseFrames`）
+- **时间线卡片**：Running turn 的 `Active` 与 SUMMARY loading 行复用同一个 Node/Ora 风格 spinner（`⠋ ⠙ ⠹ …`）；summary 生成时 meta 行保持 turn 状态静态，避免上下两个 `Summarizing`。新卡片进入与 summary ready 只做一次短暂 accent，不做持续闪烁。未知进度不画 progress，只有真实百分比或步骤数明确时才使用进度条。
 - **顶栏**：`Live` / `Replay` + 模型 / token / done / wiki 已存
 - **Replay banner**：一行说明 + 可选 `N excerpt · N timeline-only`
 - Hook 通过 `SessionBundleService` / `SessionIndexService` 访问 bundle（见 [ui-layer-rules.md](ui-layer-rules.md)）

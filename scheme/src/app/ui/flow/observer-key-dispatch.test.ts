@@ -7,6 +7,7 @@ const baseState = {
   inspirationInputFocused: false,
   notifyAvailable: true,
   wikiAuditAvailable: true,
+  htmlExportAvailable: true,
 };
 
 describe('dispatchObserverKey', () => {
@@ -76,6 +77,21 @@ describe('dispatchObserverKey', () => {
         { ...baseState, wikiAuditAvailable: false },
       ),
     ).toBeNull();
+  });
+
+  test('h opens HTML export when available', () => {
+    expect(dispatchObserverKey({ name: 'h', ctrl: false, meta: false }, baseState)?.type).toBe('open_html');
+    expect(
+      dispatchObserverKey(
+        { name: 'h', ctrl: false, meta: false },
+        { ...baseState, htmlExportAvailable: false },
+      ),
+    ).toBeNull();
+  });
+
+  test('e toggles latest question expand', () => {
+    expect(dispatchObserverKey({ name: 'e', ctrl: false, meta: false }, baseState)?.type)
+      .toBe('toggle_question_expand');
   });
 
   test('help keys toggle overlay', () => {

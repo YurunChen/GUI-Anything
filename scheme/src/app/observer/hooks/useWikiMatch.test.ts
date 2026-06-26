@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { Exploration } from '../../../data/protocol/observer-protocol';
-import { extractWikiSearchQuery } from './useWikiMatch';
+import { extractWikiSearchQuery } from '../../../services/wiki/wiki-retrieval-policy';
 
 function makeExploration(question: string, nodes: Exploration['nodes'] = []): Exploration {
   return {

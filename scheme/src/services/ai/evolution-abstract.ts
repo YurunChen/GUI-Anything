@@ -94,7 +94,6 @@ export async function synthesizeEras(
   const result = await runClaudePrintPrompt(promptText, {
     model: resolveSummaryModel(),
     timeoutMs: 60_000,
-    taskIdPrefix: 'evolution',
   });
 
   if (!result.ok) {

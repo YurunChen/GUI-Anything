@@ -15,6 +15,7 @@ export interface ObserverKeyState {
   inspirationInputFocused: boolean;
   notifyAvailable: boolean;
   wikiAuditAvailable: boolean;
+  htmlExportAvailable: boolean;
 }
 
 export type ObserverKeyAction =
@@ -25,10 +26,12 @@ export type ObserverKeyAction =
   | { type: 'toggle_notes' }
   | { type: 'close_notes' }
   | { type: 'toggle_calm' }
+  | { type: 'toggle_question_expand' }
   | { type: 'toggle_mode' }
   | { type: 'send_snapshot' }
   | { type: 'file_wiki_audit' }
-  | { type: 'theme'; kind: 'morandi' | 'prev' | 'next' };
+  | { type: 'open_html' }
+  | { type: 'theme'; kind: 'prev' | 'next' };
 
 /** OpenTUI emits punctuation as literal chars (`/` `?`), not readline-style `slash`. */
 function isSlashKeyName(name: string): boolean {
@@ -94,6 +97,10 @@ export function dispatchObserverKey(
     return { type: 'toggle_calm' };
   }
 
+  if (key.name === 'e' && !key.ctrl && !key.meta) {
+    return { type: 'toggle_question_expand' };
+  }
+
   if (key.name === 'q') {
     return { type: 'exit' };
   }
@@ -110,10 +117,12 @@ export function dispatchObserverKey(
     return { type: 'file_wiki_audit' };
   }
 
-  const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);
+  if (key.name === 'h' && !key.ctrl && !key.meta && state.htmlExportAvailable) {
+    return { type: 'open_html' };
+  }
+
   const isPrevThemeKey = key.name === '[' || key.name === 'leftbracket';
   const isNextThemeKey = key.name === ']' || key.name === 'rightbracket';
-  if (isMorandiKey) return { type: 'theme', kind: 'morandi' };
   if (isPrevThemeKey) return { type: 'theme', kind: 'prev' };
   if (isNextThemeKey) return { type: 'theme', kind: 'next' };
 

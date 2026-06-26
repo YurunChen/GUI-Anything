@@ -31,7 +31,7 @@ class ThemeManager {
   }
 
   getColors(): ColorScheme {
-    return themes[this.currentTheme] || themes['tokyo-night'];
+    return themes[this.currentTheme] || themes.transparent;
   }
 
   setTheme(themeName: ThemeName | string): void {
@@ -93,6 +93,7 @@ class ThemeManager {
   getThemeDisplayName(themeName?: ThemeName): string {
     const name = themeName || this.currentTheme;
     const names: Record<ThemeName, string> = {
+      'transparent': 'Transparent',
       'apple-system-dark': 'Apple System · Dark',
       'apple-system-light': 'Apple System · Light',
       'tokyo-night': '🌙 Tokyo Night',

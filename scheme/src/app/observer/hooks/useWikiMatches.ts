@@ -2,10 +2,21 @@
  * useWikiMatches — prior KNOWLEDGE via SessionBundleService + wiki-retrieval-policy.
  */
 
-import { useMemo, useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import type { Exploration, WikiMatch } from '../../../data/protocol/observer-protocol';
 import { extractWikiSearchQuery } from '../../../services/wiki/wiki-retrieval-policy';
 import { getSessionBundleService } from '../../../services/session/session-bundle-service';
+
+type WikiMatchCacheEntry = {
+  query: string;
+  allowLiveSearch: boolean;
+  match: WikiMatch | null;
+};
+
+interface WikiMatchState {
+  sessionId: string;
+  matches: Record<string, WikiMatch | null>;
+}
 
 export function useWikiMatches(
   explorations: Exploration[],
@@ -13,15 +24,28 @@ export function useWikiMatches(
   sessionPath?: string,
   allowLiveSearch: boolean = true,
 ): Record<string, WikiMatch | null> {
-  const cacheRef = useRef(new Map<string, { query: string; match: WikiMatch | null }>());
+  const cacheRef = useRef(new Map<string, WikiMatchCacheEntry>());
+  const [state, setState] = useState<WikiMatchState>({ sessionId: '', matches: {} });
 
   useEffect(() => {
     cacheRef.current.clear();
+    setState((prev) => (
+      prev.sessionId === sessionId && Object.keys(prev.matches).length === 0
+        ? prev
+        : { sessionId, matches: {} }
+    ));
   }, [sessionId]);
 
-  return useMemo(() => {
+  useEffect(() => {
     const out: Record<string, WikiMatch | null> = {};
-    if (!sessionId.trim()) return out;
+    if (!sessionId.trim()) {
+      setState((prev) => (
+        prev.sessionId === sessionId && Object.keys(prev.matches).length === 0
+          ? prev
+          : { sessionId, matches: out }
+      ));
+      return;
+    }
 
     const bundleService = getSessionBundleService();
     const path = sessionPath?.trim() || '';
@@ -34,7 +58,7 @@ export function useWikiMatches(
       }
 
       const cached = cacheRef.current.get(exploration.id);
-      if (cached?.query === query) {
+      if (cached?.query === query && cached.allowLiveSearch === allowLiveSearch) {
         out[exploration.id] = cached.match;
         continue;
       }
@@ -45,9 +69,29 @@ export function useWikiMatches(
         path,
         allowLiveSearch,
       );
-      cacheRef.current.set(exploration.id, { query, match });
+      cacheRef.current.set(exploration.id, { query, allowLiveSearch, match });
       out[exploration.id] = match;
     }
-    return out;
+
+    setState((prev) => (
+      prev.sessionId === sessionId && sameWikiMatchMap(prev.matches, out)
+        ? prev
+        : { sessionId, matches: out }
+    ));
   }, [explorations, sessionId, sessionPath, allowLiveSearch]);
+
+  return state.sessionId === sessionId ? state.matches : {};
+}
+
+function sameWikiMatchMap(
+  a: Record<string, WikiMatch | null>,
+  b: Record<string, WikiMatch | null>,
+): boolean {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
 }

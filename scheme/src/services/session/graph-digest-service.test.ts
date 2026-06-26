@@ -28,7 +28,7 @@ function makeSnapshot(): FlowGraphSnapshot {
         intentKey: 'implement',
       },
     ],
-    edges: [{ from: 's1:a', to: 's1:b', kind: 'trunk' }],
+    edges: [{ from: 's1:a', to: 's1:b', relationship: 'main' }],
     focusNodeId: 's1:b',
     updatedAt: 100,
   };

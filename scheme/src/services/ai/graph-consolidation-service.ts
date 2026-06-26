@@ -49,7 +49,7 @@ function formatGraphDigest(input: GraphDigest): string {
   const nodes = input.nodes
     .map((node) => `${node.id}|title=${node.title}|status=${node.status}|parents=${node.parentIds.join(',') || 'none'}|summary=${node.summary}`)
     .join('\n');
-  const edges = input.edges.map((edge) => `${edge.from}->${edge.to}|${edge.kind}`).join('\n');
+  const edges = input.edges.map((edge) => `${edge.from}->${edge.to}|${edge.relationship}`).join('\n');
   return `nodes:\n${nodes || 'none'}\n\nedges:\n${edges || 'none'}`;
 }
 
@@ -58,7 +58,6 @@ export async function generateGraphConsolidationAI(
   runner: GraphConsolidationRunner = (promptText, model) => runClaudePrintPrompt(promptText, {
     model,
     timeoutMs: 45000,
-    taskIdPrefix: 'graph_patch',
   }),
 ): Promise<GraphConsolidationResult> {
   if (input.digest.nodes.length < 2) {

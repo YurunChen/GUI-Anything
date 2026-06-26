@@ -4,7 +4,8 @@
 
 import type { ReactNode } from 'react';
 import type { PersistResult } from '../../../../data/protocol/observer-protocol';
-import { semantic } from '../../theme';
+import { useTuiTheme } from '../../theme';
+import type { TimelineModeTheme } from '../../themes/resolved-theme';
 import { PersistBadge } from '../StatusBadges';
 
 export type FlowStatusTone = 'complete' | 'running' | 'interrupted';
@@ -13,6 +14,7 @@ interface FlowMetaRowProps {
   statusBadge: string;
   statusTone: FlowStatusTone;
   toolCount: number;
+  toolsUnit?: string;
   errorCount: number;
   toolSummary?: string;
   wikiPersistStatus?: 'saved' | 'updated' | 'skipped' | 'failed' | 'pending';
@@ -21,14 +23,14 @@ interface FlowMetaRowProps {
   wikiTurnCount?: number;
 }
 
-function statusColor(tone: FlowStatusTone): string {
+function statusColor(tone: FlowStatusTone, meta: TimelineModeTheme['meta']): string {
   switch (tone) {
     case 'running':
-      return semantic.activity;
+      return meta.runningFg;
     case 'interrupted':
-      return semantic.warning;
+      return meta.interruptedFg;
     default:
-      return semantic.label.tertiary;
+      return meta.completeFg;
   }
 }
 
@@ -36,6 +38,7 @@ export function FlowMetaRow({
   statusBadge,
   statusTone,
   toolCount,
+  toolsUnit = 'tools',
   errorCount,
   toolSummary,
   wikiPersistStatus,
@@ -43,15 +46,16 @@ export function FlowMetaRow({
   wikiTargetId,
   wikiTurnCount,
 }: FlowMetaRowProps): ReactNode {
+  const meta = useTuiTheme().modes.timeline.meta;
   return (
-    <text fg={semantic.label.quaternary}>
-      <span fg={statusColor(statusTone)}>{statusBadge}</span>
+    <text fg={meta.baseFg}>
+      <span fg={statusColor(statusTone, meta)}>{statusBadge}</span>
       <span>{' · '}</span>
-      <span>{`${toolCount} tools`}</span>
+      <span>{`${toolCount} ${toolsUnit}`}</span>
       {errorCount > 0 && (
         <>
           <span>{' · '}</span>
-          <span fg={semantic.destructive}>{`${errorCount} err`}</span>
+          <span fg={meta.errorFg}>{`${errorCount} err`}</span>
         </>
       )}
       {wikiPersistStatus ? (
@@ -68,7 +72,7 @@ export function FlowMetaRow({
       {toolSummary && (
         <>
           <span>{' · '}</span>
-          <span fg={semantic.label.tertiary}>{toolSummary}</span>
+          <span fg={meta.toolSummaryFg}>{toolSummary}</span>
         </>
       )}
     </text>

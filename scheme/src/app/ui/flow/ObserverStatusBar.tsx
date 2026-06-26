@@ -3,18 +3,21 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../theme';
+import { useTuiTheme } from '../theme';
+import type { StatusBarModeTheme } from '../themes/resolved-theme';
 import { truncateFlowText } from '../../../utils/flow-text';
 import type { ObserverStatusBarViewProps } from '../../observer/view-model/shell-chrome.types';
 import { resolveIntentChromeDisplay } from '../../observer/view-model/intent-chrome-display';
 import { flowSpacing } from './flow-ui/flow-spacing';
 import { getObserverMessages, resolveObserverLocale } from '../i18n/observer-messages';
+import type { ObserverViewMode } from './observer-hotkeys';
 
-export type ObserverStatusBarProps = ObserverStatusBarViewProps;
+export type ObserverStatusBarProps = ObserverStatusBarViewProps & {
+  viewMode?: ObserverViewMode;
+};
 
 export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
   const {
-    sessionMode,
     runtimeModel,
     tokenDisplay,
     completedCount,
@@ -25,10 +28,12 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
     fileAccessLine,
     sessionArc,
     liveIntent,
+    viewMode,
   } = props;
 
   const locale = resolveObserverLocale();
   const m = getObserverMessages(locale);
+  const statusTheme = useTuiTheme().modes.statusBar;
   const contentWidth = Math.max(32, terminalWidth - flowSpacing.chromePadX * 2);
   const intentDisplay = liveIntent
     ? resolveIntentChromeDisplay({
@@ -50,19 +55,18 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
       style={{
         width: '100%',
         flexShrink: 0,
-        backgroundColor: semantic.fill.base,
+        backgroundColor: statusTheme.backgroundColor,
         paddingLeft: flowSpacing.chromePadX,
         paddingRight: flowSpacing.chromePadX,
         paddingTop: 0,
         paddingBottom: 0,
         flexDirection: 'column',
         border: ['bottom'],
-        borderColor: semantic.separator,
+        borderColor: statusTheme.borderColor,
         borderStyle: 'single',
       }}
     >
       {renderSessionMetaLine({
-        sessionMode,
         runtimeModel,
         tokenDisplay,
         completedCount,
@@ -71,7 +75,9 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
         notifyStatus,
         themeNotification,
         contentWidth,
+        viewMode,
         m,
+        statusTheme,
       })}
 
       {intentDisplay ? (
@@ -89,20 +95,20 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
           <text wrapMode="none">
             {intentDisplay.badge ? (
               <>
-                <span fg={semantic.label.quaternary}>{'「'}</span>
-                <span fg={semantic.tintMuted}>{intentDisplay.badge}</span>
-                <span fg={semantic.label.quaternary}>{'」 '}</span>
+                <span fg={statusTheme.intentBracketFg}>{'「'}</span>
+                <span fg={statusTheme.intentBadgeFg}>{intentDisplay.badge}</span>
+                <span fg={statusTheme.intentBracketFg}>{'」 '}</span>
               </>
             ) : (
-              <span fg={semantic.label.quaternary}>{'◦ '}</span>
+              <span fg={statusTheme.intentBracketFg}>{'◦ '}</span>
             )}
-            <span fg={intentDisplay.isIdle ? semantic.label.tertiary : semantic.label.primary}>
+            <span fg={intentDisplay.isIdle ? statusTheme.idleIntentTitleFg : statusTheme.intentTitleFg}>
               {intentTitle}
             </span>
           </text>
         </box>
       ) : sessionArc ? (
-        <text wrapMode="none" fg={semantic.label.tertiary}>
+        <text wrapMode="none" fg={statusTheme.sessionArcFg}>
           {truncateFlowText(sessionArc, contentWidth)}
         </text>
       ) : null}
@@ -111,7 +117,6 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
 }
 
 function renderSessionMetaLine(input: {
-  sessionMode: ObserverStatusBarViewProps['sessionMode'];
   runtimeModel: string;
   tokenDisplay: string;
   completedCount: number;
@@ -120,11 +125,15 @@ function renderSessionMetaLine(input: {
   notifyStatus?: string;
   themeNotification?: string;
   contentWidth: number;
+  viewMode?: ObserverViewMode;
   m: ReturnType<typeof getObserverMessages>;
+  statusTheme: StatusBarModeTheme;
 }): ReactNode {
-  const modeLabel = input.sessionMode === 'replay'
-    ? input.m.statusModeReplay
-    : input.m.statusModeLive;
+  const viewModeLabel = input.viewMode === 'focus'
+    ? input.m.modeFocus
+    : input.viewMode === 'workspace'
+      ? input.m.modeWorkspace
+      : input.m.modeTimeline;
   const modelLabel = truncateFlowText(input.runtimeModel, 22);
   const filePart = input.fileAccessLine
     ? truncateFlowText(`${input.m.statusFiles} ${input.fileAccessLine}`, Math.floor(input.contentWidth * 0.3))
@@ -140,39 +149,39 @@ function renderSessionMetaLine(input: {
       }}
     >
       <text wrapMode="none">
-        <span fg={semantic.label.tertiary}>{modeLabel}</span>
-        <span fg={semantic.label.quaternary}>{' · '}</span>
-        <span fg={semantic.label.tertiary}>{modelLabel}</span>
+        <span fg={input.statusTheme.metaFg}>{viewModeLabel}</span>
+        <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+        <span fg={input.statusTheme.metaFg}>{modelLabel}</span>
         {input.tokenDisplay ? (
           <>
-            <span fg={semantic.label.quaternary}>{' · '}</span>
-            <span fg={semantic.label.tertiary}>{input.tokenDisplay}</span>
+            <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+            <span fg={input.statusTheme.metaFg}>{input.tokenDisplay}</span>
           </>
         ) : null}
-        <span fg={semantic.label.quaternary}>{' · '}</span>
-        <span fg={semantic.label.tertiary}>{input.m.statusDone(input.completedCount)}</span>
+        <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+        <span fg={input.statusTheme.metaFg}>{input.m.statusDone(input.completedCount)}</span>
         {input.errorCount > 0 ? (
           <>
-            <span fg={semantic.label.quaternary}>{' · '}</span>
-            <span fg={semantic.destructive}>{input.m.statusErrors(input.errorCount)}</span>
+            <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+            <span fg={input.statusTheme.errorFg}>{input.m.statusErrors(input.errorCount)}</span>
           </>
         ) : null}
         {filePart ? (
           <>
-            <span fg={semantic.label.quaternary}>{' · '}</span>
-            <span fg={semantic.label.quaternary}>{filePart}</span>
+            <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+            <span fg={input.statusTheme.separatorFg}>{filePart}</span>
           </>
         ) : null}
         {input.themeNotification ? (
           <>
-            <span fg={semantic.label.quaternary}>{' · '}</span>
-            <span fg={semantic.label.secondary}>{input.themeNotification}</span>
+            <span fg={input.statusTheme.separatorFg}>{' · '}</span>
+            <span fg={input.statusTheme.themeNotificationFg}>{input.themeNotification}</span>
           </>
         ) : null}
       </text>
       {input.notifyStatus ? (
         <text wrapMode="none">
-          <span fg={semantic.label.secondary}>{input.notifyStatus}</span>
+          <span fg={input.statusTheme.notifyFg}>{input.notifyStatus}</span>
         </text>
       ) : null}
     </box>

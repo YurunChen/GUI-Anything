@@ -38,6 +38,59 @@ export function formatFlowText(raw: string): string {
 /** @deprecated Use `formatFlowText`. */
 export const formatSummaryForTui = formatFlowText;
 
+function wrapFlowTextLines(text: string, columns: number): string[] {
+  const safeColumns = Math.max(1, columns);
+  const output: string[] = [];
+
+  for (const sourceLine of text.split(/\r?\n/)) {
+    if (sourceLine.length === 0) {
+      output.push('');
+      continue;
+    }
+
+    let current = '';
+    let currentWidth = 0;
+    for (const ch of sourceLine) {
+      const chWidth = charDisplayWidth(ch);
+      if (current && currentWidth + chWidth > safeColumns) {
+        output.push(current);
+        current = ch;
+        currentWidth = chWidth;
+        continue;
+      }
+      current += ch;
+      currentWidth += chWidth;
+    }
+    output.push(current);
+  }
+
+  return output.length > 0 ? output : [''];
+}
+
+/**
+ * Fold long prose to a preview block (multi-line, CJK-aware column wrap).
+ * Returns whether content was cut beyond maxLines.
+ */
+export function foldFlowTextPreview(
+  raw: string,
+  columns: number,
+  maxLines: number,
+): { text: string; truncated: boolean } {
+  const full = formatFlowText(raw) || 'N/A';
+  const safeCols = Math.max(1, columns);
+  const safeMax = Math.max(1, maxLines);
+  const lines = wrapFlowTextLines(full, safeCols);
+
+  if (lines.length <= safeMax) {
+    return { text: lines.join('\n'), truncated: false };
+  }
+
+  const preview = lines.slice(0, safeMax);
+  const ellipsisBudget = Math.max(1, safeCols - lineDisplayWidth('…'));
+  preview[safeMax - 1] = `${truncateFlowText(preview[safeMax - 1], ellipsisBudget)}…`;
+  return { text: preview.join('\n'), truncated: true };
+}
+
 /** Truncate by terminal display columns (not JS string length). */
 export function truncateFlowText(text: string, maxCols: number, ellipsis = '…'): string {
   if (maxCols <= 0) return '';

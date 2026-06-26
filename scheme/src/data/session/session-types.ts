@@ -25,6 +25,16 @@ export interface ExplorationNode {
   toolCallId?: string;
   phase?: 'explore' | 'execute' | 'verify';
   errorCategory?: 'tool' | 'system' | 'result';
+  fileActivity?: FileActivity;
+}
+
+export type FileActivityAction = 'read' | 'search' | 'edit' | 'write' | 'run';
+
+export interface FileActivity {
+  action: FileActivityAction;
+  status: 'running' | 'ok' | 'error';
+  path?: string;
+  summary: string;
 }
 
 export interface Exploration {

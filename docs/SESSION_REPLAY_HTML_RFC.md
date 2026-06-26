@@ -149,7 +149,7 @@ bun run src/main.ts --export-html > ~/Desktop/session-replay.html
 bun run src/main.ts --export-html --session-id abc123 -o replay.html
 
 # 指定主题
-FLOW_THEME=catppuccin bun run src/main.ts --export-html -o replay.html
+FLOW_THEME=archive bun run src/main.ts --export-html -o replay.html
 
 # 导出时附带 AI 摘要（如果已缓存）
 bun run src/main.ts --export-html --with-summaries -o replay.html
@@ -231,7 +231,7 @@ export async function exportSessionToHtml(options: ExportHtmlOptions): Promise<s
     },
     explorations: transformExplorations(explorations, options),
     fileAccess: buildFileAccessMap(explorations),
-    theme: options.theme || process.env.FLOW_THEME || 'tokyo-night',
+    theme: options.theme || process.env.FLOW_THEME || 'transparent',
   };
 
   // 4. 组装 HTML
@@ -248,7 +248,7 @@ export async function exportSessionToHtml(options: ExportHtmlOptions): Promise<s
 
 ```html
 <!DOCTYPE html>
-<html lang="zh-CN" data-theme="tokyo-night">
+<html lang="zh-CN" data-theme="transparent">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -878,7 +878,7 @@ bun run src/main.ts --export-html --anonymize -o replay.html
 - [ ] 实现 `export-html.ts` 核心导出逻辑
 - [ ] 实现 HTML 模板（静态时间线，点击查看详情）
 - [ ] 集成 `--export-html` 到 `main.ts`
-- [ ] 基础 CSS（只用 tokyo-night 主题）
+- [ ] 基础 CSS（只用 transparent 主题）
 - [ ] 手动测试：用真实 session 导出并验证
 
 ### Phase 2: 播放器（1 天）
@@ -926,8 +926,8 @@ bun run src/main.ts --export-html > replay.html
 # 导出指定 session 到文件
 bun run src/main.ts --export-html --session-id abc123 -o replay.html
 
-# 使用 catppuccin 主题导出
-FLOW_THEME=catppuccin bun run src/main.ts --export-html -o replay.html
+# 使用 archive 主题导出
+FLOW_THEME=archive bun run src/main.ts --export-html -o replay.html
 
 # 轻量导出（去掉 thinking，detail 限制 500 字符）
 bun run src/main.ts --export-html --strip-thinking --max-detail-length 500 -o light.html

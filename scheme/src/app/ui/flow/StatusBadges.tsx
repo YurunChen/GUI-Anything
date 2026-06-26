@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { semantic } from '../theme';
+import { tuiTheme, useTuiTheme } from '../theme';
 import type { PersistResult } from '../../../data/protocol/observer-protocol';
 import { getObserverMessages } from '../i18n/observer-messages';
 
@@ -26,13 +26,14 @@ export interface WikiPersistBadgeView {
 export function PersistBadge({ status, result, targetId, turnCount }: PersistBadgeProps): ReactNode {
   if (!status) return null;
 
+  const theme = useTuiTheme();
   const badge = formatWikiPersistBadge(status, result?.reason, { targetId, turnCount });
   if (badge.targetId && badge.statusText) {
     const m = getObserverMessages();
     return (
       <>
-        <span fg={semantic.label.quaternary}>{m.wikiBadgeLabel} </span>
-        <span fg={semantic.label.tertiary}>{badge.targetId} </span>
+        <span fg={theme.semantic.label.quaternary}>{m.wikiBadgeLabel} </span>
+        <span fg={theme.semantic.label.tertiary}>{badge.targetId} </span>
         <span fg={badge.fg}>{badge.statusText}{badge.turnHint ?? ''}</span>
       </>
     );
@@ -72,16 +73,17 @@ function resolveWikiPersistStatus(
   skipHint: string,
 ): { statusText: string; fg: string } {
   const m = getObserverMessages();
+  const theme = tuiTheme;
   switch (status) {
     case 'saved':
-      return { statusText: m.wikiWriteSaved, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWriteSaved, fg: theme.semantic.label.tertiary };
     case 'updated':
-      return { statusText: m.wikiWriteUpdated, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWriteUpdated, fg: theme.semantic.label.tertiary };
     case 'skipped':
-      return { statusText: `${m.wikiWriteSkipped}${skipHint}`, fg: semantic.label.quaternary };
+      return { statusText: `${m.wikiWriteSkipped}${skipHint}`, fg: theme.semantic.label.quaternary };
     case 'failed':
-      return { statusText: m.wikiWriteFailed, fg: semantic.destructive };
+      return { statusText: m.wikiWriteFailed, fg: theme.semantic.destructive };
     case 'pending':
-      return { statusText: m.wikiWritePending, fg: semantic.label.tertiary };
+      return { statusText: m.wikiWritePending, fg: theme.semantic.label.tertiary };
   }
 }

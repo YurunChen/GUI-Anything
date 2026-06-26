@@ -5,7 +5,7 @@
 import type { ReactNode } from 'react';
 import type { ActivityTree, ActivityNode } from '../../domain/types.js';
 import { nodeLabel } from './node-label.js';
-import { typeIcons, typeColors, colors } from './theme.js';
+import { tuiTheme, typeIcons } from './theme.js';
 
 /**
  * Render each node with depth-aware indentation and tree connectors.
@@ -27,8 +27,9 @@ export function TreeNode({
   const label = nodeLabel(node, fileAccess);
   if (!label) return null;
 
-  const color = typeColors[node.type] ?? colors.fg.primary;
+  const color = activityTypeColor(node.type);
   const icon = typeIcons[node.type] ?? '·';
+  const theme = tuiTheme;
 
   // Build indent with vertical guides
   const indent = depth === 0
@@ -39,7 +40,7 @@ export function TreeNode({
   if (depth === 0) {
     return (
       <text>
-        <span fg={colors.status.info}>{label.length > 70 ? label.slice(0, 70) + '…' : label}</span>
+        <span fg={theme.semantic.info}>{label.length > 70 ? label.slice(0, 70) + '…' : label}</span>
       </text>
     );
   }
@@ -47,17 +48,37 @@ export function TreeNode({
   // Tool call nodes that are parents: show a subtle separator line
   const hasChildren = node.childrenIds.length > 0;
   const separator = hasChildren && node.type === 'tool_call'
-    ? <span fg={colors.fg.dim}> ─┬</span>
+    ? <span fg={theme.semantic.label.quaternary}> ─┬</span>
     : null;
 
   return (
     <text>
-      <span fg={colors.fg.dim}>{indent}</span>
+      <span fg={theme.semantic.label.quaternary}>{indent}</span>
       <span fg={color}>{icon}</span>
-      <span fg={colors.fg.primary}> {label}</span>
+      <span fg={theme.semantic.label.primary}> {label}</span>
       {separator}
     </text>
   );
+}
+
+function activityTypeColor(type: string): string {
+  const theme = tuiTheme;
+  switch (type) {
+    case 'prompt':
+      return theme.semantic.info;
+    case 'thinking':
+      return theme.semantic.label.tertiary;
+    case 'tool_call':
+      return theme.semantic.warning;
+    case 'tool_result':
+      return theme.semantic.success;
+    case 'response':
+      return theme.semantic.label.primary;
+    case 'group':
+      return theme.semantic.tintMuted;
+    default:
+      return theme.semantic.label.primary;
+  }
 }
 
 /**
