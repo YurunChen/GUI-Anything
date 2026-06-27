@@ -154,11 +154,18 @@ export function buildCardMetaFromExploration(exploration: Exploration): Explorat
     .slice(0, 4)
     .map(([name, count]) => `${name}×${count}`)
     .join(' · ');
+  const durationMs =
+    typeof exploration.endedAt === 'number' && exploration.endedAt > exploration.startedAt
+      ? exploration.endedAt - exploration.startedAt
+      : undefined;
   return {
     status: exploration.status,
     toolCount: toolNodes.length,
     errorCount: errorNodes.length,
     toolSummary: toolSummary || undefined,
+    tokens: exploration.tokens && exploration.tokens > 0 ? exploration.tokens : undefined,
+    files: exploration.files && exploration.files.length > 0 ? [...exploration.files] : undefined,
+    durationMs,
   };
 }
 

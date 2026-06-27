@@ -43,6 +43,40 @@ export interface EvolutionRevision {
   note?: string;
 }
 
+/** Per-exploration behavioural metrics lifted from explorations[].meta + retrieval/write. */
+export interface ExplorationMetricsRaw {
+  toolCount: number;
+  errorCount: number;
+  interrupted: boolean;
+  tokens?: number;
+  files?: string[];
+  durationMs?: number;
+  retrieval: boolean;
+  write: boolean;
+}
+
+/** A prior-knowledge retrieval lifted from one exploration's KNOWLEDGE card. */
+export interface KnowledgeRetrievalRaw {
+  explorationId: string;
+  request: string;
+  excerpt: string;
+  tags: string[];
+  score: number;
+  type: string;
+}
+
+/** A wiki entry written/curated from one exploration. */
+export interface KnowledgeWriteRaw {
+  explorationId: string;
+  targetId?: string;
+  targetPath?: string;
+  status: string;
+  /** Curator persist reason, e.g. "knowledge_saved:C002" — carries the context key. */
+  reason?: string;
+  /** The exploration's question — human-readable label for what this knowledge is about. */
+  question?: string;
+}
+
 /** Raw per-session evolution lifted from a single bundle. */
 export interface SessionEvolutionRaw {
   sessionId: string;
@@ -53,6 +87,12 @@ export interface SessionEvolutionRaw {
   revisions: EvolutionRevision[];
   /** explorationId → summary text, for combinedSummary fallback. */
   summaries: Record<string, string>;
+  /** explorationId → behavioural metrics (P0). Absent keys ⇒ no reliable data. */
+  metricsByExp: Record<string, ExplorationMetricsRaw>;
+  /** Prior knowledge the session stood on (P3). */
+  retrievals: KnowledgeRetrievalRaw[];
+  /** Knowledge the session deposited back (P3). */
+  writes: KnowledgeWriteRaw[];
 }
 
 /** Raw project-wide evolution: all matching sessions sorted by startedAt asc. */
@@ -62,6 +102,24 @@ export interface ProjectEvolutionRaw {
 }
 
 // ─── Domain view-model (produced by services/evolution/evolution-service.ts) ───
+
+/**
+ * Aggregated behavioural metrics for a node / era / session / project.
+ * Built only from reliable signals (explorations[].meta + history[].at + retrieval/write).
+ */
+export interface EvolutionMetrics {
+  toolCount: number;
+  errorCount: number;
+  retrievals: number;
+  writes: number;
+  interrupted: number;
+  /** Wall-clock span: node = next milestone at − this at; session/project = first→last at. */
+  elapsedMs?: number;
+  /** Σ tokens across explorations (P-extra). Absent ⇒ no reliable token data. */
+  tokens?: number;
+  /** Deduped file paths touched (P-extra). */
+  files?: string[];
+}
 
 /** A refine/continue step folded under a milestone node. */
 export interface EvolutionSubStep {
@@ -83,6 +141,8 @@ export interface EvolutionNode {
   /** Semantic icon name (from EVOLUTION_ICON_NAMES) for "what this milestone is about". */
   icon?: EvolutionIcon;
   children: EvolutionSubStep[];
+  /** Aggregated metrics for this milestone (pivot + folded children). */
+  metrics?: EvolutionMetrics;
 }
 
 /** Left-rail era (a synthesized capability stage). */
@@ -96,6 +156,8 @@ export interface EvolutionEra {
   /** Capability keywords introduced at this era — drives left-rail enter animation. */
   sceneAdds: string[];
   nodeIds: string[];
+  /** Aggregated metrics across this era's nodes. */
+  metrics?: EvolutionMetrics;
 }
 
 /** Single-session drill-down view. */
@@ -105,6 +167,7 @@ export interface SessionEvolution {
   startedAt: number;
   eras: EvolutionEra[];
   nodes: EvolutionNode[];
+  metrics: EvolutionMetrics;
 }
 
 /** Project overview view. */
@@ -112,6 +175,82 @@ export interface ProjectEvolution {
   workspaceRoot: string;
   eras: EvolutionEra[];
   nodes: EvolutionNode[];
+  metrics: EvolutionMetrics;
+}
+
+// ─── Knowledge flow (P3): what the project stood on / deposited back ───
+
+/** One prior-knowledge hit, mapped (best-effort) to the milestone that used it. */
+export interface KnowledgeInflow {
+  sessionId: string;
+  nodeId?: string;
+  nodeTitle?: string;
+  request: string;
+  excerpt: string;
+  tags: string[];
+  score: number;
+  type: string;
+}
+
+/** One wiki entry deposited by the project. */
+export interface KnowledgeOutflow {
+  sessionId: string;
+  nodeId?: string;
+  nodeTitle?: string;
+  targetId?: string;
+  targetPath?: string;
+  status: string;
+  /** Human-readable knowledge body — the exploration's AI summary (what was figured out). */
+  summary?: string;
+  /** The exploration's question — what this deposit is about. */
+  question?: string;
+  /** Context key the knowledge was saved into, e.g. "C002" (parsed from write reason). */
+  contextKey?: string;
+}
+
+/** Two-sided knowledge flow for the "知识流" tab. */
+export interface KnowledgeFlow {
+  inflow: KnowledgeInflow[];
+  outflow: KnowledgeOutflow[];
+}
+
+// ─── AI narrative payloads (filled by services/ai/* synthesizers; optional) ───
+
+/** Intent transition narrative: why the project pivoted from one milestone to the next. */
+export interface TransitionNarrative {
+  edges: { fromNodeId: string; toNodeId: string; why: string; evidence?: string }[];
+}
+
+/** Coding personality (SBTI/ABTI) derived from behavioural metrics — no questionnaire. */
+export interface CodingPersona {
+  scores: { axis: string; value: number; leftLabel: string; rightLabel: string }[];
+  /** 6-letter pole code (e.g. "DTRSNV"). */
+  typeCode: string;
+  title: string;
+  tagline: string;
+  reading: string;
+  signatureNodeId?: string;
+  // ── archetype gallery (v2) ──
+  /** Matched archetype short code, e.g. "ARCH" / "NIGHT" / "OWL". */
+  archetypeCode?: string;
+  cnName?: string;
+  intro?: string;
+  catchphrase?: string;
+  devStyle?: string;
+  rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'hidden';
+  /** Human-readable dominant-pole DNA string, e.g. "聚焦·试错·复用·交付·夜行·坚守". */
+  dna?: string;
+  /** Avatar image: a server path (/persona/CODE.webp) live, or an inlined data URI for static export. */
+  avatar?: string;
+  /** Top-3 nearest archetypes for a "spectrum" display. */
+  spectrum?: { code: string; cn: string; similarity: number }[];
+}
+
+/** Provenance for the work-canvas footer. */
+export interface EvolutionProvenance {
+  agent: string;
+  model?: string;
+  builtAt: number;
 }
 
 /** Top-level payload embedded into the self-contained HTML. */
@@ -122,4 +261,23 @@ export interface EvolutionExport {
   project: ProjectEvolution;
   sessions: SessionEvolution[];
   theme?: string;
+  /** Two-sided knowledge flow (P3). */
+  knowledge?: KnowledgeFlow;
+  /** AI intent-transition narrative (P4). */
+  narrative?: TransitionNarrative;
+  /** Coding personality SBTI (P5). */
+  persona?: CodingPersona;
+  /** Provenance footer (P2). */
+  generatedBy?: EvolutionProvenance;
+  /**
+   * When true, the page is served by the live evolution server: the client opens
+   * a WebSocket and re-renders in place on each pushed snapshot (no page reload).
+   * Absent for static exports, which are fully self-contained and never poll/connect.
+   */
+  liveServer?: boolean;
+  /**
+   * Content-addressed token: a hash of the deterministic view-model (excludes
+   * wall-clock provenance). The server uses it to skip pushing unchanged snapshots.
+   */
+  contentVersion?: string;
 }

@@ -144,7 +144,10 @@ function firstTextContent(message: unknown): string {
 
 function isInterruptedQuestion(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  return normalized.includes('request interrupted by user for tool use');
+  // Claude Code injects this pseudo user message when a turn is ESC-aborted.
+  // Two observed forms: "[Request interrupted by user]" (mid-thinking/text) and
+  // "[Request interrupted by user for tool use]" (mid tool call).
+  return normalized.includes('request interrupted by user');
 }
 
 function detectPhaseForTool(toolName: string, toolInput: unknown): 'explore' | 'execute' | 'verify' {
@@ -304,6 +307,7 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
   let current: Exploration | null = null;
   let seq = 0;
   const pendingToolCallMap = new Map<string, ExplorationNode>();
+  const countedUsageIds = new Set<string>();
 
   for (const line of lines) {
     let entry: Record<string, unknown>;
@@ -356,14 +360,38 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
 
       const question = firstTextContent(message);
       if (!question) continue;
-      const interrupted = isInterruptedQuestion(question);
+
+      // ESC abort: Claude Code writes a pseudo user message whose text is the
+      // interrupt marker. It is not a new question — it finalizes the turn that
+      // was in flight. Mark the running exploration interrupted and do NOT spawn a
+      // phantom exploration, so the Observer stops showing it as 运行中.
+      if (isInterruptedQuestion(question)) {
+        if (current && current.status === 'running') {
+          current.status = 'interrupted';
+          current.endedAt = timestamp;
+          current.completionReason = 'interrupted';
+          pendingToolCallMap.clear();
+        }
+        continue;
+      }
+
+      // A genuine new prompt began while the previous turn was still 'running'
+      // (no result / end_turn ever arrived) — an ESC abort that left no marker.
+      // Finalize it as interrupted before starting the new exploration. The truly
+      // in-flight last turn is never reached here (it has no following prompt).
+      if (current && current.status === 'running') {
+        current.status = 'interrupted';
+        current.endedAt = current.endedAt ?? timestamp;
+        current.completionReason = 'interrupted';
+      }
+
       current = {
         id: `exp_${explorations.length + 1}`,
         question,
         startedAt: timestamp,
-        status: interrupted ? 'interrupted' : 'running',
-        endedAt: interrupted ? timestamp : undefined,
-        completionReason: interrupted ? 'interrupted' : undefined,
+        status: 'running',
+        endedAt: undefined,
+        completionReason: undefined,
         currentPhase: 'idle',
         phaseSeen: { explore: false, execute: false, verify: false },
         errorCounts: { tool: 0, system: 0, result: 0 },
@@ -377,16 +405,47 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
     if (!current) continue;
 
     if (type === 'assistant') {
-      const message = entry.message as { content?: unknown } | undefined;
+      const message = entry.message as { content?: unknown; usage?: Record<string, unknown>; id?: unknown } | undefined;
       const blocks = Array.isArray(message?.content) ? message?.content as Array<Record<string, unknown>> : [];
+
+      // Per-exploration token footprint: sum assistant usage, deduped by message/entry id.
+      const usage = message?.usage;
+      if (usage) {
+        const usageId =
+          (typeof message?.id === 'string' ? message.id : undefined) ??
+          (typeof entry.uuid === 'string' ? (entry.uuid as string) : undefined);
+        if (!usageId || !countedUsageIds.has(usageId)) {
+          const tokens =
+            asNumber(usage.input_tokens) +
+            asNumber(usage.output_tokens) +
+            asNumber(usage.cache_read_input_tokens) +
+            asNumber(usage.cache_creation_input_tokens);
+          if (tokens > 0) current.tokens = (current.tokens ?? 0) + tokens;
+          if (usageId) countedUsageIds.add(usageId);
+        }
+      }
+
       for (const block of blocks) {
         if (block.type === 'tool_use') {
           const toolName = typeof block.name === 'string' ? block.name : 'unknown';
           const inputPreview = toPreview(block.input, 50);
-          const rawCommand =
-            block.input && typeof block.input === 'object' && typeof (block.input as Record<string, unknown>).command === 'string'
-              ? (block.input as Record<string, unknown>).command as string
-              : undefined;
+          const input =
+            block.input && typeof block.input === 'object' ? (block.input as Record<string, unknown>) : undefined;
+          const rawCommand = input && typeof input.command === 'string' ? input.command : undefined;
+          // Capture file footprint from common file-bearing tools.
+          const filePath =
+            input &&
+            (typeof input.file_path === 'string'
+              ? input.file_path
+              : typeof input.path === 'string'
+                ? input.path
+                : typeof input.notebook_path === 'string'
+                  ? input.notebook_path
+                  : undefined);
+          if (filePath) {
+            if (!current.files) current.files = [];
+            if (!current.files.includes(filePath)) current.files.push(filePath);
+          }
           const phase = detectPhaseForTool(toolName, block.input);
           const node: ExplorationNode = {
             id: `exp_node_${++seq}`,

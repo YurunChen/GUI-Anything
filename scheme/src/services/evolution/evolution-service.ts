@@ -11,16 +11,40 @@
 import type {
   EvolutionEra,
   EvolutionExport,
+  EvolutionMetrics,
   EvolutionNode,
   EvolutionRevision,
   EvolutionSubStep,
+  KnowledgeFlow,
   ProjectEvolution,
   ProjectEvolutionRaw,
   SessionEvolution,
   SessionEvolutionRaw,
 } from '../../data/protocol/evolution-types';
 import { isEvolutionIcon } from '../../data/protocol/evolution-types';
+import { AUTO_INFERRED_FLOWCHART_NOTE } from '../ai/intent-infer';
 import { pickIcon } from './icon-heuristic';
+import { nodeMetrics, sumMetrics } from './metrics-aggregate';
+
+/**
+ * Drop revisions that carry no real evolution signal: greeting/placeholder turns
+ * (`idle`) and milestones synthesized purely because the AI omitted a flowchart
+ * (`auto-inferred (flowchart missing)`). Trivial one-shot sessions whose every turn
+ * is noise (e.g. "介绍一下这个项目") collapse to zero revisions and drop out entirely,
+ * so the evolution main line reflects real feature work, not export-test runs.
+ */
+export function isNoiseRevision(rev: EvolutionRevision): boolean {
+  if (rev.delta === 'idle') return true;
+  if (rev.note?.trim() === AUTO_INFERRED_FLOWCHART_NOTE) return true;
+  return false;
+}
+
+export function filterNoiseSessions(raw: ProjectEvolutionRaw): ProjectEvolutionRaw {
+  const sessions = raw.sessions
+    .map((s) => ({ ...s, revisions: s.revisions.filter((r) => !isNoiseRevision(r)) }))
+    .filter((s) => s.revisions.length > 0);
+  return { ...raw, sessions };
+}
 
 /** Replaces rule-based era grouping. Return null/throw → rule fallback. */
 export type EraSynthesizer = (
@@ -38,6 +62,8 @@ function noteFor(rev: EvolutionRevision, summaries: Record<string, string>): str
 /** Build milestone nodes from one session's chronological revisions. */
 function buildSessionNodes(raw: SessionEvolutionRaw): EvolutionNode[] {
   const nodes: EvolutionNode[] = [];
+  // Parallel array: explorationIds of each milestone's folded children.
+  const childExpIds: string[][] = [];
   for (const rev of raw.revisions) {
     const isMilestone = rev.delta === 'pivot' || nodes.length === 0;
     if (isMilestone) {
@@ -52,6 +78,7 @@ function buildSessionNodes(raw: SessionEvolutionRaw): EvolutionNode[] {
         icon: pickIcon(rev.nodeTitle, rev.intentKey),
         children: [],
       });
+      childExpIds.push([]);
     } else {
       const sub: EvolutionSubStep = {
         title: rev.nodeTitle,
@@ -60,9 +87,44 @@ function buildSessionNodes(raw: SessionEvolutionRaw): EvolutionNode[] {
         delta: rev.delta,
       };
       nodes[nodes.length - 1].children.push(sub);
+      childExpIds[childExpIds.length - 1].push(rev.explorationId);
     }
   }
+  // Per-node metrics: elapsedMs = span until the next milestone (last → session updatedAt).
+  for (let i = 0; i < nodes.length; i++) {
+    const next = i < nodes.length - 1 ? nodes[i + 1].at : raw.updatedAt;
+    const elapsed = next > nodes[i].at ? next - nodes[i].at : undefined;
+    nodes[i].metrics = nodeMetrics(nodes[i], childExpIds[i], raw.metricsByExp, elapsed);
+  }
   return nodes;
+}
+
+/** Roll node metrics up into each era (Σ over the era's member nodes). */
+function attachEraMetrics(eras: EvolutionEra[], nodes: EvolutionNode[]): void {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  for (const era of eras) {
+    const parts = era.nodeIds.map((id) => byId.get(id)?.metrics);
+    const metrics = sumMetrics(parts);
+    const ats = era.nodeIds
+      .map((id) => byId.get(id)?.at)
+      .filter((v): v is number => typeof v === 'number');
+    if (ats.length > 1) {
+      const span = Math.max(...ats) - Math.min(...ats);
+      if (span > 0) metrics.elapsedMs = span;
+    }
+    era.metrics = metrics;
+  }
+}
+
+/** Scope-level metrics across all nodes (project/session); elapsedMs = first→last at span. */
+function scopeMetrics(nodes: EvolutionNode[]): EvolutionMetrics {
+  const metrics = sumMetrics(nodes.map((n) => n.metrics));
+  const ats = nodes.map((n) => n.at).filter((v) => typeof v === 'number');
+  if (ats.length > 1) {
+    const span = Math.max(...ats) - Math.min(...ats);
+    if (span > 0) metrics.elapsedMs = span;
+  }
+  return metrics;
 }
 
 /** Rule fallback: group consecutive nodes sharing the leading sub-step intent. */
@@ -118,13 +180,18 @@ async function synthEras(
       const eras = await synthesizer(nodes, context);
       if (eras && eras.length > 0) {
         const valid = reconcileEras(eras, nodes);
-        if (valid) return { eras: valid, aiUsed: true };
+        if (valid) {
+          attachEraMetrics(valid, nodes);
+          return { eras: valid, aiUsed: true };
+        }
       }
     } catch {
       // fall through to rule fallback
     }
   }
-  return { eras: buildRuleEras(nodes, ruleKeys), aiUsed: false };
+  const ruleEras = buildRuleEras(nodes, ruleKeys);
+  attachEraMetrics(ruleEras, nodes);
+  return { eras: ruleEras, aiUsed: false };
 }
 
 /** Ensure AI eras reference real node ids and every node is assigned an era. */
@@ -163,6 +230,66 @@ function reconcileEras(eras: EvolutionEra[], nodes: EvolutionNode[]): EvolutionE
   return normalized;
 }
 
+/** Map each explorationId → its owning milestone (pivot or folded child). */
+function expToNodeIndex(raw: SessionEvolutionRaw[]): Map<string, { nodeId: string; nodeTitle: string }> {
+  const index = new Map<string, { nodeId: string; nodeTitle: string }>();
+  for (const session of raw) {
+    let current: { nodeId: string; nodeTitle: string } | null = null;
+    let isFirst = true;
+    for (const rev of session.revisions) {
+      if (rev.delta === 'pivot' || isFirst) {
+        current = { nodeId: `${session.sessionId}:${rev.explorationId}`, nodeTitle: rev.nodeTitle };
+        isFirst = false;
+      }
+      if (current) index.set(`${session.sessionId}:${rev.explorationId}`, current);
+    }
+  }
+  return index;
+}
+
+/** Aggregate project-wide knowledge inflow (retrievals) / outflow (writes). */
+function buildKnowledgeFlow(raw: SessionEvolutionRaw[]): KnowledgeFlow {
+  const index = expToNodeIndex(raw);
+  const inflow: KnowledgeFlow['inflow'] = [];
+  const outflow: KnowledgeFlow['outflow'] = [];
+  for (const session of raw) {
+    for (const ret of session.retrievals) {
+      const node = index.get(`${session.sessionId}:${ret.explorationId}`);
+      inflow.push({
+        sessionId: session.sessionId,
+        nodeId: node?.nodeId,
+        nodeTitle: node?.nodeTitle,
+        request: ret.request,
+        excerpt: ret.excerpt,
+        tags: ret.tags,
+        score: ret.score,
+        type: ret.type,
+      });
+    }
+    for (const w of session.writes) {
+      const node = index.get(`${session.sessionId}:${w.explorationId}`);
+      // reason is "knowledge_saved:C002" — keep just the context key for display.
+      const contextKey = w.reason && w.reason.includes(':')
+        ? w.reason.slice(w.reason.indexOf(':') + 1).trim()
+        : undefined;
+      outflow.push({
+        sessionId: session.sessionId,
+        nodeId: node?.nodeId,
+        nodeTitle: node?.nodeTitle,
+        targetId: w.targetId,
+        targetPath: w.targetPath,
+        status: w.status,
+        summary: session.summaries[w.explorationId],
+        question: w.question,
+        contextKey,
+      });
+    }
+  }
+  // Strongest prior knowledge first.
+  inflow.sort((a, b) => b.score - a.score);
+  return { inflow, outflow };
+}
+
 export interface BuildEvolutionInput {
   raw: ProjectEvolutionRaw;
   theme?: string;
@@ -170,7 +297,8 @@ export interface BuildEvolutionInput {
 }
 
 export async function buildEvolutionExport(input: BuildEvolutionInput): Promise<EvolutionExport> {
-  const { raw, theme, eraSynthesizer } = input;
+  const { theme, eraSynthesizer } = input;
+  const raw = filterNoiseSessions(input.raw);
   const ruleKeys = intentKeyByNode(raw.sessions);
 
   // Project nodes: per-session nodes concatenated (sessions already sorted asc).
@@ -181,6 +309,7 @@ export async function buildEvolutionExport(input: BuildEvolutionInput): Promise<
     workspaceRoot: raw.workspaceRoot,
     eras: projectResult.eras,
     nodes: projectNodes,
+    metrics: scopeMetrics(projectNodes),
   };
 
   // Session drill-downs (rule-based eras only; left-rail abstraction per session).
@@ -188,14 +317,19 @@ export async function buildEvolutionExport(input: BuildEvolutionInput): Promise<
   for (const sessionRaw of raw.sessions) {
     const nodes = buildSessionNodes(sessionRaw);
     const eras = buildRuleEras(nodes, ruleKeys);
+    attachEraMetrics(eras, nodes);
     sessions.push({
       sessionId: sessionRaw.sessionId,
       title: sessionRaw.title,
       startedAt: sessionRaw.startedAt,
       eras,
       nodes,
+      metrics: scopeMetrics(nodes),
     });
   }
+
+  const knowledgeFlow = buildKnowledgeFlow(raw.sessions);
+  const knowledge = knowledgeFlow.inflow.length || knowledgeFlow.outflow.length ? knowledgeFlow : undefined;
 
   return {
     version: '1.0',
@@ -204,5 +338,6 @@ export async function buildEvolutionExport(input: BuildEvolutionInput): Promise<
     project,
     sessions,
     theme,
+    knowledge,
   };
 }

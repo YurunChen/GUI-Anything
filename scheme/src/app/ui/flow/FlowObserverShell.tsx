@@ -64,6 +64,8 @@ interface FlowObserverShellProps {
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
   onSendSnapshot?: (note?: string) => void;
   onFileWikiAudit?: () => { filed: boolean; targetId?: string };
+  onExportHtml?: (force?: boolean) => void;
+  exportStatus?: string;
   notifyStatus?: string;
 }
 
@@ -134,7 +136,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     tree: props.tree,
     runtimeModel: props.runtimeModel,
     tokenDisplay: props.tokenDisplay,
-    notifyStatus: chromeHint ?? props.notifyStatus,
+    notifyStatus: chromeHint ?? props.exportStatus ?? props.notifyStatus,
     themeNotification: showThemeNotification ? themeManager.getThemeDisplayName() : undefined,
     terminalWidth,
     pendingSummaryCount: props.pendingSummaryCount,
@@ -155,10 +157,12 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     calmMode,
     notifyAvailable: !!props.onSendSnapshot,
     wikiAuditAvailable: !!props.onFileWikiAudit,
+    exportAvailable: !!props.onExportHtml,
   }), [
     calmMode,
     inspirationInputFocused,
     observerMode,
+    props.onExportHtml,
     props.onFileWikiAudit,
     props.onSendSnapshot,
     showNotes,
@@ -210,6 +214,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       inspirationInputFocused,
       notifyAvailable: !!props.onSendSnapshot,
       wikiAuditAvailable: !!props.onFileWikiAudit,
+      exportAvailable: !!props.onExportHtml,
     });
     if (!action) return;
 
@@ -243,6 +248,12 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         break;
       case 'file_wiki_audit':
         handleFileWikiAudit();
+        break;
+      case 'export_html':
+        props.onExportHtml?.(false);
+        break;
+      case 'regenerate_html':
+        props.onExportHtml?.(true);
         break;
       case 'theme':
         applyThemeKind(action.kind);

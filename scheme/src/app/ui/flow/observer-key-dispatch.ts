@@ -15,6 +15,7 @@ export interface ObserverKeyState {
   inspirationInputFocused: boolean;
   notifyAvailable: boolean;
   wikiAuditAvailable: boolean;
+  exportAvailable: boolean;
 }
 
 export type ObserverKeyAction =
@@ -28,6 +29,8 @@ export type ObserverKeyAction =
   | { type: 'toggle_mode' }
   | { type: 'send_snapshot' }
   | { type: 'file_wiki_audit' }
+  | { type: 'export_html' }
+  | { type: 'regenerate_html' }
   | { type: 'theme'; kind: 'morandi' | 'prev' | 'next' };
 
 /** OpenTUI emits punctuation as literal chars (`/` `?`), not readline-style `slash`. */
@@ -108,6 +111,15 @@ export function dispatchObserverKey(
 
   if (key.name === 'k' && !key.ctrl && !key.meta && state.wikiAuditAvailable) {
     return { type: 'file_wiki_audit' };
+  }
+
+  if (state.exportAvailable && !key.ctrl && !key.meta && !key.shift) {
+    if (key.name === 'e') {
+      return { type: 'export_html' };
+    }
+    if (key.name === 'r') {
+      return { type: 'regenerate_html' };
+    }
   }
 
   const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);

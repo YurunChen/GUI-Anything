@@ -1,4 +1,9 @@
 import { describe, expect, test } from 'bun:test';
+
+// Footer labels are localized; pin to English so assertions are locale-stable
+// regardless of the dev machine's LANG (resolveObserverLocale reads FLOW_LOCALE first).
+process.env.FLOW_LOCALE = 'en';
+
 import {
   buildFooterHotkeyBody,
   buildObserverHotkeyHints,
@@ -12,6 +17,7 @@ const base: ObserverHotkeyContext = {
   calmMode: false,
   notifyAvailable: true,
   wikiAuditAvailable: true,
+  exportAvailable: true,
 };
 
 describe('buildObserverHotkeyHints', () => {

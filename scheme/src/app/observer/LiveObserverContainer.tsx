@@ -15,6 +15,7 @@ import { useGraphSnapshot } from './hooks/useGraphSnapshot';
 import { useGraphConsolidation } from './hooks/useGraphConsolidation';
 import { buildFlowGraphSnapshot } from './view-model/flow-graph-builder';
 import { useNotification } from './hooks/useNotification';
+import { useEvolutionExport } from './hooks/useEvolutionExport';
 import { fileWikiAudit } from '../../services/wiki/audit-service';
 import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
 
@@ -142,6 +143,8 @@ export function LiveObserverContainer(): ReactNode {
     lastNotifyStatus,
   } = useNotification(sessionId, tree ?? undefined);
 
+  const { exportHtml, lastExportStatus } = useEvolutionExport();
+
   const handleFileWikiAudit = useCallback((): { filed: boolean; targetId?: string } => {
     if (!sessionId) return { filed: false };
     const bundleService = getSessionBundleService();
@@ -195,6 +198,8 @@ export function LiveObserverContainer(): ReactNode {
       sessionIntent={sessionIntent}
       onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
       onFileWikiAudit={handleFileWikiAudit}
+      onExportHtml={exportHtml}
+      exportStatus={lastExportStatus}
       notifyStatus={pickerStatusHint ?? lastNotifyStatus}
     />
   );

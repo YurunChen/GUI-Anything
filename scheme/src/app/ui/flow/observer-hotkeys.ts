@@ -4,6 +4,7 @@
  */
 
 import { getObserverMessages, type ObserverMessages } from '../i18n/observer-messages';
+import { lineDisplayWidth, truncateFlowText } from '../../../utils/flow-text';
 
 export type ObserverFooterMode = 'default' | 'notes' | 'notes-input';
 
@@ -15,6 +16,8 @@ export interface ObserverHotkeyContext {
   notifyAvailable: boolean;
   /** `k` files audit for latest KNOWLEDGE hit. */
   wikiAuditAvailable: boolean;
+  /** `e` exports/opens project evolution HTML. */
+  exportAvailable: boolean;
 }
 
 export interface HotkeyHint {
@@ -79,6 +82,9 @@ function sessionHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 
   }
   if (ctx.wikiAuditAvailable) {
     out.push(hint('wiki-audit', row, order++, m.cmdWikiAudit, m.cmdWikiAuditShort));
+  }
+  if (ctx.exportAvailable) {
+    out.push(hint('export', row, order++, m.cmdExport, m.cmdExportShort));
   }
   out.push(
     hint('quit', row, order++, quitLabel(ctx, m), quitLabelShort(ctx, m)),
@@ -148,25 +154,27 @@ function joinHintLine(
   const shortParts = sorted.map((h) => h.short);
 
   const fullLine = fullParts.join(sep);
-  if (fullLine.length <= maxWidth) return fullLine;
+  if (lineDisplayWidth(fullLine) <= maxWidth) return fullLine;
 
   const shortLine = shortParts.join(sep);
-  if (shortLine.length <= maxWidth || compact) {
-    return shortLine.length <= maxWidth ? shortLine : trimHintLine(shortParts, sep, maxWidth);
+  if (lineDisplayWidth(shortLine) <= maxWidth || compact) {
+    return lineDisplayWidth(shortLine) <= maxWidth ? shortLine : trimHintLine(shortParts, sep, maxWidth);
   }
 
   return trimHintLine(fullParts, sep, maxWidth);
 }
 
+// Width is measured in terminal columns (CJK glyphs are 2 cols), not JS string
+// length, so Chinese footer labels don't overflow the pane.
 function trimHintLine(parts: string[], sep: string, maxWidth: number): string {
   let line = parts[0] ?? '';
   for (let i = 1; i < parts.length; i++) {
     const candidate = `${line}${sep}${parts[i]}`;
-    if (candidate.length > maxWidth) break;
+    if (lineDisplayWidth(candidate) > maxWidth) break;
     line = candidate;
   }
-  if (line.length > maxWidth && line.length > 3) {
-    return `${line.slice(0, maxWidth - 1)}…`;
+  if (lineDisplayWidth(line) > maxWidth) {
+    return truncateFlowText(line, maxWidth);
   }
   return line;
 }
@@ -203,6 +211,9 @@ export function buildHelpLinesFromHotkeys(ctx: ObserverHotkeyContext): string[] 
   }
   if (byId.has('wiki-audit')) {
     lines.push(m.helpKeyWikiAudit);
+  }
+  if (byId.has('export')) {
+    lines.push(m.helpKeyExport, m.helpKeyRegen);
   }
   lines.push(ctx.footerMode === 'notes' || ctx.footerMode === 'notes-input'
     ? m.helpKeyQuitNotes
