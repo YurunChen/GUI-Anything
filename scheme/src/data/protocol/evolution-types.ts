@@ -71,6 +71,10 @@ export interface KnowledgeWriteRaw {
   targetId?: string;
   targetPath?: string;
   status: string;
+  /** Curator persist reason, e.g. "knowledge_saved:C002" — carries the context key. */
+  reason?: string;
+  /** The exploration's question — human-readable label for what this knowledge is about. */
+  question?: string;
 }
 
 /** Raw per-session evolution lifted from a single bundle. */
@@ -196,6 +200,12 @@ export interface KnowledgeOutflow {
   targetId?: string;
   targetPath?: string;
   status: string;
+  /** Human-readable knowledge body — the exploration's AI summary (what was figured out). */
+  summary?: string;
+  /** The exploration's question — what this deposit is about. */
+  question?: string;
+  /** Context key the knowledge was saved into, e.g. "C002" (parsed from write reason). */
+  contextKey?: string;
 }
 
 /** Two-sided knowledge flow for the "知识流" tab. */
@@ -211,24 +221,29 @@ export interface TransitionNarrative {
   edges: { fromNodeId: string; toNodeId: string; why: string; evidence?: string }[];
 }
 
-/** Coding personality (SBTI) derived from behavioural metrics. */
+/** Coding personality (SBTI/ABTI) derived from behavioural metrics — no questionnaire. */
 export interface CodingPersona {
   scores: { axis: string; value: number; leftLabel: string; rightLabel: string }[];
+  /** 6-letter pole code (e.g. "DTRSNV"). */
   typeCode: string;
   title: string;
   tagline: string;
   reading: string;
   signatureNodeId?: string;
-}
-
-/** Project-wide one-page digest (six fixed sections). */
-export interface ProjectDigest {
-  headline: string;
-  chapters: { era: string; line: string; span: string }[];
-  turningPoints: { title: string; why: string }[];
-  outputs: { label: string; value: string }[];
-  learned: string[];
-  nextSteps: string[];
+  // ── archetype gallery (v2) ──
+  /** Matched archetype short code, e.g. "ARCH" / "NIGHT" / "OWL". */
+  archetypeCode?: string;
+  cnName?: string;
+  intro?: string;
+  catchphrase?: string;
+  devStyle?: string;
+  rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'hidden';
+  /** Human-readable dominant-pole DNA string, e.g. "聚焦·试错·复用·交付·夜行·坚守". */
+  dna?: string;
+  /** Avatar image: a server path (/persona/CODE.webp) live, or an inlined data URI for static export. */
+  avatar?: string;
+  /** Top-3 nearest archetypes for a "spectrum" display. */
+  spectrum?: { code: string; cn: string; similarity: number }[];
 }
 
 /** Provenance for the work-canvas footer. */
@@ -252,8 +267,17 @@ export interface EvolutionExport {
   narrative?: TransitionNarrative;
   /** Coding personality SBTI (P5). */
   persona?: CodingPersona;
-  /** Project one-page digest (P6). */
-  digest?: ProjectDigest;
   /** Provenance footer (P2). */
   generatedBy?: EvolutionProvenance;
+  /**
+   * When true, the page is served by the live evolution server: the client opens
+   * a WebSocket and re-renders in place on each pushed snapshot (no page reload).
+   * Absent for static exports, which are fully self-contained and never poll/connect.
+   */
+  liveServer?: boolean;
+  /**
+   * Content-addressed token: a hash of the deterministic view-model (excludes
+   * wall-clock provenance). The server uses it to skip pushing unchanged snapshots.
+   */
+  contentVersion?: string;
 }

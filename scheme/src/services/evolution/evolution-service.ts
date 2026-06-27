@@ -268,6 +268,10 @@ function buildKnowledgeFlow(raw: SessionEvolutionRaw[]): KnowledgeFlow {
     }
     for (const w of session.writes) {
       const node = index.get(`${session.sessionId}:${w.explorationId}`);
+      // reason is "knowledge_saved:C002" — keep just the context key for display.
+      const contextKey = w.reason && w.reason.includes(':')
+        ? w.reason.slice(w.reason.indexOf(':') + 1).trim()
+        : undefined;
       outflow.push({
         sessionId: session.sessionId,
         nodeId: node?.nodeId,
@@ -275,6 +279,9 @@ function buildKnowledgeFlow(raw: SessionEvolutionRaw[]): KnowledgeFlow {
         targetId: w.targetId,
         targetPath: w.targetPath,
         status: w.status,
+        summary: session.summaries[w.explorationId],
+        question: w.question,
+        contextKey,
       });
     }
   }

@@ -5,19 +5,31 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 
 import { defaultProjectEvolutionRepository } from '../../data/wiki/project-evolution-repository';
-import type { ProjectEvolutionRaw } from '../../data/protocol/evolution-types';
+import { resolveWorkspaceRootForCache } from '../../data/session/workspace-root';
+import type { EvolutionExport, ProjectEvolutionRaw } from '../../data/protocol/evolution-types';
 import { buildEvolutionExport, type EraSynthesizer } from '../../services/evolution/evolution-service';
 import { ruleBasedPersona } from '../../services/evolution/persona-score';
-import { buildBaseDigest } from '../../services/evolution/digest-build';
 import type { TransitionSynthesizer } from '../../services/ai/evolution-transitions';
 import type { PersonaSynthesizer } from '../../services/ai/coding-persona';
-import type { DigestSynthesizer } from '../../services/ai/project-digest';
 import { sanitizePath, redactSecrets } from '../shared/sanitize';
 import { generateEvolutionHtml } from './template';
 import { generateEmptyEvolutionHtml } from './empty-state';
+import { personaAvatarExists, personaAvatarDataUri } from './persona-avatar';
 import type { ExportEvolutionOptions } from './types';
+
+/**
+ * Write via a unique temp file + atomic rename, so a concurrent reader (the open
+ * page polling the sidecar) never observes a half-written file, and concurrent
+ * watchers — one per co-developing session — never tear each other's writes.
+ */
+function writeFileAtomic(targetPath: string, content: string): void {
+  const tmp = `${targetPath}.tmp-${process.pid}-${Math.random().toString(36).slice(2)}`;
+  fs.writeFileSync(tmp, content, 'utf-8');
+  fs.renameSync(tmp, targetPath);
+}
 
 function redactRaw(raw: ProjectEvolutionRaw): ProjectEvolutionRaw {
   const clean = (s: string) => sanitizePath(redactSecrets(s));
@@ -43,13 +55,32 @@ function redactRaw(raw: ProjectEvolutionRaw): ProjectEvolutionRaw {
       writes: session.writes.map((w) => ({
         ...w,
         targetPath: w.targetPath ? sanitizePath(w.targetPath) : w.targetPath,
+        question: w.question ? clean(w.question) : w.question,
       })),
     })),
   };
 }
 
-export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}): Promise<string> {
-  const repo = defaultProjectEvolutionRepository();
+export interface BuildEvolutionModelOptions {
+  scope?: 'project' | 'session';
+  sessionId?: string;
+  noAi?: boolean;
+  theme?: string;
+  workspaceRoot?: string;
+  /** Explicit wiki root — the long-lived server resolves this once and passes it down. */
+  wikiRoot?: string;
+  /** Mark the model as served by the live WS server (client opens a socket instead of polling). */
+  liveServer?: boolean;
+}
+
+/**
+ * Build the full evolution view-model (the in-memory model the server holds and
+ * the static export renders). Returns null for an empty project (no milestones yet).
+ */
+export async function buildEvolutionModel(
+  options: BuildEvolutionModelOptions = {},
+): Promise<EvolutionExport | null> {
+  const repo = defaultProjectEvolutionRepository(options.wikiRoot ? { wikiRoot: options.wikiRoot } : undefined);
 
   // Single-session scope: lift just that session into a one-session project.
   let raw: ProjectEvolutionRaw;
@@ -64,21 +95,7 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
     raw = { workspaceRoot: single.workspaceRoot, sessions: [single] };
   } else {
     raw = repo.loadProjectEvolution({ workspaceRoot: options.workspaceRoot });
-    if (raw.sessions.length === 0) {
-      // New project (no milestones yet): render a friendly, self-refreshing
-      // placeholder so `ga flow` always has a page to open. The live watcher
-      // overwrites it with the real timeline once the first bundle lands.
-      const html = generateEmptyEvolutionHtml({ workspaceRoot: raw.workspaceRoot });
-      if (options.outputPath) {
-        const dir = path.dirname(options.outputPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(options.outputPath, html, 'utf-8');
-        console.error(`📭 No milestones yet — wrote evolution placeholder: ${options.outputPath}`);
-        return options.outputPath;
-      }
-      process.stdout.write(html);
-      return 'stdout';
-    }
+    if (raw.sessions.length === 0) return null;
   }
 
   const eraSynthesizer: EraSynthesizer | undefined = options.noAi
@@ -100,7 +117,7 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
     }
   }
 
-  // P5: coding persona — deterministic scores always; AI naming enriches when available.
+  // P5: coding persona — deterministic archetype always; AI only enriches the reading.
   if (data.project.nodes.length > 0) {
     data.persona = ruleBasedPersona(data.project.nodes, data.sessions.length);
     if (!options.noAi) {
@@ -110,19 +127,22 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
         if (persona) data.persona = persona;
       }
     }
-  }
-
-  // P6: project-wide one-page digest — deterministic base always; AI rewrites prose.
-  if (data.project.nodes.length > 0) {
-    data.digest = buildBaseDigest(data);
-    if (!options.noAi) {
-      const synthesizeDigest = await loadDigestSynthesizer();
-      if (synthesizeDigest) {
-        const digest = await synthesizeDigest(data);
-        if (digest) data.digest = digest;
+    // Avatar: server serves a path; static export inlines a data URI. Missing → icon fallback.
+    const code = data.persona?.archetypeCode;
+    if (code) {
+      if (options.liveServer) {
+        if (personaAvatarExists(code)) data.persona!.avatar = `/persona/${code}.webp`;
+      } else {
+        const uri = personaAvatarDataUri(code);
+        if (uri) data.persona!.avatar = uri;
       }
     }
   }
+
+  // Content-addressed token. Hash only the meaningful timeline, dropping per-run
+  // wall-clock fields (generatedAt) so the server only pushes when content truly changes.
+  const { generatedAt: _ga, ...stableForHash } = data;
+  data.contentVersion = createHash('sha1').update(JSON.stringify(stableForHash)).digest('hex').slice(0, 16);
 
   // Provenance footer (work-canvas non-negotiable): who/what/when built this.
   data.generatedBy = {
@@ -131,12 +151,37 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
     builtAt: Date.now(),
   };
 
+  if (options.liveServer) data.liveServer = true;
+
+  return data;
+}
+
+export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}): Promise<string> {
+  const data = await buildEvolutionModel(options);
+
+  // Empty project (no milestones yet): write a friendly placeholder so there is
+  // always something to open. Static export stays fully self-contained/offline.
+  if (data === null) {
+    const html = generateEmptyEvolutionHtml({
+      workspaceRoot: options.workspaceRoot ?? resolveWorkspaceRootForCache(),
+    });
+    if (options.outputPath) {
+      const dir = path.dirname(options.outputPath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      writeFileAtomic(options.outputPath, html);
+      console.error(`📭 No milestones yet — wrote evolution placeholder: ${options.outputPath}`);
+      return options.outputPath;
+    }
+    process.stdout.write(html);
+    return 'stdout';
+  }
+
   const html = generateEvolutionHtml(data);
 
   if (options.outputPath) {
     const dir = path.dirname(options.outputPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(options.outputPath, html, 'utf-8');
+    writeFileAtomic(options.outputPath, html);
     const size = Buffer.byteLength(html, 'utf-8');
     console.error(`✅ Exported evolution HTML: ${options.outputPath} (${(size / 1024).toFixed(1)}KB, ai=${data.aiUsed})`);
     return options.outputPath;
@@ -170,16 +215,6 @@ async function loadPersonaSynthesizer(): Promise<PersonaSynthesizer | undefined>
   try {
     const mod = await import('../../services/ai/coding-persona');
     return mod.synthesizePersona;
-  } catch {
-    return undefined;
-  }
-}
-
-/** Lazy-load the AI project-digest synthesizer; returns undefined if unavailable. */
-async function loadDigestSynthesizer(): Promise<DigestSynthesizer | undefined> {
-  try {
-    const mod = await import('../../services/ai/project-digest');
-    return mod.synthesizeDigest;
   } catch {
     return undefined;
   }

@@ -101,7 +101,16 @@ async function main() {
     return;
   }
 
-  // ─── Project Evolution HTML Export ───
+  // ─── Project Evolution live server (single per-project; WS push) ───
+  if (args.includes('--evolution-server')) {
+    const { startEvolutionServer } = await import('./export/evolution/server');
+    const portIdx = args.indexOf('--port');
+    const port = portIdx >= 0 ? parseInt(args[portIdx + 1], 10) : undefined;
+    await startEvolutionServer({ rootDir: process.env.FLOW_ROOT_DIR, port });
+    return;
+  }
+
+  // ─── Project Evolution HTML Export (static, self-contained file) ───
   if (isExportHtml) {
     const { exportEvolutionToHtml } = await import('./export/evolution/export-evolution');
     const argValue = (flag: string): string | undefined => {
@@ -118,6 +127,8 @@ async function main() {
     };
     await exportEvolutionToHtml(exportOpts);
 
+    // --watch: keep the static file fresh on bundle changes (no live-reload sidecar;
+    // the live in-browser experience is the evolution server above).
     if (args.includes('--watch')) {
       const { watchSessionsDir } = await import('./data/wiki/wiki-watch');
       let running = false;

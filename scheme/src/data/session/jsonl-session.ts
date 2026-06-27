@@ -144,7 +144,10 @@ function firstTextContent(message: unknown): string {
 
 function isInterruptedQuestion(text: string): boolean {
   const normalized = text.trim().toLowerCase();
-  return normalized.includes('request interrupted by user for tool use');
+  // Claude Code injects this pseudo user message when a turn is ESC-aborted.
+  // Two observed forms: "[Request interrupted by user]" (mid-thinking/text) and
+  // "[Request interrupted by user for tool use]" (mid tool call).
+  return normalized.includes('request interrupted by user');
 }
 
 function detectPhaseForTool(toolName: string, toolInput: unknown): 'explore' | 'execute' | 'verify' {
@@ -357,14 +360,38 @@ export function extractExplorationsFromSession(jsonlPath: string, preloadedConte
 
       const question = firstTextContent(message);
       if (!question) continue;
-      const interrupted = isInterruptedQuestion(question);
+
+      // ESC abort: Claude Code writes a pseudo user message whose text is the
+      // interrupt marker. It is not a new question — it finalizes the turn that
+      // was in flight. Mark the running exploration interrupted and do NOT spawn a
+      // phantom exploration, so the Observer stops showing it as 运行中.
+      if (isInterruptedQuestion(question)) {
+        if (current && current.status === 'running') {
+          current.status = 'interrupted';
+          current.endedAt = timestamp;
+          current.completionReason = 'interrupted';
+          pendingToolCallMap.clear();
+        }
+        continue;
+      }
+
+      // A genuine new prompt began while the previous turn was still 'running'
+      // (no result / end_turn ever arrived) — an ESC abort that left no marker.
+      // Finalize it as interrupted before starting the new exploration. The truly
+      // in-flight last turn is never reached here (it has no following prompt).
+      if (current && current.status === 'running') {
+        current.status = 'interrupted';
+        current.endedAt = current.endedAt ?? timestamp;
+        current.completionReason = 'interrupted';
+      }
+
       current = {
         id: `exp_${explorations.length + 1}`,
         question,
         startedAt: timestamp,
-        status: interrupted ? 'interrupted' : 'running',
-        endedAt: interrupted ? timestamp : undefined,
-        completionReason: interrupted ? 'interrupted' : undefined,
+        status: 'running',
+        endedAt: undefined,
+        completionReason: undefined,
         currentPhase: 'idle',
         phaseSeen: { explore: false, execute: false, verify: false },
         errorCounts: { tool: 0, system: 0, result: 0 },

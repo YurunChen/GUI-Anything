@@ -193,7 +193,7 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
     wikiWriteChromeByExploration,
     wikiMatchesByExploration,
   } = props;
-  const timelineEntries = sortTimelineEntries(explorations);
+  const timelineEntries = useMemo(() => sortTimelineEntries(explorations), [explorations]);
   const latestExplorationId = timelineEntries[timelineEntries.length - 1]?.exploration.id;
 
   return (

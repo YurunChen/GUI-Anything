@@ -14,4 +14,6 @@ export interface ExportEvolutionOptions {
   noAi?: boolean;
   theme?: string;
   workspaceRoot?: string;
+  /** Explicit wiki root (server resolves once and passes down); else resolved from env/cwd. */
+  wikiRoot?: string;
 }

@@ -65,7 +65,7 @@ function printExportHelp() {
   console.log('  -w, --watch            Watch wiki/sessions and re-export on change');
 }
 
-function main(argv) {
+async function main(argv) {
   const [command, ...rest] = argv;
   if (!command || command === '--help' || command === '-h') {
     printRootHelp();
@@ -85,7 +85,7 @@ function main(argv) {
         printFlowHelp();
         return 0;
       }
-      return runFlowCommand({ rootDir, options });
+      return await runFlowCommand({ rootDir, options });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga flow: ${message}`);
@@ -125,5 +125,9 @@ function main(argv) {
   return 2;
 }
 
-const exitCode = main(process.argv.slice(2));
-process.exit(exitCode);
+main(process.argv.slice(2))
+  .then((exitCode) => process.exit(exitCode))
+  .catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });

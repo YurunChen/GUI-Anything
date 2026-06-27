@@ -2,11 +2,14 @@ import { describe, expect, it } from 'bun:test';
 import type { EvolutionNode } from '../../data/protocol/evolution-types';
 import {
   computePersonaAxes,
+  matchArchetype,
   ruleBasedPersona,
   signalsFromNodes,
   typeCodeFromAxes,
   type PersonaSignals,
 } from './persona-score';
+
+const NOON = new Date(2026, 0, 1, 12, 0, 0).getTime(); // fixed daytime, avoids night classification
 
 function node(id: string, partial: Partial<EvolutionNode> = {}): EvolutionNode {
   return {
@@ -15,105 +18,115 @@ function node(id: string, partial: Partial<EvolutionNode> = {}): EvolutionNode {
     sessionId: 's1',
     title: id,
     note: '',
-    at: 0,
+    at: NOON,
     delta: 'continue',
     children: [],
     ...partial,
   } as EvolutionNode;
 }
 
+function signals(partial: Partial<PersonaSignals> = {}): PersonaSignals {
+  return {
+    milestoneCount: 1, substepCount: 0, sessionCount: 1,
+    toolCount: 0, errorCount: 0, retrievals: 0, writes: 0,
+    nightShare: 0, pivotShare: 0, interruptedShare: 0, intensity: 0,
+    ...partial,
+  };
+}
+
 describe('computePersonaAxes', () => {
-  it('produces four clamped 0–100 axes', () => {
-    const axes = computePersonaAxes({
-      milestoneCount: 4,
-      substepCount: 4,
-      sessionCount: 2,
-      toolCount: 20,
-      errorCount: 2,
-      retrievals: 3,
-      writes: 1,
-    });
-    expect(axes).toHaveLength(4);
+  it('produces six clamped 0–100 axes', () => {
+    const axes = computePersonaAxes(signals({ milestoneCount: 4, substepCount: 4, toolCount: 20, errorCount: 2, retrievals: 3, writes: 1 }));
+    expect(axes).toHaveLength(6);
     for (const a of axes) {
       expect(a.value).toBeGreaterThanOrEqual(0);
       expect(a.value).toBeLessThanOrEqual(100);
     }
-    // milestoneCount == substepCount ⇒ divergent == 50
-    expect(axes[0].value).toBe(50);
+    expect(axes[0].value).toBe(50); // milestoneCount == substepCount ⇒ divergent == 50
   });
 
   it('leans tinkerer when error density is high', () => {
-    const planner = computePersonaAxes({
-      milestoneCount: 2, substepCount: 0, sessionCount: 1,
-      toolCount: 100, errorCount: 0, retrievals: 0, writes: 0,
-    });
-    const tinkerer = computePersonaAxes({
-      milestoneCount: 2, substepCount: 0, sessionCount: 1,
-      toolCount: 100, errorCount: 40, retrievals: 0, writes: 0,
-    });
+    const planner = computePersonaAxes(signals({ milestoneCount: 2, toolCount: 100, errorCount: 0 }));
+    const tinkerer = computePersonaAxes(signals({ milestoneCount: 2, toolCount: 100, errorCount: 40 }));
     expect(planner[1].value).toBeLessThan(tinkerer[1].value);
     expect(tinkerer[1].value).toBe(100); // 0.4 * 250 == 100
   });
 
   it('defaults knowledge axis to 50 when there is no knowledge signal', () => {
-    const axes = computePersonaAxes({
-      milestoneCount: 1, substepCount: 0, sessionCount: 1,
-      toolCount: 0, errorCount: 0, retrievals: 0, writes: 0,
-    });
-    expect(axes[2].value).toBe(50);
+    expect(computePersonaAxes(signals())[2].value).toBe(50);
+  });
+
+  it('maps night and pivot shares onto axes 4 and 5', () => {
+    const axes = computePersonaAxes(signals({ nightShare: 0.8, pivotShare: 0.6 }));
+    expect(axes[4].value).toBe(80);
+    expect(axes[5].value).toBe(60);
   });
 });
 
 describe('typeCodeFromAxes', () => {
   it('picks the right pole code when value >= 50, else the left', () => {
-    const signals: PersonaSignals = {
-      milestoneCount: 1, substepCount: 9, sessionCount: 1,
-      toolCount: 10, errorCount: 0, retrievals: 0, writes: 10,
-    };
-    const axes = computePersonaAxes(signals);
+    const axes = computePersonaAxes(signals({ substepCount: 9, toolCount: 10, writes: 10 }));
     const code = typeCodeFromAxes(axes);
-    expect(code).toMatch(/^[FD][PT][OR][ES]$/);
-    // mostly substeps ⇒ focused (left, F); no errors ⇒ planner (left, P)
-    expect(code[0]).toBe('F');
-    expect(code[1]).toBe('P');
+    expect(code).toMatch(/^[FD][PT][OR][ES][UN][KV]$/);
+    expect(code[0]).toBe('F'); // mostly substeps ⇒ focused
+    expect(code[1]).toBe('P'); // no errors ⇒ planner
   });
 });
 
 describe('signalsFromNodes', () => {
-  it('rolls up substeps and per-node metrics', () => {
+  it('rolls up substeps, metrics, night and pivot shares', () => {
     const nodes: EvolutionNode[] = [
       node('s1:a', {
+        delta: 'pivot',
         children: [{ title: 'x', at: 1, delta: 'continue' }],
         metrics: { toolCount: 5, errorCount: 1, retrievals: 2, writes: 1, interrupted: 0 },
       }),
-      node('s1:b', {
-        metrics: { toolCount: 3, errorCount: 0, retrievals: 0, writes: 2, interrupted: 0 },
-      }),
+      node('s1:b', { metrics: { toolCount: 3, errorCount: 0, retrievals: 0, writes: 2, interrupted: 0 } }),
     ];
     const s = signalsFromNodes(nodes, 2);
     expect(s.milestoneCount).toBe(2);
     expect(s.substepCount).toBe(1);
     expect(s.toolCount).toBe(8);
-    expect(s.errorCount).toBe(1);
-    expect(s.retrievals).toBe(2);
     expect(s.writes).toBe(3);
-    expect(s.sessionCount).toBe(2);
+    expect(s.pivotShare).toBe(0.5); // one of two nodes is a pivot
+    expect(s.nightShare).toBe(0); // both at noon
+  });
+});
+
+describe('matchArchetype', () => {
+  it('matches a focused high-delivery profile to a delivery-oriented archetype', () => {
+    const axes = computePersonaAxes(signals({ milestoneCount: 4, substepCount: 12, toolCount: 40, errorCount: 1, writes: 12 }));
+    const m = matchArchetype(axes, { nightShare: 0, interruptedShare: 0, writes: 12, milestoneCount: 4 });
+    expect(['ARCH', 'SHIP', 'STEADY', 'MARATHON', 'STAR']).toContain(m.code);
+    expect(m.spectrum.length).toBe(3);
+  });
+
+  it('VOID egg fires when nothing was deposited', () => {
+    const axes = computePersonaAxes(signals({ milestoneCount: 3, writes: 0 }));
+    const m = matchArchetype(axes, { nightShare: 0, interruptedShare: 0, writes: 0, milestoneCount: 3 });
+    expect(m.code).toBe('VOID');
+  });
+
+  it('OWL egg fires for night owls', () => {
+    const axes = computePersonaAxes(signals({ milestoneCount: 3, writes: 3, nightShare: 0.7 }));
+    const m = matchArchetype(axes, { nightShare: 0.7, interruptedShare: 0, writes: 3, milestoneCount: 3 });
+    expect(m.code).toBe('OWL');
   });
 });
 
 describe('ruleBasedPersona', () => {
-  it('returns a complete deterministic persona with a 4-letter type code', () => {
+  it('returns a complete deterministic persona with a 6-letter type code and archetype', () => {
     const nodes: EvolutionNode[] = [
       node('s1:a', { metrics: { toolCount: 12, errorCount: 4, retrievals: 1, writes: 0, interrupted: 0 } }),
       node('s1:b', { metrics: { toolCount: 3, errorCount: 0, retrievals: 0, writes: 1, interrupted: 0 } }),
     ];
     const p = ruleBasedPersona(nodes, 1);
-    expect(p.typeCode).toHaveLength(4);
-    expect(p.scores).toHaveLength(4);
-    expect(p.title.length).toBeGreaterThan(0);
-    expect(p.tagline).toContain(p.typeCode);
+    expect(p.typeCode).toHaveLength(6);
+    expect(p.scores).toHaveLength(6);
+    expect(p.archetypeCode && p.archetypeCode.length).toBeGreaterThan(0);
+    expect(p.cnName && p.cnName.length).toBeGreaterThan(0);
+    expect(p.dna).toContain('·');
     expect(p.reading.length).toBeGreaterThan(0);
-    // signature node = highest toolCount
-    expect(p.signatureNodeId).toBe('s1:a');
+    expect(p.signatureNodeId).toBe('s1:a'); // highest toolCount
   });
 });

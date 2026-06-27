@@ -15,7 +15,6 @@ import {
   computePersonaAxes,
   ruleBasedPersona,
   signalsFromNodes,
-  typeCodeFromAxes,
   type PersonaAxis,
 } from '../evolution/persona-score';
 
@@ -26,37 +25,32 @@ export type PersonaSynthesizer = (
   sessionCount: number,
 ) => Promise<CodingPersona | null>;
 
-function axesPrompt(axes: PersonaAxis[], typeCode: string): string {
+function axesPrompt(axes: PersonaAxis[], base: CodingPersona): string {
   const lines = axes
     .map((a) => `- ${a.axis}：${a.value}/100（0=${a.leftLabel}，100=${a.rightLabel}）`)
     .join('\n');
   return `你是「编程人格鉴定师」，风格像 MBTI 性格测试，要有趣、积极、有画面感，但不浮夸。
 
-下面是从某位开发者**真实项目行为**里测出的四维编码人格分数（0–100，越高越偏右标签），以及由此拼出的人格代号。
+这位开发者的人格已由**真实项目行为**判定为「${base.cnName}」（${base.devStyle}，代号 ${base.archetypeCode}）。
+六维编码人格分数（0–100，越高越偏右标签）：
 
 ${lines}
 
-人格代号：${typeCode}
-
-请基于这些分数，给出一个**好玩又贴切**的人格画像：
-- title：人格名，6–14 字，要像个称号（如「精雕细琢的架构匠」「快速试错的拓荒者」）。
-- tagline：一句话标语，≤20 字，朗朗上口。
-- reading：性格解读，2–3 句、≤120 字，结合分数特征讲这个人怎么写代码、强在哪、要注意什么，语气像在夸朋友。
+人格代号已定，**不要改名**。请只写一段贴合「${base.cnName}」这个人设的性格解读：
+- reading：2–3 句、≤120 字，结合分数特征讲这个人怎么写代码、强在哪、要注意什么，语气像在夸朋友。
 
 **只输出一段 JSON**（无 Markdown 围栏、无前后说明）：
-{ "title": "...", "tagline": "...", "reading": "..." }`;
+{ "reading": "..." }`;
 }
 
 interface RawPersona {
-  title?: unknown;
-  tagline?: unknown;
   reading?: unknown;
 }
 
 /**
- * Merge the AI's naming over the deterministic scores. Exposed for unit testing
- * (no subprocess): given a raw model output + the base persona, returns a fully
- * populated persona, or null if the AI text is unusable.
+ * Merge the AI's reading over the deterministic persona. The archetype name/code
+ * is fixed by the matcher; the AI only rewrites the flavour `reading`.
+ * Exposed for unit testing (no subprocess).
  */
 export function mergePersonaNaming(rawOutput: string, base: CodingPersona): CodingPersona | null {
   const json = extractJsonFromText(rawOutput);
@@ -67,16 +61,9 @@ export function mergePersonaNaming(rawOutput: string, base: CodingPersona): Codi
   } catch {
     return null;
   }
-  const title = typeof parsed.title === 'string' ? parsed.title.trim() : '';
-  const tagline = typeof parsed.tagline === 'string' ? parsed.tagline.trim() : '';
   const reading = typeof parsed.reading === 'string' ? parsed.reading.trim() : '';
-  if (!title && !reading) return null; // nothing useful
-  return {
-    ...base,
-    title: title || base.title,
-    tagline: tagline || base.tagline,
-    reading: reading || base.reading,
-  };
+  if (!reading) return null; // nothing useful
+  return { ...base, reading };
 }
 
 /** PersonaSynthesizer implementation; falls back to the rule-based persona. */
@@ -88,9 +75,8 @@ export async function synthesizePersona(
 
   const base = ruleBasedPersona(nodes, sessionCount);
   const axes = computePersonaAxes(signalsFromNodes(nodes, sessionCount));
-  const typeCode = typeCodeFromAxes(axes);
 
-  const result = await runClaudePrintPrompt(axesPrompt(axes, typeCode), {
+  const result = await runClaudePrintPrompt(axesPrompt(axes, base), {
     model: resolveSummaryModel(),
     timeoutMs: 60_000,
     taskIdPrefix: 'coding-persona',

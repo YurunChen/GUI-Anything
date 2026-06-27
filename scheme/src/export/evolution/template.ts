@@ -34,13 +34,18 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
   <style>${css}</style>
 </head>
 <body>
+  <div class="evo-aurora" aria-hidden="true">
+    <span class="evo-aurora__blob evo-aurora__blob--1"></span>
+    <span class="evo-aurora__blob evo-aurora__blob--2"></span>
+    <span class="evo-aurora__blob evo-aurora__blob--3"></span>
+    <span class="evo-aurora__blob evo-aurora__blob--4"></span>
+  </div>
   <div class="evo-app" id="app">
     <div class="evo-topbar">
-      <button class="evo-back" id="evo-back">← 返回总览</button>
       <nav class="evo-crumb">
-        <a class="evo-crumb__root" id="crumb-root" href="#/">项目演进</a>
+        <span class="evo-crumb__root">项目演进</span>
         <span class="evo-crumb__sep">▸</span>
-        <span class="evo-crumb__cur" id="crumb-cur">项目演进总览</span>
+        <span class="evo-crumb__cur">项目演进总览</span>
       </nav>
       <div class="evo-theme">
         <select id="theme-select" title="切换主题 ([ / ])">${options}</select>
@@ -52,11 +57,9 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
     <div class="evo-tabpanels" id="evo-tabpanels">
       <section class="evo-tab is-on" id="tab-main" data-tab="main">
         <div class="evo-view is-on" id="view-project"></div>
-        <div class="evo-view" id="view-session"></div>
       </section>
       <section class="evo-tab" id="tab-knowledge" data-tab="knowledge"></section>
       <section class="evo-tab" id="tab-persona" data-tab="persona"></section>
-      <section class="evo-tab" id="tab-digest" data-tab="digest"></section>
     </div>
 
     <div class="evo-footer">
@@ -67,7 +70,7 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
       </div>
       <div class="evo-footer__prov" id="evo-prov"></div>
       <div class="evo-footer__keys">
-        <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题 · <kbd>Esc</kbd> 返回
+        <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题
       </div>
     </div>
   </div>

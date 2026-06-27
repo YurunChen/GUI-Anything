@@ -92,6 +92,8 @@ function extractSessionEvolution(bundle: SessionBundle): SessionEvolutionRaw | n
         targetId: write.targetId,
         targetPath: write.targetPath,
         status: write.status,
+        reason: write.reason,
+        question: record.question,
       });
     }
   }
