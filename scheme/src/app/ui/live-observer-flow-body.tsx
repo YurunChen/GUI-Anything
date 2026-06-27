@@ -209,13 +209,17 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
 
         const wikiChrome = wikiWriteChromeByExploration?.[exploration.id];
 
+        // Only animating cards consume spinnerFrame; feeding a stable '' to the
+        // rest lets memo skip their re-render on every 160ms spinner tick.
+        const cardIsAnimating = exploration.status === 'running' || isGenerating;
+
         return (
           <ExplorationCard
             key={exploration.id}
             exploration={exploration}
             calmMode={calmMode}
             isLatestExploration={exploration.id === latestExplorationId}
-            spinnerFrame={spinnerFrame}
+            spinnerFrame={cardIsAnimating ? spinnerFrame : ''}
             summary={summaries[exploration.id]}
             summaryItem={summaryItem}
             isGenerating={isGenerating}

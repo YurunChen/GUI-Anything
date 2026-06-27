@@ -138,7 +138,7 @@ Agent wrote this on disk.
       id: 'exp_analyze',
       question: '分析当前项目',
       status: 'complete' as const,
-      nodes: [{ type: 'tool' as const, label: 'Read', timestamp: 1, status: 'complete' as const, phase: 'execute' as const, rawText: '', rawCommand: 'Read' }],
+      nodes: [{ id: 'node_1', type: 'tool' as const, label: 'Read', timestamp: 1, status: 'ok' as const, phase: 'execute' as const, rawText: '', rawCommand: 'Read' }],
       startedAt: Date.now(),
       currentPhase: 'idle' as const,
       phaseSeen: { explore: true, execute: true, verify: false },

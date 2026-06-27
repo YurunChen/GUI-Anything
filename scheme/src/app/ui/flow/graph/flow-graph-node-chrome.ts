@@ -1,7 +1,7 @@
 import type { FlowGraphNode } from '../../../../data/protocol/observer-protocol';
 import { resolveIntentChromeDisplay } from '../../../observer/view-model/intent-chrome-display';
 import { flowSpacing } from '../flow-ui/flow-spacing';
-import type { ObserverLocale } from '../../../constants/observer-locale';
+import type { ObserverLocale } from '../../../../constants/observer-locale';
 
 export interface GraphNodeChromeParts {
   badge: string | null;

@@ -33,7 +33,7 @@ describe('intent-digest-service', () => {
         text: 'First summary',
         source: 'ai' as const,
         status: 'ready' as const,
-        persistMeta: { solution_detail: 'detail 1', type: 'context', confidence: 0.8, tags: ['a'] },
+        persistMeta: { solution_detail: 'detail 1', type: 'context' as const, confidence: 0.8, tags: ['a'], should_persist: true },
       },
       [makeSessionScopedId(sessionId, 'exp_2')]: {
         id: makeSessionScopedId(sessionId, 'exp_2'),
@@ -42,7 +42,7 @@ describe('intent-digest-service', () => {
         text: 'Second summary',
         source: 'ai' as const,
         status: 'ready' as const,
-        persistMeta: { solution_detail: 'detail 2', type: 'context', confidence: 0.8, tags: ['b'] },
+        persistMeta: { solution_detail: 'detail 2', type: 'context' as const, confidence: 0.8, tags: ['b'], should_persist: true },
       },
     };
 

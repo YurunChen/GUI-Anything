@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach } from 'bun:test';
-import type { Exploration } from '../../../../data/protocol/observer-protocol';
+import type { Exploration } from '../../../data/protocol/observer-protocol';
 import { createCachedBuilder, type CachedBuildFlowGraphSnapshot } from './flow-graph-snapshot-cache';
 
 function makeExploration(id: string, startedAt: number, status: Exploration['status'] = 'complete'): Exploration {

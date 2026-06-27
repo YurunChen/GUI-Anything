@@ -141,7 +141,13 @@ export class WikiCuratorService {
       return result;
     }
 
-    const skillOnly = source === 'skill' || Boolean(digest);
+    // skill-only means "require a disk-backed skill write; do NOT synthesize a create".
+    // It must track the decision SOURCE, not merely the presence of a digest: a failed
+    // skill falls through to source='claude'/'rules' (see resolveWikiDecisionAsync), and
+    // those rule/claude decisions are allowed to create from the digest
+    // (gated by FLOW_WIKI_RULES_CREATE). OR-ing Boolean(digest) here forced skillOnly=true
+    // on every intent-path curate, silently discarding the rule-create fallback.
+    const skillOnly = source === 'skill';
     const { result } = await this.maintenance.applyAgentDecision({
       sessionId: digest.sessionId,
       explorationId: anchorExplorationId,

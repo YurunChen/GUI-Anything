@@ -13,6 +13,15 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, '&#039;');
 }
 
+/**
+ * 转义 JSON 字符串以安全内嵌进 <script> 标签。
+ * session 内容可能含字面量 `</script>`（如读过的源码），会提前闭合脚本块、损坏整页。
+ * 把 `<` `>` 转为 \uXXXX：JSON.parse 仍能还原，HTML 解析器不再误判标签边界。
+ */
+export function escapeJsonForScript(json: string): string {
+  return json.replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
+}
+
 /** 填充模板占位符 */
 export function fillTemplate(template: string, variables: Record<string, string>): string {
   let result = template;

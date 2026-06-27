@@ -50,9 +50,22 @@ export function shouldUseClaudeWikiAgent(): boolean {
   return true;
 }
 
-export function resolveWikiModel(): string | undefined {
+const DEFAULT_WIKI_MODEL = 'sonnet';
+
+export function resolveWikiModel(): string {
   const model = (process.env.FLOW_WIKI_MODEL || process.env.CLAUDE_MODEL || '').trim();
-  return model || undefined;
+  return model || DEFAULT_WIKI_MODEL;
+}
+
+/**
+ * Rule-based path may create a draft page directly from an intent digest when there is
+ * no prior knowledge hit (instead of waiting for the Claude agent). Default ON; set
+ * FLOW_WIKI_RULES_CREATE=0 to restore the legacy skip-without-prior behavior.
+ */
+export function shouldRuleCreateFromDigest(): boolean {
+  const flag = (process.env.FLOW_WIKI_RULES_CREATE || '').trim().toLowerCase();
+  if (flag === '0' || flag === 'false' || flag === 'no') return false;
+  return true;
 }
 
 /** Disable agentic /llm-wiki skill run; use --print JSON only. */
@@ -345,7 +358,10 @@ function yamlBlockList(items: string[]): string {
   return items.map((item) => `  - "${item.replace(/"/g, '\\"')}"`).join('\n');
 }
 
-/** Rule-based decision — default path (no LLM). Intent digest mode skips create without prior. */
+/**
+ * Rule-based decision — default path (no LLM). Intent digest mode without a prior hit
+ * creates a draft page from the digest (gated by FLOW_WIKI_RULES_CREATE, default on).
+ */
 export function resolveWikiDecision(input: {
   summary: ExplorationSummary;
   priorHit: WikiMatch | null;
@@ -370,14 +386,34 @@ export function resolveWikiDecision(input: {
   }
 
   if (input.digest) {
+    if (!shouldRuleCreateFromDigest()) {
+      return {
+        action: 'skip',
+        type: 'context',
+        slug: 'skip',
+        sections: { summary: '', solution: '' },
+        related_ids: [],
+        tags: [],
+        reason: 'skill_only_no_prior',
+      };
+    }
+
+    const digest = input.digest;
+    const slug = slugFromDigest(digest);
+    const summaryText = input.summary.summary || digest.combinedSummary;
+    const solution = input.summary.persistMeta?.solution_detail?.trim() || summaryText;
     return {
-      action: 'skip',
+      action: 'create',
       type: 'context',
-      slug: 'skip',
-      sections: { summary: '', solution: '' },
+      slug,
+      sections: {
+        summary: summaryText,
+        solution,
+        commands: pickCommands(input.summary),
+      },
       related_ids: [],
-      tags: [],
-      reason: 'skill_only_no_prior',
+      tags: input.summary.persistMeta?.tags ?? [`intent:${digest.intentKey}`],
+      reason: `rule_create_from_digest:${digest.intentKey}`,
     };
   }
 
@@ -407,6 +443,36 @@ export function resolveWikiDecision(input: {
     tags: input.summary.persistMeta?.tags ?? [],
     reason: 'new_knowledge',
   };
+}
+
+/**
+ * Build a filesystem-safe slug for a rule-created digest page.
+ * Must satisfy KnowledgeRepository's SAFE_SLUG_RE (/^[a-z0-9]+(-[a-z0-9]+)*$/) — ASCII
+ * only, no underscores/CJK. Non-ASCII titles (common in zh sessions) carry no ASCII
+ * signal, so we fall back to a stable intent + short-hash slug to stay valid and unique.
+ */
+function slugFromDigest(digest: IntentDigest): string {
+  const base = (digest.nodeTitle || digest.representativeQuestion || digest.intentKey).trim();
+  const ascii = base
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 48)
+    .replace(/-+$/g, '');
+  if (ascii) return ascii;
+  const intent = digest.intentKey.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+    || 'context';
+  return `${intent}-${shortHash(base || digest.intentKey)}`;
+}
+
+/** Deterministic FNV-1a short hash (base36) — keeps all-CJK slugs valid and collision-resistant. */
+function shortHash(input: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36).slice(0, 6).padStart(4, '0');
 }
 
 function pickCommands(

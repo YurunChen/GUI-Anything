@@ -1,6 +1,10 @@
 # RFC: Session Replay HTML — 单文件可分享的 Flow 回放
 
-> **Status**: Draft  
+> ⚠️ **SUPERSEDED（2026-06-20）**：CLI 对话回放已被「项目功能演进史」取代。
+> `--export-html` 现产出 intent 演进可视化（`scheme/src/export/evolution/`），旧 `export/html-replay/` 已删除。
+> 设计见计划书 `purring-dancing-tide.md`。本文档仅留作历史参考。
+
+> **Status**: Superseded  
 > **Author**: S-Coder  
 > **Date**: 2026-05-21  
 > **Scope**: `scheme/src/export/` (新目录)

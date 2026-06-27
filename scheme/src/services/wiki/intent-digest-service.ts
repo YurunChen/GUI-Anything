@@ -98,7 +98,7 @@ export function buildIntentDigest(input: BuildIntentDigestInput): IntentDigest |
       request: exploration.question,
       summary: item.text,
       solutionDetail: item.persistMeta?.solution_detail,
-      keyCommand: item.persistMeta?.key_command,
+      keyCommand: item.persistMeta?.key_command ?? undefined,
       tags: item.persistMeta?.tags,
       shouldPersist: item.persistMeta?.should_persist,
       commands: toolNodes.map((node) => node.rawCommand || node.label).filter(Boolean),

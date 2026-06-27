@@ -93,6 +93,7 @@
 | Wiki 路径 | `data/wiki/wiki-data-layout.ts` · `resolveWikiRoot()` |
 | JSONL 解析 | `data/session/jsonl-session.ts`（**勿用** legacy `posthoc.ts`） |
 | Summary 形状 | `data/protocol/summary-contract.ts` |
+| 项目演进史导出 | data `data/wiki/project-evolution-repository.ts`（跨 bundle 读 intent）· 编排 `services/evolution/evolution-service.ts` · AI 纪元 `services/ai/evolution-abstract.ts` · HTML `export/evolution/` |
 
 ### 4.3 持久化
 

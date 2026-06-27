@@ -34,27 +34,20 @@ async function main() {
     return;
   }
 
-  // ─── HTML Export Modes ───
+  // ─── Project Evolution HTML Export ───
   if (isExportHtml) {
-    const { exportSessionToHtml } = await import('./export/html-replay/export-html');
-    const outputIdx = args.indexOf('-o');
-    const outputPath = outputIdx >= 0 ? args[outputIdx + 1] : undefined;
-    const sessionIdIdx = args.indexOf('--session-id');
-    const sessionId = sessionIdIdx >= 0 ? args[sessionIdIdx + 1] : undefined;
-
-    await exportSessionToHtml({
-      outputPath,
-      sessionId,
-      stripThinking: args.includes('--strip-thinking'),
-      maxDetailLength: (() => {
-        const idx = args.indexOf('--max-detail-length');
-        return idx >= 0 ? parseInt(args[idx + 1], 10) : undefined;
-      })(),
-      withSummaries: args.includes('--with-summaries'),
-      theme: (() => {
-        const idx = args.indexOf('--theme');
-        return idx >= 0 ? args[idx + 1] : undefined;
-      })(),
+    const { exportEvolutionToHtml } = await import('./export/evolution/export-evolution');
+    const argValue = (flag: string): string | undefined => {
+      const idx = args.indexOf(flag);
+      return idx >= 0 ? args[idx + 1] : undefined;
+    };
+    const scopeArg = argValue('--scope');
+    await exportEvolutionToHtml({
+      outputPath: argValue('-o'),
+      sessionId: argValue('--session-id'),
+      scope: scopeArg === 'session' ? 'session' : 'project',
+      noAi: args.includes('--no-ai'),
+      theme: argValue('--theme'),
     });
     return;
   }
@@ -87,10 +80,10 @@ async function main() {
     console.log('  bun run src/main.ts --observer         # Alias for --live');
     console.log('  bun run src/main.ts --web              # Web API mode');
     console.log('');
-    console.log('  # HTML Export:');
-    console.log('  bun run src/main.ts --export-html -o replay.html');
-    console.log('  bun run src/main.ts --export-html --session-id <id> --strip-thinking');
-    console.log('  bun run src/main.ts --export-html --max-detail-length 500 --theme catppuccin');
+    console.log('  # Project Evolution HTML (intent 演进史):');
+    console.log('  bun run src/main.ts --export-html -o evolution.html               # 项目总览（默认，跨 session）');
+    console.log('  bun run src/main.ts --export-html --scope session --session-id <id> -o evo.html  # 单 session 下钻');
+    console.log('  bun run src/main.ts --export-html --no-ai --theme catppuccin       # 跳过 AI，规则合成主线');
     console.log('');
     console.log('  # Web Mirror (real-time browser viewer):');
     console.log('  bun run src/main.ts --web-mirror');

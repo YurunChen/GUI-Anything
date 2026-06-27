@@ -23,6 +23,7 @@ function resolveWorkspaceRoot(cwd: string): string {
 }
 
 export { workspaceRootsMatch } from './workspace-root';
+export type { SessionIndex } from '../wiki/session-bundle-types';
 
 export function readSessionIndex(wikiRoot?: string): SessionIndex | null {
   const raw = readJsonFile<SessionIndex>(sessionIndexPath(wikiRoot));

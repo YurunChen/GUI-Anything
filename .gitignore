@@ -48,9 +48,11 @@ temp/
 # Claude Code local cache
 .claude/codespace/
 .claude/projects/
+.claude/skills/llm-wiki
 .flow-runtime/
 
-# Local wiki knowledge data (root only)
+# Local wiki knowledge data (runtime-generated; contains local paths & session transcripts)
 /wiki/
+/scheme/wiki/
 
 
