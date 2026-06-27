@@ -9,6 +9,9 @@
 import type { SessionId } from '../protocol/observer-protocol';
 import type {
   EvolutionRevision,
+  ExplorationMetricsRaw,
+  KnowledgeRetrievalRaw,
+  KnowledgeWriteRaw,
   ProjectEvolutionRaw,
   SessionEvolutionRaw,
 } from '../protocol/evolution-types';
@@ -48,9 +51,51 @@ function extractSessionEvolution(bundle: SessionBundle): SessionEvolutionRaw | n
   if (revisions.length === 0) return null;
 
   const summaries: Record<string, string> = {};
+  const metricsByExp: Record<string, ExplorationMetricsRaw> = {};
+  const retrievals: KnowledgeRetrievalRaw[] = [];
+  const writes: KnowledgeWriteRaw[] = [];
   for (const [explorationId, record] of Object.entries(bundle.explorations)) {
     const text = record.summary?.text?.trim();
     if (text) summaries[explorationId] = text;
+
+    const meta = record.meta;
+    const hasRetrieval = !!record.retrieval;
+    const write = record.write;
+    const hasWrite = !!write && (write.status === 'saved' || write.status === 'updated');
+    if (meta || hasRetrieval || hasWrite) {
+      metricsByExp[explorationId] = {
+        toolCount: meta?.toolCount ?? 0,
+        errorCount: meta?.errorCount ?? 0,
+        interrupted: meta?.status === 'interrupted',
+        tokens: meta?.tokens,
+        files: meta?.files,
+        durationMs: meta?.durationMs,
+        retrieval: hasRetrieval,
+        write: hasWrite,
+      };
+    }
+
+    const ret = record.retrieval;
+    if (ret) {
+      retrievals.push({
+        explorationId,
+        request: ret.request ?? '',
+        excerpt: ret.excerpt ?? '',
+        tags: ret.tags ?? [],
+        score: ret.score ?? 0,
+        type: ret.type ?? 'context',
+      });
+    }
+    if (hasWrite && write) {
+      writes.push({
+        explorationId,
+        targetId: write.targetId,
+        targetPath: write.targetPath,
+        status: write.status,
+        reason: write.reason,
+        question: record.question,
+      });
+    }
   }
 
   const startedAt = revisions[0].at;
@@ -65,6 +110,9 @@ function extractSessionEvolution(bundle: SessionBundle): SessionEvolutionRaw | n
     title,
     revisions,
     summaries,
+    metricsByExp,
+    retrievals,
+    writes,
   };
 }
 

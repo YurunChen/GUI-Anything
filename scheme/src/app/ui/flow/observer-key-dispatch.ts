@@ -31,7 +31,8 @@ export type ObserverKeyAction =
   | { type: 'send_snapshot' }
   | { type: 'file_wiki_audit' }
   | { type: 'open_html' }
-  | { type: 'theme'; kind: 'prev' | 'next' };
+  | { type: 'regenerate_html' }
+  | { type: 'theme'; kind: 'morandi' | 'prev' | 'next' };
 
 /** OpenTUI emits punctuation as literal chars (`/` `?`), not readline-style `slash`. */
 function isSlashKeyName(name: string): boolean {
@@ -121,8 +122,16 @@ export function dispatchObserverKey(
     return { type: 'open_html' };
   }
 
+  if (state.htmlExportAvailable && !key.ctrl && !key.meta && !key.shift) {
+    if (key.name === 'r') {
+      return { type: 'regenerate_html' };
+    }
+  }
+
+  const isMorandiKey = key.name === 'J' || (key.name === 'j' && key.shift);
   const isPrevThemeKey = key.name === '[' || key.name === 'leftbracket';
   const isNextThemeKey = key.name === ']' || key.name === 'rightbracket';
+  if (isMorandiKey) return { type: 'theme', kind: 'morandi' };
   if (isPrevThemeKey) return { type: 'theme', kind: 'prev' };
   if (isNextThemeKey) return { type: 'theme', kind: 'next' };
 

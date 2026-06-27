@@ -36,6 +36,12 @@ export interface ExplorationCardMeta {
   toolCount: number;
   errorCount: number;
   toolSummary?: string;
+  /** Total tokens processed (input+output+cache). Optional: absent in legacy bundles. */
+  tokens?: number;
+  /** Distinct file paths touched by tool calls. Optional: absent in legacy bundles. */
+  files?: string[];
+  /** Wall-clock duration of the exploration (endedAt-startedAt). Optional: absent in legacy bundles. */
+  durationMs?: number;
 }
 
 export interface ExplorationCardSummary {

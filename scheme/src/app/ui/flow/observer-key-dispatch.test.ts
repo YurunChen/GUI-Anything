@@ -89,9 +89,24 @@ describe('dispatchObserverKey', () => {
     ).toBeNull();
   });
 
+  test('r regenerates HTML export when available', () => {
+    expect(dispatchObserverKey({ name: 'r', ctrl: false, meta: false }, baseState)?.type).toBe('regenerate_html');
+    expect(
+      dispatchObserverKey(
+        { name: 'r', ctrl: false, meta: false },
+        { ...baseState, htmlExportAvailable: false },
+      ),
+    ).toBeNull();
+  });
+
   test('e toggles latest question expand', () => {
     expect(dispatchObserverKey({ name: 'e', ctrl: false, meta: false }, baseState)?.type)
       .toBe('toggle_question_expand');
+  });
+
+  test('Shift+J cycles morandi themes', () => {
+    expect(dispatchObserverKey({ name: 'j', ctrl: false, meta: false, shift: true }, baseState))
+      .toEqual({ type: 'theme', kind: 'morandi' });
   });
 
   test('help keys toggle overlay', () => {

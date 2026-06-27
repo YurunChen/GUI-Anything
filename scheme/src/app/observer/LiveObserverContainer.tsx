@@ -1,6 +1,3 @@
-import * as os from 'node:os';
-import * as path from 'node:path';
-
 import type { ReactNode } from 'react';
 import { useMemo, useCallback, useRef, useEffect } from 'react';
 import { createLogger } from '../../utils/logger';
@@ -20,9 +17,9 @@ import { useGraphConsolidation } from './hooks/useGraphConsolidation';
 import { useWorkspaceTreeSnapshot } from './hooks/useWorkspaceTreeSnapshot';
 import { buildFlowGraphSnapshot } from '../../data/protocol/session-flow-projector';
 import { useNotification } from './hooks/useNotification';
+import { useEvolutionExport } from './hooks/useEvolutionExport';
 import { fileWikiAudit } from '../../services/wiki/audit-service';
 import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
-import { exportEvolutionToHtml } from '../../export/evolution/export-evolution';
 
 const log = createLogger('observer');
 let observerBootLogged = false;
@@ -155,6 +152,8 @@ export function LiveObserverContainer(): ReactNode {
     lastNotifyStatus,
   } = useNotification(sessionId, tree ?? undefined);
 
+  const { exportHtml, lastExportStatus } = useEvolutionExport();
+
   const handleFileWikiAudit = useCallback((): { filed: boolean; targetId?: string } => {
     if (!sessionId) return { filed: false };
     const bundleService = getSessionBundleService();
@@ -180,27 +179,6 @@ export function LiveObserverContainer(): ReactNode {
     }
     return { filed: false };
   }, [explorations, sessionId, sessionPath, runtime.presentation.allowWikiLiveSearch]);
-
-  const handleOpenHtml = useCallback(async (): Promise<{ opened: boolean; path?: string; error?: string }> => {
-    try {
-      if (!sessionId.trim()) {
-        return { opened: false, error: 'No active session yet' };
-      }
-      const shortSessionId = sessionId.slice(0, 8);
-      const outputPath = path.join(os.tmpdir(), `gui-anything-flow-session-${shortSessionId}.html`);
-      await exportEvolutionToHtml({
-        outputPath,
-        noAi: true,
-        scope: 'session',
-        sessionId,
-        workspaceRoot: cwd,
-      });
-      openFile(outputPath);
-      return { opened: true, path: outputPath };
-    } catch (err) {
-      return { opened: false, error: err instanceof Error ? err.message : String(err) };
-    }
-  }, [cwd, sessionId]);
 
   return (
     <FlowObserverShell
@@ -228,20 +206,9 @@ export function LiveObserverContainer(): ReactNode {
       sessionIntent={sessionIntent}
       onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
       onFileWikiAudit={handleFileWikiAudit}
-      onOpenHtml={handleOpenHtml}
+      onExportHtml={exportHtml}
+      exportStatus={lastExportStatus}
       notifyStatus={pickerStatusHint ?? lastNotifyStatus}
     />
   );
-}
-
-function openFile(filePath: string): void {
-  if (process.platform === 'darwin') {
-    Bun.spawn(['open', filePath], { stdout: 'ignore', stderr: 'ignore' });
-    return;
-  }
-  if (process.platform === 'win32') {
-    Bun.spawn(['cmd', '/c', 'start', '', filePath], { stdout: 'ignore', stderr: 'ignore' });
-    return;
-  }
-  Bun.spawn(['xdg-open', filePath], { stdout: 'ignore', stderr: 'ignore' });
 }

@@ -3,7 +3,7 @@
  */
 
 import type { ReactNode } from 'react';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { useThemeMotionFrame, useThemeVersion, useTuiTheme } from '../theme';
 import {
   resolveCompactSeparator,
@@ -95,21 +95,26 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     }).text
     : undefined;
 
-  const toolNodes = exploration.nodes.filter((node: ExplorationNode) => node.type === 'tool');
-  const errorNodes = exploration.nodes.filter(
-    (node: ExplorationNode) => node.status === 'error' || node.type === 'error',
-  );
+  // Theme switches re-render every mounted card; cache the node-derived work so a
+  // recolor doesn't re-scan exploration.nodes (cost scales with timeline length).
+  const { toolNodes, errorNodes, toolSummary } = useMemo(() => {
+    const toolNodes = exploration.nodes.filter((node: ExplorationNode) => node.type === 'tool');
+    const errorNodes = exploration.nodes.filter(
+      (node: ExplorationNode) => node.status === 'error' || node.type === 'error',
+    );
 
-  const toolCounts = new Map<string, number>();
-  for (const node of toolNodes) {
-    const toolName = node.label.split(' ')[0] || 'unknown';
-    toolCounts.set(toolName, (toolCounts.get(toolName) || 0) + 1);
-  }
-  const toolSummary = [...toolCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 4)
-    .map(([name, count]) => `${truncateFlowText(name, 14)}×${count}`)
-    .join(' · ');
+    const toolCounts = new Map<string, number>();
+    for (const node of toolNodes) {
+      const toolName = node.label.split(' ')[0] || 'unknown';
+      toolCounts.set(toolName, (toolCounts.get(toolName) || 0) + 1);
+    }
+    const toolSummary = [...toolCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([name, count]) => `${truncateFlowText(name, 14)}×${count}`)
+      .join(' · ');
+    return { toolNodes, errorNodes, toolSummary };
+  }, [exploration.nodes]);
 
   const displayMode: CardDisplayMode = resolveCardDisplayMode({ calmMode, isLatestExploration });
   const tuiTheme = useTuiTheme();

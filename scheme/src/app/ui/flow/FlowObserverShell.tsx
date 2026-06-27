@@ -68,7 +68,8 @@ interface FlowObserverShellProps {
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
   onSendSnapshot?: (note?: string) => void;
   onFileWikiAudit?: () => { filed: boolean; targetId?: string };
-  onOpenHtml?: () => Promise<{ opened: boolean; path?: string; error?: string }>;
+  onExportHtml?: (force?: boolean) => void;
+  exportStatus?: string;
   notifyStatus?: string;
 }
 
@@ -154,7 +155,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     tree: props.tree,
     runtimeModel: props.runtimeModel,
     tokenDisplay: props.tokenDisplay,
-    notifyStatus: chromeHint ?? props.notifyStatus,
+    notifyStatus: chromeHint ?? props.exportStatus ?? props.notifyStatus,
     themeNotification: themeSwitchBanner
       ? `${themeSwitchBanner.frame} ${themeSwitchBanner.familyLabel} · ${themeSwitchBanner.themeLabel}`
       : showThemeNotification
@@ -179,13 +180,13 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     calmMode,
     notifyAvailable: !!props.onSendSnapshot,
     wikiAuditAvailable: !!props.onFileWikiAudit,
-    htmlExportAvailable: !!props.onOpenHtml,
+    htmlExportAvailable: !!props.onExportHtml,
   }), [
     calmMode,
     inspirationInputFocused,
     observerMode,
+    props.onExportHtml,
     props.onFileWikiAudit,
-    props.onOpenHtml,
     props.onSendSnapshot,
     showNotes,
   ]);
@@ -201,25 +202,16 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   }, [flashChromeHint, messages, props]);
 
   const handleOpenHtml = useCallback(() => {
-    if (!props.onOpenHtml) return;
-    void props.onOpenHtml()
-      .then((result) => {
-        if (result.opened && result.path) {
-          flashChromeHint(messages.htmlExportOpened(result.path));
-        } else {
-          flashChromeHint(messages.htmlExportFailed(result.error ?? 'unknown error'));
-        }
-      })
-      .catch((err) => {
-        flashChromeHint(messages.htmlExportFailed(String(err)));
-      });
-  }, [flashChromeHint, messages, props]);
+    props.onExportHtml?.(false);
+  }, [props]);
 
-  const applyThemeKind = useCallback((kind: 'prev' | 'next') => {
+  const applyThemeKind = useCallback((kind: 'morandi' | 'prev' | 'next') => {
     try {
-      const peek = kind === 'prev'
-        ? themeManager.previousTheme()
-        : themeManager.nextTheme();
+      const peek = kind === 'morandi'
+        ? themeManager.nextMorandiTheme()
+        : kind === 'prev'
+          ? themeManager.previousTheme()
+          : themeManager.nextTheme();
       applyTheme(peek);
       triggerThemeSwitchBanner(peek, themeManager.getThemeDisplayName(peek));
       setShowThemeNotification(true);
@@ -247,7 +239,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       inspirationInputFocused,
       notifyAvailable: !!props.onSendSnapshot,
       wikiAuditAvailable: !!props.onFileWikiAudit,
-      htmlExportAvailable: !!props.onOpenHtml,
+      htmlExportAvailable: !!props.onExportHtml,
     });
     if (!action) return;
 
@@ -289,6 +281,9 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         break;
       case 'open_html':
         handleOpenHtml();
+        break;
+      case 'regenerate_html':
+        props.onExportHtml?.(true);
         break;
       case 'theme':
         applyThemeKind(action.kind);

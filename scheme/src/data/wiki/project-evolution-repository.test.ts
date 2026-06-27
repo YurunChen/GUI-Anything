@@ -48,11 +48,18 @@ function makeIntent(sessionId: string, history: IntentTitleRevision[]): SessionI
   };
 }
 
+interface ExpFixture {
+  meta?: { status?: 'complete' | 'interrupted'; toolCount?: number; errorCount?: number; tokens?: number; files?: string[]; durationMs?: number };
+  retrieval?: boolean;
+  write?: 'saved' | 'updated' | 'skipped' | 'failed';
+}
+
 function writeBundle(input: {
   sessionId: string;
   workspaceRoot: string;
   history: IntentTitleRevision[];
   summaries?: Record<string, string>;
+  explorations?: Record<string, ExpFixture>;
 }): void {
   const repo = new FileSessionBundleRepository({ wikiRoot });
   const bundle = createEmptyBundle({
@@ -68,6 +75,29 @@ function writeBundle(input: {
       question: 'q',
       summary: { text, source: 'ai', status: 'ready', savedAt: 1 },
     };
+  }
+  for (const [explorationId, fixture] of Object.entries(input.explorations ?? {})) {
+    const existing = bundle.explorations[explorationId] ?? { explorationId, question: 'q' };
+    if (fixture.meta) {
+      existing.meta = {
+        status: fixture.meta.status ?? 'complete',
+        toolCount: fixture.meta.toolCount ?? 0,
+        errorCount: fixture.meta.errorCount ?? 0,
+        tokens: fixture.meta.tokens,
+        files: fixture.meta.files,
+        durationMs: fixture.meta.durationMs,
+      };
+    }
+    if (fixture.retrieval) {
+      existing.retrieval = {
+        origin: 'retrieved', entryId: 'k1', relativePath: 'k1.md', type: 'context', slug: 'k1',
+        request: 'r', excerpt: 'e', tags: [], score: 1, matchedKeywords: [], capturedAt: 1,
+      };
+    }
+    if (fixture.write) {
+      existing.write = { origin: 'saved', status: fixture.write, completedAt: 1 };
+    }
+    bundle.explorations[explorationId] = existing;
   }
   repo.save(bundle);
 }
@@ -137,6 +167,40 @@ describe('FileProjectEvolutionRepository', () => {
     });
     expect(single!.summaries.exp_1).toBe('摘要正文');
     expect(single!.title).toBe('标题');
+  });
+
+  it('extracts per-exploration metrics (meta + retrieval/write) into metricsByExp', () => {
+    writeBundle({
+      sessionId: 's-metrics',
+      workspaceRoot: workspaceA,
+      history: [rev('exp_1', 1, '标题', 'pivot')],
+      explorations: {
+        exp_1: {
+          meta: { status: 'interrupted', toolCount: 7, errorCount: 2, tokens: 120, files: ['a.ts', 'b.ts'], durationMs: 5000 },
+          retrieval: true,
+          write: 'saved',
+        },
+        // skipped write should NOT count as a write
+        exp_2: { meta: { toolCount: 1 }, write: 'skipped' },
+      },
+    });
+
+    const repo = new FileProjectEvolutionRepository({ wikiRoot });
+    const single = repo.loadSessionEvolution('s-metrics');
+
+    expect(single).not.toBeNull();
+    const m1 = single!.metricsByExp.exp_1;
+    expect(m1).toMatchObject({
+      toolCount: 7, errorCount: 2, interrupted: true, tokens: 120, durationMs: 5000, retrieval: true, write: true,
+    });
+    expect(m1.files?.sort()).toEqual(['a.ts', 'b.ts']);
+    expect(single!.metricsByExp.exp_2).toMatchObject({ toolCount: 1, write: false, retrieval: false });
+
+    // P3: detailed knowledge inflow/outflow. exp_1 retrieved + saved; exp_2 skipped write excluded.
+    expect(single!.retrievals).toHaveLength(1);
+    expect(single!.retrievals[0]).toMatchObject({ explorationId: 'exp_1', type: 'context' });
+    expect(single!.writes).toHaveLength(1);
+    expect(single!.writes[0]).toMatchObject({ explorationId: 'exp_1', status: 'saved' });
   });
 
   it('returns null for unknown session', () => {

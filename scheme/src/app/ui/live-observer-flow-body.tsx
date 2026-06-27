@@ -305,7 +305,7 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
     freshExplorationIds = new Set(),
     freshSummaryIds = new Set(),
   } = props;
-  const timelineEntries = sortTimelineEntries(explorations);
+  const timelineEntries = useMemo(() => sortTimelineEntries(explorations), [explorations]);
   const latestExplorationId = timelineEntries[timelineEntries.length - 1]?.exploration.id;
 
   return (

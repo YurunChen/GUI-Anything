@@ -93,6 +93,9 @@ export function inferIntentKeyFromText(
   return priorReal || 'general';
 }
 
+/** Note stamped on synthesized hints so downstream layers can recognize/filter the fallback. */
+export const AUTO_INFERRED_FLOWCHART_NOTE = 'auto-inferred (flowchart missing)';
+
 export interface SynthesizeFlowchartInput {
   question: string;
   priorIntentKey?: string | null;
@@ -124,7 +127,7 @@ export function synthesizeFlowchartHint(input: SynthesizeFlowchartInput): Flowch
     dropFromChart: isGreeting,
     intentKey,
     titleDelta,
-    titleDeltaNote: 'auto-inferred (flowchart missing)',
+    titleDeltaNote: AUTO_INFERRED_FLOWCHART_NOTE,
   };
 }
 
