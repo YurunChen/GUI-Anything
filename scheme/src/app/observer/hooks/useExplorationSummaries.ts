@@ -17,8 +17,8 @@ import {
   getSummaryOrchestrator,
   shouldGenerateMissingSummaries,
 } from '../../../services/ai/summary-orchestrator';
+import { applyExcerptFallback, applyLiveSummaryPreview } from '../../../services/ai/summary-display';
 import { createLogger } from '../../../utils/logger';
-import { applyExcerptFallback, applyLiveSummaryPreview } from '../view-model/presentation-summaries';
 import {
   toExplorationFlowchartHintMap,
   toExplorationPersistMetaMap,
@@ -260,15 +260,15 @@ export function useExplorationSummaries(
   const displayItems = useMemo(() => {
     let items = state.items;
     if (presentation.allowSummaryRegen) {
-      items = applyLiveSummaryPreview(
+      items = applyLiveSummaryPreview({
         sessionId,
         explorations,
         items,
-        state.bundleSummaryByExplorationId,
-      );
+        hasBundleSummaryByExplorationId: state.bundleSummaryByExplorationId,
+      });
     }
     if (presentation.fillExcerptFallback) {
-      items = applyExcerptFallback(sessionId, explorations, items);
+      items = applyExcerptFallback({ sessionId, explorations, items });
     }
     return items;
   }, [

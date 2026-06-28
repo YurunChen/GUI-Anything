@@ -2,11 +2,21 @@
  * Single display path for exploration summaries (Apple: calm, no technical errors in UI).
  */
 
-import type { Exploration, SummaryItem } from '../../data/protocol/observer-protocol';
+import type { Exploration, SessionScopedId, SummaryItem } from '../../data/protocol/observer-protocol';
+import { makeSessionScopedId } from '../../data/protocol/observer-protocol';
 import type { FlowchartHint } from '../../data/protocol/observer-protocol';
+import {
+  SUMMARY_REASON_LIVE_PREVIEW,
+  SUMMARY_REASON_TIMELINE_EXCERPT,
+} from '../../data/protocol/summary-provenance';
 import type { WikiPersistMeta } from '../wiki/auto-extractor';
+import { buildExplorationExcerptSummary } from './exploration-excerpt';
 import { buildExplorationRoundRecord } from './exploration-round-record';
-import type { ExplorationSummaryAIResult } from './flow-summaries';
+import {
+  buildGreetingFlowchartHint,
+  isTrivialGreetingExploration,
+  type ExplorationSummaryAIResult,
+} from './flow-summaries';
 import { getSummaryMessages } from '../../constants/summary-messages';
 
 export const DEFAULT_SKIP_PERSIST: WikiPersistMeta = {
@@ -79,4 +89,93 @@ export function finalizeSummaryFromTimelineOnly(input: {
     persistMeta: DEFAULT_SKIP_PERSIST,
     reason: input.errorReason,
   };
+}
+
+function toSummaryNodes(nodes: Exploration['nodes']) {
+  return nodes.map((node) => ({
+    timestamp: node.timestamp,
+    type: node.type,
+    label: node.label,
+    status: node.status,
+  }));
+}
+
+export function buildLiveSummaryPreview(exploration: Exploration): string {
+  const nodes = toSummaryNodes(exploration.nodes);
+  if (isTrivialGreetingExploration(exploration.question, nodes)) {
+    return getSummaryMessages().trivialGreetingDistill;
+  }
+  return buildExplorationRoundRecord(exploration.question, nodes);
+}
+
+export function buildLiveSummaryPreviewFlowchart(exploration: Exploration): FlowchartHint | undefined {
+  const nodes = toSummaryNodes(exploration.nodes);
+  if (isTrivialGreetingExploration(exploration.question, nodes)) {
+    return buildGreetingFlowchartHint();
+  }
+  return undefined;
+}
+
+/** Live: show rule-based Hero until Summary Agent returns. */
+export function applyLiveSummaryPreview(input: {
+  sessionId: string;
+  explorations: Exploration[];
+  items: Record<SessionScopedId, SummaryItem>;
+  hasBundleSummaryByExplorationId?: Record<string, boolean>;
+}): Record<SessionScopedId, SummaryItem> {
+  if (!input.sessionId.trim()) return input.items;
+
+  const next = { ...input.items };
+  for (const exploration of input.explorations) {
+    if (exploration.status !== 'complete' || exploration.nodes.length === 0) continue;
+    const id = makeSessionScopedId(input.sessionId, exploration.id);
+    if (input.hasBundleSummaryByExplorationId?.[exploration.id]) continue;
+    if (next[id]?.text.trim()) continue;
+
+    const text = buildLiveSummaryPreview(exploration);
+    const previewFlowchart = buildLiveSummaryPreviewFlowchart(exploration);
+    next[id] = {
+      id,
+      sessionId: input.sessionId,
+      explorationId: exploration.id,
+      text,
+      source: 'excerpt',
+      status: 'ready',
+      persistMeta: next[id]?.persistMeta ?? null,
+      flowchart: next[id]?.flowchart ?? previewFlowchart,
+      reason: SUMMARY_REASON_LIVE_PREVIEW,
+    };
+  }
+  return next;
+}
+
+/** Replay: add rule-based excerpt for complete explorations without any summary text. */
+export function applyExcerptFallback(input: {
+  sessionId: string;
+  explorations: Exploration[];
+  items: Record<SessionScopedId, SummaryItem>;
+}): Record<SessionScopedId, SummaryItem> {
+  if (!input.sessionId.trim()) return input.items;
+
+  const next = { ...input.items };
+  for (const exploration of input.explorations) {
+    if (exploration.status !== 'complete' || exploration.nodes.length === 0) continue;
+    const id = makeSessionScopedId(input.sessionId, exploration.id);
+    const existing = next[id];
+    if (existing?.text.trim()) continue;
+
+    const text = buildExplorationExcerptSummary(exploration.question, exploration.nodes);
+    next[id] = {
+      id,
+      sessionId: input.sessionId,
+      explorationId: exploration.id,
+      text,
+      source: 'fallback',
+      status: 'ready',
+      persistMeta: existing?.persistMeta ?? null,
+      flowchart: existing?.flowchart,
+      reason: SUMMARY_REASON_TIMELINE_EXCERPT,
+    };
+  }
+  return next;
 }

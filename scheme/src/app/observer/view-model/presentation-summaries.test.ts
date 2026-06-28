@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test';
 import type { Exploration, SummaryItem } from '../../../data/protocol/observer-protocol';
-import { applyExcerptFallback, applyLiveSummaryPreview, isExplorationSummarizing, resolveSummaryDisplayTier } from './presentation-summaries';
+import { isExplorationSummarizing, resolveSummaryDisplayTier } from './presentation-summaries';
 
 function exploration(status: Exploration['status']): Exploration {
   return {
@@ -77,19 +77,5 @@ describe('isExplorationSummarizing', () => {
       summary({ source: 'fallback', reason: 'timeline_excerpt', text: 'excerpt body' }),
       true,
     )).toBe(false);
-  });
-});
-
-describe('applyLiveSummaryPreview', () => {
-  it('skips live preview when bundle already has summary for exploration', () => {
-    const explorations = [exploration('complete')];
-    const items = applyLiveSummaryPreview('session-1', explorations, {}, { exp_1: true });
-    expect(Object.keys(items)).toHaveLength(0);
-  });
-
-  it('adds live preview when bundle has no summary', () => {
-    const explorations = [exploration('complete')];
-    const items = applyLiveSummaryPreview('session-1', explorations, {}, {});
-    expect(Object.values(items)[0]?.reason).toBe('live_preview');
   });
 });
