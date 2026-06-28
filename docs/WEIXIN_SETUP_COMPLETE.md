@@ -37,9 +37,10 @@
 ### 1. 安装 Python 依赖
 
 ```bash
-cd scheme/src/services/notification/weixin-service
-pip3 install -r requirements.txt
+./scripts/setup.sh
 ```
+
+依赖会安装到 `scheme/src/services/notification/weixin-service/.venv/`，不会写入系统 Python。
 
 ### 2. 启动微信服务
 
@@ -60,11 +61,10 @@ pip3 install -r requirements.txt
 
 终端会显示二维码，用微信扫码确认登录。
 
-### 4. 设置环境变量
+### 4. 配置接收人
 
 ```bash
-# 接收消息的微信用户ID（登录后会显示）
-export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
+ga notify setup
 ```
 
 ### 5. 启动 Flow Observer
@@ -203,8 +203,8 @@ weixin-service/data/{account_id}.json
 python3 --version  # 需要 3.7+
 
 # 重新安装依赖
-cd scheme/src/services/notification/weixin-service
-pip3 install --upgrade -r requirements.txt
+rm -rf scheme/src/services/notification/weixin-service/.venv
+./scripts/setup.sh
 ```
 
 ### 服务无法启动
@@ -256,10 +256,8 @@ kill $(lsof -t -i:8765)
 现在你的 Flow Notification 支持：
 
 ✅ **微信** - iLink Bot 扫码登录（基于 Hermes-agent）  
-✅ **飞书** - Webhook 机器人  
-✅ **钉钉** - Webhook 机器人  
 
-三个平台都可以接收：
+微信通道可以接收：
 - 🚨 错误告警
 - ✅ 任务完成通知
 - 💡 知识提取

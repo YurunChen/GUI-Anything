@@ -71,11 +71,15 @@ type SummaryGenerator = (
   history: Array<{ question: string; summary?: string; toolCount: number; errorCount: number; status: 'complete' | 'interrupted' }>,
   model?: string,
   sessionIntent?: SessionIntentState | null,
-) => Promise<Awaited<ReturnType<typeof generateExplorationSummaryAI>>>;
+) => Promise<SummaryGeneratorResult>;
+
+type SummaryGeneratorResult = Awaited<ReturnType<typeof generateExplorationSummaryAI>> & {
+  validationError?: string;
+};
 
 interface SummaryServiceOptions {
   maxConcurrency?: number;
-  maxAttempts?: number;
+  maxRetries?: number;
   generateSummary?: SummaryGenerator;
   bundleRepository?: SessionBundleRepository;
 }
@@ -84,7 +88,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   private pending = new Set<SessionScopedId>();
   private sessionId = '';
   private readonly maxConcurrency: number;
-  private readonly maxAttempts: number;
+  private readonly maxRetries: number;
   private readonly generateSummary: SummaryGenerator;
   private readonly bundleRepo: SessionBundleRepository;
   private stats: SummaryRuntimeStats = {
@@ -100,7 +104,7 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
   constructor(options?: SummaryServiceOptions) {
     this.bundleRepo = options?.bundleRepository ?? getSessionBundleRepository();
     this.maxConcurrency = Math.max(1, options?.maxConcurrency ?? 3);
-    this.maxAttempts = Math.max(1, options?.maxAttempts ?? 2);
+    this.maxRetries = Math.max(0, options?.maxRetries ?? 3);
     this.generateSummary = options?.generateSummary ?? generateExplorationSummaryAI;
   }
 
@@ -332,14 +336,20 @@ export class DefaultExplorationSummaryService implements ExplorationSummaryServi
     history: Array<{ question: string; summary?: string; toolCount: number; errorCount: number; status: 'complete' | 'interrupted' }>,
     model?: string,
     sessionIntent?: SessionIntentState | null,
-  ): Promise<Awaited<ReturnType<typeof generateExplorationSummaryAI>>> {
+  ): Promise<SummaryGeneratorResult> {
     let lastError: unknown = null;
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt++) {
+    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       try {
-        return await this.generateSummary(question, nodes, history, model, sessionIntent);
+        const result = await this.generateSummary(question, nodes, history, model, sessionIntent);
+        if (result.validationError && attempt < this.maxRetries) {
+          lastError = new Error(`structured_output_${result.validationError}`);
+          this.stats.retried += 1;
+          continue;
+        }
+        return result;
       } catch (error) {
         lastError = error;
-        if (attempt < this.maxAttempts) {
+        if (attempt < this.maxRetries) {
           this.stats.retried += 1;
         }
       }

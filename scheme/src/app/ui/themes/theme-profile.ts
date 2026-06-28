@@ -13,7 +13,7 @@ import {
   resolveThemeStyleMeta,
 } from './theme-style-registry';
 import type {
-  CardBorderChromeInput,
+  CardShellChromeInput,
   CardBorderChromeStyle,
   CardShellChrome,
   KnowledgeInsetChrome,
@@ -23,7 +23,7 @@ import type {
 } from './theme-profile-types';
 
 export type {
-  CardBorderChromeInput,
+  CardShellChromeInput,
   CardBorderChromeStyle,
   CardShellChrome,
   KnowledgeInsetChrome,
@@ -94,10 +94,8 @@ export function chromeHasDecorMotion(chrome: ThemeChrome): boolean {
     || chrome.knowledgeBorderColorFrames?.length
     || chrome.focusActiveFrames?.length
     || chrome.focusConnectorFrames?.length
-    || chrome.freshAccentFrames?.length
-    || chrome.runningLeadFrames?.length
+    || chrome.runningBadgeFrames?.length
     || chrome.cardBorderAccentFrames?.length
-    || chrome.cardBorderFreshFrames?.length
     || chrome.compactSeparatorFrames?.length
   );
 }
@@ -151,12 +149,14 @@ export function formatThemeSectionLabel(
 
 export function resolveCardBorderChrome(
   chrome: ThemeChrome,
-  input: CardBorderChromeInput,
+  input: CardShellChromeInput,
   colors: {
     tint: string;
     tintMuted: string;
     activity: string;
     separator: string;
+    borderMuted?: string;
+    borderAccentFrames?: readonly string[];
   },
   motionIndex = 0,
 ): CardBorderChromeStyle {
@@ -172,29 +172,32 @@ export function resolveCardBorderChrome(
 
 function resolveBorderColor(
   chrome: ThemeChrome,
-  input: CardBorderChromeInput,
-  colors: { tint: string; tintMuted: string; activity: string; separator: string },
+  input: CardShellChromeInput,
+  colors: {
+    tint: string;
+    tintMuted: string;
+    borderMuted?: string;
+    borderAccentFrames?: readonly string[];
+    activity: string;
+    separator: string;
+  },
   motionIndex: number,
 ): string {
-  let borderColor = input.accent
-    ? colors.tint
-    : input.fresh
-      ? colors.activity
-      : input.focused
-        ? colors.tint
-        : colors.separator;
+  let borderColor = input.focused ? colors.tint : (colors.borderMuted ?? colors.tintMuted);
 
-  if (input.accent && chrome.cardBorderAccentFrames?.length) {
-    borderColor = resolveChromeFrame(chrome.cardBorderAccentFrames, borderColor, motionIndex);
-  } else if (input.fresh && chrome.cardBorderFreshFrames?.length) {
-    borderColor = resolveChromeFrame(chrome.cardBorderFreshFrames, borderColor, motionIndex);
+  if (input.focused) {
+    borderColor = resolveChromeFrame(
+      colors.borderAccentFrames ?? chrome.cardBorderAccentFrames,
+      borderColor,
+      motionIndex,
+    );
   }
   return borderColor;
 }
 
 export function resolveCardShellChrome(
   chrome: ThemeChrome,
-  input: CardBorderChromeInput,
+  input: CardShellChromeInput,
   fills: {
     grouped: string;
     base: string;
@@ -202,6 +205,8 @@ export function resolveCardShellChrome(
     separator: string;
     tint: string;
     tintMuted: string;
+    borderMuted?: string;
+    borderAccentFrames?: readonly string[];
     activity: string;
   },
   motionIndex = 0,
@@ -222,9 +227,8 @@ export function resolveCardShellChrome(
         backgroundColor: fills.grouped,
         border: ['left'],
         borderColor,
-        borderStyle: 'single',
+        borderStyle: 'heavy',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'ghost':
       return {
@@ -237,7 +241,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'minimal':
       return {
@@ -250,7 +253,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'rail':
       return {
@@ -263,7 +265,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'panel':
       return {
@@ -276,7 +277,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'ledger':
       return {
@@ -289,7 +289,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     case 'framed': {
       const idleBorder = chrome.cardIdleBorder === 'rounded';
@@ -303,7 +302,6 @@ export function resolveCardShellChrome(
         borderColor,
         borderStyle: idleBorder ? 'rounded' : 'single',
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     }
     case 'inset':
@@ -311,7 +309,14 @@ export function resolveCardShellChrome(
       const border = resolveCardBorderChrome(
         chrome,
         input,
-        { tint: fills.tint, tintMuted: fills.tintMuted, activity: fills.activity, separator: fills.separator },
+        {
+          tint: fills.tint,
+          tintMuted: fills.tintMuted,
+          borderMuted: fills.borderMuted,
+          borderAccentFrames: fills.borderAccentFrames,
+          activity: fills.activity,
+          separator: fills.separator,
+        },
         motionIndex,
       );
       return {
@@ -324,7 +329,6 @@ export function resolveCardShellChrome(
         borderColor: border.borderColor,
         borderStyle: border.borderStyle,
         knowledgeInset: chrome.cardKnowledgeInset,
-        showLeadColumn: false,
       };
     }
   }

@@ -67,7 +67,6 @@ export function buildObserverHotkeyHints(ctx: ObserverHotkeyContext): HotkeyHint
   return [
     ...navHints(ctx, m, 1, 0),
     hint('notes', 1, 10, m.cmdNotes, m.cmdNotesShort),
-    ...questionHints(ctx, m, 1, 11),
     hint('calm', 1, 12, calmLabel(ctx, m), calmLabelShort(ctx, m)),
     hint('help', 1, 13, m.cmdHelpOpen, m.cmdHelpOpenShort),
     ...appearanceHints(m, 2, 0),
@@ -75,26 +74,29 @@ export function buildObserverHotkeyHints(ctx: ObserverHotkeyContext): HotkeyHint
   ];
 }
 
-function navHints(_ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
+function navHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
+  const nextMode = nextObserverViewMode(ctx.observerMode);
+  const label = `g → ${modeLabel(nextMode, m)}`;
   return [
-    hint('mode', row, baseOrder, m.cmdSwitchView, m.cmdSwitchViewShort),
+    hint('mode', row, baseOrder, label, label),
   ];
+}
+
+function modeLabel(mode: ObserverViewMode, m: ObserverMessages): string {
+  switch (mode) {
+    case 'timeline':
+      return m.modeTimeline;
+    case 'focus':
+      return m.modeFocus;
+    case 'workspace':
+      return m.modeWorkspace;
+  }
 }
 
 function appearanceHints(m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
   return [
     hint('theme', row, baseOrder, m.cmdTheme, m.cmdThemeShort),
   ];
-}
-
-function questionHints(
-  ctx: ObserverHotkeyContext,
-  m: ObserverMessages,
-  row: 1 | 2,
-  baseOrder: number,
-): HotkeyHint[] {
-  if (ctx.observerMode !== 'timeline') return [];
-  return [hint('question', row, baseOrder, m.cmdQuestionExpand, m.cmdQuestionExpandShort)];
 }
 
 function sessionHints(ctx: ObserverHotkeyContext, m: ObserverMessages, row: 1 | 2, baseOrder: number): HotkeyHint[] {
@@ -223,9 +225,6 @@ export function buildHelpLinesFromHotkeys(ctx: ObserverHotkeyContext): string[] 
   }
   if (byId.has('calm')) {
     lines.push(ctx.calmMode ? m.helpKeyCalmDisable : m.helpKeyCalmEnable);
-  }
-  if (byId.has('question')) {
-    lines.push(m.helpKeyQuestionExpand);
   }
 
   if (ctx.footerMode === 'notes-input') {

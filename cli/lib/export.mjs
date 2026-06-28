@@ -6,6 +6,14 @@ function commandExists(command) {
   return result.status === 0;
 }
 
+function readOptionValue(args, index, optionName) {
+  const value = args[index + 1];
+  if (!value || value.startsWith('-')) {
+    throw new Error(`Missing value for ${optionName}`);
+  }
+  return value;
+}
+
 export function parseExportArgs(args) {
   const options = {
     mode: 'run',
@@ -20,22 +28,26 @@ export function parseExportArgs(args) {
   for (let i = 0; i < args.length; i += 1) {
     const arg = args[i];
     if (arg === '-o' || arg === '--output') {
-      options.output = args[i + 1] ?? '';
+      options.output = readOptionValue(args, i, arg);
       i += 1;
       continue;
     }
     if (arg === '--theme') {
-      options.theme = args[i + 1] ?? '';
+      options.theme = readOptionValue(args, i, arg);
       i += 1;
       continue;
     }
     if (arg === '--session-id') {
-      options.sessionId = args[i + 1] ?? '';
+      options.sessionId = readOptionValue(args, i, arg);
       i += 1;
       continue;
     }
     if (arg === '--scope') {
-      options.scope = args[i + 1] ?? '';
+      const scope = readOptionValue(args, i, arg);
+      if (scope !== 'project' && scope !== 'session') {
+        throw new Error(`Invalid value for --scope: ${scope}`);
+      }
+      options.scope = scope;
       i += 1;
       continue;
     }

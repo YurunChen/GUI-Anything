@@ -1,0 +1,69 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="GUI-Anything README banner: one command opens Claude Code and Flow Observer with local project memory">
+  <defs>
+    <linearGradient id="bg" x1="96" y1="74" x2="1488" y2="846" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#071017"/>
+      <stop offset="0.52" stop-color="#0b1821"/>
+      <stop offset="1" stop-color="#171525"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="188" y1="234" x2="1408" y2="744" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#f8fbf8"/>
+      <stop offset="1" stop-color="#eef7f4"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="330" y1="268" x2="1270" y2="602" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#08c7d8"/>
+      <stop offset="1" stop-color="#91ead7"/>
+    </linearGradient>
+    <filter id="shadow" x="96" y="160" width="1408" height="658" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="34" stdDeviation="34" flood-color="#000000" flood-opacity="0.36"/>
+    </filter>
+    <style>
+      .display { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-weight: 900; letter-spacing: -0.055em; }
+      .sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" rx="46" fill="url(#bg)"/>
+  <circle cx="248" cy="724" r="220" fill="#08c7d8" opacity="0.13"/>
+  <circle cx="1378" cy="168" r="188" fill="#ffcf70" opacity="0.18"/>
+  <path d="M120 128H1480M120 772H1480M234 74V826M1366 74V826" stroke="#263642" stroke-width="1.4" opacity="0.7"/>
+
+  <text x="800" y="150" text-anchor="middle" class="display" font-size="104" fill="#f7fbfb">GUI-Anything</text>
+  <text x="800" y="214" text-anchor="middle" class="sans" font-size="36" font-weight="800" fill="#cfe0e4">One command. Two panes. No lost context.</text>
+
+  <g filter="url(#shadow)">
+    <rect x="154" y="242" width="1292" height="516" rx="34" fill="url(#panel)"/>
+    <rect x="190" y="278" width="1220" height="70" rx="20" fill="#0c1620"/>
+    <circle cx="226" cy="313" r="10" fill="#ff7a59"/>
+    <circle cx="260" cy="313" r="10" fill="#ffcf70"/>
+    <circle cx="294" cy="313" r="10" fill="#08c7d8"/>
+    <text x="800" y="322" text-anchor="middle" class="mono" font-size="23" font-weight="700" fill="#91ead7">$ ga flow</text>
+
+    <rect x="210" y="386" width="520" height="262" rx="24" fill="#071017"/>
+    <text x="252" y="438" class="sans" font-size="31" font-weight="800" fill="#f8fbf8">Claude Code</text>
+    <text x="252" y="480" class="mono" font-size="22" fill="#91ead7">Claude stays open</text>
+    <path d="M254 532H598M254 576H646M254 620H544" stroke="#667884" stroke-width="15" stroke-linecap="round"/>
+
+    <rect x="870" y="386" width="520" height="262" rx="24" fill="#071017"/>
+    <text x="912" y="438" class="sans" font-size="31" font-weight="800" fill="#f8fbf8">Flow Observer</text>
+    <text x="912" y="480" class="mono" font-size="22" fill="#91ead7">live map + memory</text>
+    <rect x="914" y="522" width="126" height="54" rx="14" fill="#132632" stroke="#08c7d8" stroke-width="2"/>
+    <text x="977" y="556" text-anchor="middle" class="mono" font-size="18" fill="#dce9ed">Run</text>
+    <rect x="1064" y="522" width="154" height="54" rx="14" fill="#132632" stroke="#08c7d8" stroke-width="2"/>
+    <text x="1141" y="556" text-anchor="middle" class="mono" font-size="18" fill="#dce9ed">Capture</text>
+    <rect x="1242" y="522" width="106" height="54" rx="14" fill="#132632" stroke="#08c7d8" stroke-width="2"/>
+    <text x="1295" y="556" text-anchor="middle" class="mono" font-size="18" fill="#dce9ed">Guide</text>
+    <path d="M914 620H1348" stroke="#667884" stroke-width="15" stroke-linecap="round"/>
+
+    <path d="M746 512H848" stroke="url(#accent)" stroke-width="8" stroke-linecap="round"/>
+    <path d="M828 490L852 512L828 534" stroke="#08c7d8" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="800" y="478" text-anchor="middle" class="mono" font-size="21" font-weight="700" fill="#0b1821">Live work</text>
+
+    <rect x="568" y="676" width="464" height="74" rx="22" fill="#0b1821"/>
+    <text x="800" y="722" text-anchor="middle" class="mono" font-size="25" font-weight="700" fill="#91ead7">Project memory + replay</text>
+    <path d="M800 648V668" stroke="#08c7d8" stroke-width="6" stroke-linecap="round"/>
+    <path d="M782 656L800 674L818 656" stroke="#08c7d8" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <text x="800" y="830" text-anchor="middle" class="mono" font-size="24" fill="#8ca5ae">keep the flow, keep the context</text>
+</svg>

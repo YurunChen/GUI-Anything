@@ -17,6 +17,9 @@ describe('buildResolvedTuiTheme', () => {
       expect(theme.motion.spinnerIntervalMs).toBe(theme.chrome.spinnerIntervalMs);
 
       expect(theme.modes.timeline.cardFills.base).toBe(theme.semantic.fill.base);
+      expect(theme.modes.timeline.cardFills.borderMuted).toBe(themes[themeName].border.normal);
+      expect(theme.modes.timeline.cardFills.borderAccentFrames[0]).toBe(theme.semantic.tint);
+      expect(theme.modes.timeline.cardFills.borderAccentFrames).toHaveLength(3);
       expect(theme.modes.focus.glyphs.trunk).toBe('│');
       expect(theme.modes.workspace.tree.directory.glyph.length).toBeGreaterThan(0);
       expect(theme.modes.workspace.action.edit.glyph).toBeTruthy();

@@ -1,5 +1,8 @@
 import { BasePlatformAdapter } from './base';
 import type { NotificationMessage, PlatformType } from '../types';
+import { createLogger } from '../../../utils/logger';
+
+const log = createLogger('notification');
 
 /**
  * 微信推送适配器
@@ -16,11 +19,10 @@ export class WechatAdapter extends BasePlatformAdapter {
   private serviceUrl: string;
   private toUserId?: string;
 
-  constructor(webhookUrl?: string, token?: string) {
-    // webhookUrl 在这里用作 user_id
-    super(webhookUrl, token);
+  constructor(userId?: string, token?: string) {
+    super(userId, token);
 
-    this.toUserId = webhookUrl; // 微信用户ID
+    this.toUserId = userId;
     this.serviceUrl = process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL || 'http://127.0.0.1:8765';
 
     // 检查是否已配置
@@ -36,7 +38,7 @@ export class WechatAdapter extends BasePlatformAdapter {
       // 检查服务状态
       const statusOk = await this.checkService();
       if (!statusOk) {
-        console.error('[WechatAdapter] Python service not available');
+        log.warn('wechat service unavailable');
         return false;
       }
 
@@ -55,8 +57,10 @@ export class WechatAdapter extends BasePlatformAdapter {
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        console.error(`[WechatAdapter] Send failed:`, error);
+        log.warn('wechat send rejected', {
+          status: response.status,
+          error: await readResponseError(response),
+        });
         return false;
       }
 
@@ -64,7 +68,9 @@ export class WechatAdapter extends BasePlatformAdapter {
       return result.success === true;
 
     } catch (error) {
-      console.error(`[WechatAdapter] Send failed:`, error);
+      log.warn('wechat send failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }
@@ -86,17 +92,15 @@ export class WechatAdapter extends BasePlatformAdapter {
 
       // 检查是否已登录
       if (!status.logged_in) {
-        console.error(
-          '[WechatAdapter] Not logged in. Please run: ' +
-          'cd scheme/src/services/notification/weixin-service && ' +
-          'python server.py (then POST to /login)'
-        );
+        log.warn('wechat service not logged in');
         return false;
       }
 
       return true;
     } catch (error) {
-      console.error('[WechatAdapter] Service check failed:', error);
+      log.warn('wechat service check failed', {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return false;
     }
   }
@@ -109,7 +113,7 @@ export class WechatAdapter extends BasePlatformAdapter {
     // 先检查服务状态
     const serviceOk = await this.checkService();
     if (!serviceOk) {
-      console.error('[WechatAdapter] Python service not ready');
+      log.warn('wechat service not ready');
       return false;
     }
 
@@ -122,5 +126,17 @@ export class WechatAdapter extends BasePlatformAdapter {
     };
 
     return this.send(testMessage);
+  }
+}
+
+async function readResponseError(response: Response): Promise<string> {
+  try {
+    return JSON.stringify(await response.json());
+  } catch {
+    try {
+      return await response.text();
+    } catch {
+      return 'unreadable response';
+    }
   }
 }

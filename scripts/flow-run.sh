@@ -17,6 +17,7 @@ set -euo pipefail
 ROOT_DIR="${FLOW_ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
 SCHEME_DIR="$ROOT_DIR/scheme"
 LAYOUT_DIR="${FLOW_LAYOUT_DIR:-${TMPDIR:-/tmp}/gui-anything-flow/layouts}"
+NOTIFY_ENV_FILE="$ROOT_DIR/.flow-runtime/notify.env"
 MODEL=""
 CONTINUE=0
 RESUME=0
@@ -26,6 +27,30 @@ SESSION_NAME="${FLOW_ZELLIJ_SESSION:-f-$(date +%m%d-%H%M%S)-$(uuidgen | tr 'A-Z'
 REUSE_SESSION="${FLOW_ZELLIJ_REUSE:-0}"
 OBSERVER_WIDTH="${FLOW_ZELLIJ_OBSERVER_WIDTH:-}"
 CLAUDE_EXTRA_ARGS=()
+
+load_notify_env() {
+  [[ -f "$NOTIFY_ENV_FILE" ]] || return 0
+  while IFS='=' read -r key raw_value; do
+    [[ -n "${key:-}" ]] || continue
+    [[ "$key" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || continue
+    case "$key" in
+      FLOW_NOTIFY_*)
+        if [[ -z "${!key:-}" ]]; then
+          local value="$raw_value"
+          value="${value%$'\r'}"
+          if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+            value="${value:1:${#value}-2}"
+            value="${value//\\\"/\"}"
+            value="${value//\\\\/\\}"
+          fi
+          export "$key=$value"
+        fi
+        ;;
+    esac
+  done < "$NOTIFY_ENV_FILE"
+}
+
+load_notify_env
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -69,6 +94,10 @@ while [[ $# -gt 0 ]]; do
       echo "  CLAUDE_MODEL           Observer summary/wiki model; set from --model when provided"
       echo "  FLOW_SUMMARY_MODEL     Override observer summary subagent model"
       echo "  FLOW_WIKI_MODEL        Override wiki agent model"
+      echo "  FLOW_NOTIFY_WECHAT_USER_ID   Enable WeChat notify hotkey"
+      echo "  FLOW_NOTIFY_WECHAT_SERVICE_URL  WeChat service URL (default: http://127.0.0.1:8765)"
+      echo "  FLOW_NOTIFY_ENABLED    false = disable WeChat notifications"
+      echo "  FLOW_NOTIFY_PROGRESS_INTERVAL  Progress interval minutes (0 = disabled)"
       echo "  wiki/sessions/_index.json  Continue binding (workspace-scoped)"
       echo "  FLOW_ZELLIJ_SESSION  Zellij session name (default: unique)"
       echo "  FLOW_ZELLIJ_AUTOCLEANUP   1=cleanup on exit (default)"
@@ -98,6 +127,10 @@ fi
 if ! command -v zellij >/dev/null 2>&1; then
   echo "flow-run: zellij binary not found in PATH" >&2
   exit 1
+fi
+
+if [[ "${FLOW_NOTIFY_ENABLED:-true}" != "false" && -z "${FLOW_NOTIFY_WECHAT_USER_ID:-}" && "${FLOW_NOTIFY_HINT_SHOWN:-0}" != "1" ]]; then
+  echo "[flow-run] WeChat notifications are not configured. Run: ga notify setup" >&2
 fi
 
 export ZELLIJ_SOCKET_DIR="${ZELLIJ_SOCKET_DIR:-/tmp/zellij}"

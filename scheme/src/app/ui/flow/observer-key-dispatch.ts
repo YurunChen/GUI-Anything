@@ -26,7 +26,6 @@ export type ObserverKeyAction =
   | { type: 'toggle_notes' }
   | { type: 'close_notes' }
   | { type: 'toggle_calm' }
-  | { type: 'toggle_question_expand' }
   | { type: 'toggle_mode' }
   | { type: 'send_snapshot' }
   | { type: 'file_wiki_audit' }
@@ -96,10 +95,6 @@ export function dispatchObserverKey(
 
   if (key.name === 'c' && !key.ctrl && !key.meta) {
     return { type: 'toggle_calm' };
-  }
-
-  if (key.name === 'e' && !key.ctrl && !key.meta) {
-    return { type: 'toggle_question_expand' };
   }
 
   if (key.name === 'q') {

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'bun:test';
 import type { EvolutionNode } from '../../data/protocol/evolution-types';
 import {
   computePersonaAxes,
+  isArchetypeSignalReady,
+  isRarityEvidenceReady,
   matchArchetype,
   ruleBasedPersona,
   signalsFromNodes,
@@ -95,22 +97,78 @@ describe('signalsFromNodes', () => {
 
 describe('matchArchetype', () => {
   it('matches a focused high-delivery profile to a delivery-oriented archetype', () => {
-    const axes = computePersonaAxes(signals({ milestoneCount: 4, substepCount: 12, toolCount: 40, errorCount: 1, writes: 12 }));
-    const m = matchArchetype(axes, { nightShare: 0, interruptedShare: 0, writes: 12, milestoneCount: 4 });
-    expect(['ARCH', 'SHIP', 'STEADY', 'MARATHON', 'STAR']).toContain(m.code);
+    const input = signals({ milestoneCount: 4, substepCount: 12, toolCount: 40, errorCount: 1, writes: 12 });
+    const axes = computePersonaAxes(input);
+    const m = matchArchetype(axes, input);
+    expect(['ARCH', 'SHIP', 'STEADY', 'MARATHON']).toContain(m.code);
     expect(m.spectrum.length).toBe(3);
   });
 
   it('VOID egg fires when nothing was deposited', () => {
-    const axes = computePersonaAxes(signals({ milestoneCount: 3, writes: 0 }));
-    const m = matchArchetype(axes, { nightShare: 0, interruptedShare: 0, writes: 0, milestoneCount: 3 });
+    const input = signals({ milestoneCount: 3, writes: 0 });
+    const axes = computePersonaAxes(input);
+    const m = matchArchetype(axes, input);
     expect(m.code).toBe('VOID');
   });
 
+  it('VOID egg does not fire from the first empty milestone', () => {
+    const input = signals({ milestoneCount: 1, writes: 0 });
+    const axes = computePersonaAxes(input);
+    const m = matchArchetype(axes, input);
+    expect(m.code).not.toBe('VOID');
+  });
+
   it('OWL egg fires for night owls', () => {
-    const axes = computePersonaAxes(signals({ milestoneCount: 3, writes: 3, nightShare: 0.7 }));
-    const m = matchArchetype(axes, { nightShare: 0.7, interruptedShare: 0, writes: 3, milestoneCount: 3 });
+    const input = signals({ milestoneCount: 4, writes: 3, nightShare: 0.7 });
+    const axes = computePersonaAxes(input);
+    const m = matchArchetype(axes, input);
     expect(m.code).toBe('OWL');
+  });
+
+  it('does not award legendary archetypes from a single saved milestone', () => {
+    const input = signals({ milestoneCount: 1, toolCount: 4, writes: 1 });
+    const axes = computePersonaAxes(input);
+    const m = matchArchetype(axes, input);
+    expect(m.code).not.toBe('STAR');
+    expect(m.spectrum.map((item) => item.code)).not.toContain('STAR');
+  });
+});
+
+describe('isRarityEvidenceReady', () => {
+  it('gates rarer personalities behind progressively stronger evidence', () => {
+    expect(isRarityEvidenceReady('common', { nightShare: 0, interruptedShare: 0, writes: 0, milestoneCount: 1 })).toBe(true);
+    expect(isRarityEvidenceReady('uncommon', { nightShare: 0, interruptedShare: 0, writes: 0, milestoneCount: 2 })).toBe(false);
+    expect(isRarityEvidenceReady('uncommon', { nightShare: 0, interruptedShare: 0, writes: 1, milestoneCount: 2 })).toBe(true);
+    expect(isRarityEvidenceReady('rare', { nightShare: 0, interruptedShare: 0, writes: 1, milestoneCount: 2 })).toBe(false);
+    expect(isRarityEvidenceReady('rare', { nightShare: 0, interruptedShare: 0, writes: 1, milestoneCount: 3 })).toBe(true);
+    expect(isRarityEvidenceReady('epic', { nightShare: 0, interruptedShare: 0, writes: 1, milestoneCount: 4 })).toBe(false);
+    expect(isRarityEvidenceReady('epic', { nightShare: 0, interruptedShare: 0, writes: 2, milestoneCount: 4 })).toBe(true);
+    expect(isRarityEvidenceReady('legendary', { nightShare: 0, interruptedShare: 0, writes: 2, milestoneCount: 6 })).toBe(false);
+    expect(isRarityEvidenceReady('legendary', { nightShare: 0, interruptedShare: 0, writes: 3, milestoneCount: 6 })).toBe(true);
+  });
+});
+
+describe('isArchetypeSignalReady', () => {
+  it('requires night evidence for night-oriented personalities', () => {
+    expect(isArchetypeSignalReady('NIGHT', signals({ milestoneCount: 4, writes: 1, nightShare: 0.1 }))).toBe(false);
+    expect(isArchetypeSignalReady('NIGHT', signals({ milestoneCount: 4, writes: 1, nightShare: 0.3 }))).toBe(true);
+  });
+
+  it('requires error evidence for fire and tinkering personalities', () => {
+    expect(isArchetypeSignalReady('FIRE', signals({ milestoneCount: 2, writes: 1, toolCount: 20, errorCount: 0 }))).toBe(false);
+    expect(isArchetypeSignalReady('FIRE', signals({ milestoneCount: 2, writes: 1, toolCount: 20, errorCount: 1 }))).toBe(true);
+    expect(isArchetypeSignalReady('TINKER', signals({ milestoneCount: 1, toolCount: 20, errorCount: 1 }))).toBe(false);
+    expect(isArchetypeSignalReady('TINKER', signals({ milestoneCount: 1, toolCount: 20, errorCount: 3 }))).toBe(true);
+  });
+
+  it('requires route-change evidence for pivot personalities', () => {
+    expect(isArchetypeSignalReady('PIVOT', signals({ milestoneCount: 3, writes: 1, pivotShare: 0.1 }))).toBe(false);
+    expect(isArchetypeSignalReady('PIVOT', signals({ milestoneCount: 3, writes: 1, pivotShare: 0.3 }))).toBe(true);
+  });
+
+  it('requires retrieval evidence for reuse personalities', () => {
+    expect(isArchetypeSignalReady('REUSE', signals({ milestoneCount: 2, writes: 1, retrievals: 0 }))).toBe(false);
+    expect(isArchetypeSignalReady('REUSE', signals({ milestoneCount: 2, writes: 1, retrievals: 1 }))).toBe(true);
   });
 });
 

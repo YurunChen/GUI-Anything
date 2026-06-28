@@ -4,14 +4,13 @@ import type {
   NotificationResult,
   PlatformAdapter,
   PlatformType,
-  NotificationType,
   NotificationPriority,
 } from './types';
-import { WechatAdapter, FeishuAdapter, DingTalkAdapter } from './adapters';
+import { WechatAdapter } from './adapters';
 
 /**
  * 通知服务核心类
- * 负责协调多个平台适配器，处理推送逻辑
+ * 负责协调微信适配器，处理推送逻辑
  */
 export class NotificationService {
   private adapters: Map<PlatformType, PlatformAdapter> = new Map();
@@ -34,19 +33,6 @@ export class NotificationService {
       this.adapters.set('wechat', new WechatAdapter(wechatUserId));
     }
 
-    // 飞书适配器
-    const feishuUrl = process.env.FLOW_NOTIFY_FEISHU_URL;
-    const feishuToken = process.env.FLOW_NOTIFY_FEISHU_TOKEN;
-    if (feishuUrl) {
-      this.adapters.set('feishu', new FeishuAdapter(feishuUrl, feishuToken));
-    }
-
-    // 钉钉适配器
-    const dingtalkUrl = process.env.FLOW_NOTIFY_DINGTALK_URL;
-    const dingtalkToken = process.env.FLOW_NOTIFY_DINGTALK_TOKEN;
-    if (dingtalkUrl) {
-      this.adapters.set('dingtalk', new DingTalkAdapter(dingtalkUrl, dingtalkToken));
-    }
   }
 
   /**
@@ -68,31 +54,24 @@ export class NotificationService {
     }
 
     const results: NotificationResult[] = [];
-    const enabledPlatforms = this.getEnabledPlatforms();
+    const adapter = this.adapters.get('wechat');
+    if (!adapter?.enabled) return results;
 
-    // 并发推送到所有启用的平台
-    await Promise.all(
-      enabledPlatforms.map(async (platform) => {
-        const adapter = this.adapters.get(platform);
-        if (!adapter) return;
-
-        try {
-          const success = await adapter.send(message);
-          results.push({
-            success,
-            platform,
-            timestamp: Date.now(),
-          });
-        } catch (error) {
-          results.push({
-            success: false,
-            platform,
-            error: error instanceof Error ? error.message : 'Unknown error',
-            timestamp: Date.now(),
-          });
-        }
-      })
-    );
+    try {
+      const success = await adapter.send(message);
+      results.push({
+        success,
+        platform: 'wechat',
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      results.push({
+        success: false,
+        platform: 'wechat',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: Date.now(),
+      });
+    }
 
     return results;
   }
@@ -201,28 +180,12 @@ export class NotificationService {
    */
   async testAll(): Promise<Record<PlatformType, boolean>> {
     const results: Partial<Record<PlatformType, boolean>> = {};
-    const enabledPlatforms = this.getEnabledPlatforms();
-
-    await Promise.all(
-      enabledPlatforms.map(async (platform) => {
-        const adapter = this.adapters.get(platform);
-        if (adapter) {
-          results[platform] = await adapter.test();
-        }
-      })
-    );
+    const adapter = this.adapters.get('wechat');
+    if (adapter?.enabled) {
+      results.wechat = await adapter.test();
+    }
 
     return results as Record<PlatformType, boolean>;
-  }
-
-  /**
-   * 获取启用的平台列表
-   */
-  private getEnabledPlatforms(): PlatformType[] {
-    return this.config.platforms.filter((platform) => {
-      const adapter = this.adapters.get(platform);
-      return adapter?.enabled;
-    });
   }
 
   /**
@@ -236,9 +199,8 @@ export class NotificationService {
       urgent: 3,
     };
 
-    return (
-      priorityLevel[message.priority] >= priorityLevel[this.config.filters.minPriority]
-    );
+    const minPriority = priorityLevel[this.config.filters.minPriority] ?? priorityLevel.low;
+    return priorityLevel[message.priority] >= minPriority;
   }
 
   /**
@@ -278,7 +240,6 @@ export class NotificationService {
     };
     const defaultConfig: NotificationConfig = {
       enabled: true,
-      platforms: ['wechat', 'feishu', 'dingtalk'],
       autoTriggers: {
         onError: true,
         onCompletion: true,

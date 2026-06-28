@@ -36,6 +36,8 @@ export interface TimelineModeTheme {
     separator: string;
     tint: string;
     tintMuted: string;
+    borderMuted: string;
+    borderAccentFrames: readonly string[];
     activity: string;
   };
   question: TuiTextToken;
@@ -166,7 +168,7 @@ export function buildResolvedTuiTheme(themeName: ThemeName): ResolvedTuiTheme {
     semantic,
     chrome,
     style: resolveThemeStyleMeta(themeName),
-    modes: buildModeThemes(semantic, chrome),
+    modes: buildModeThemes(colors, semantic, chrome),
     motion: {
       spinnerFrames: chrome.spinnerFrames,
       spinnerIntervalMs: chrome.spinnerIntervalMs,
@@ -194,9 +196,9 @@ export function resolveWorkspaceActivityToken(
   return workspace.action[action as WorkspaceActivityAction] ?? workspace.status.idle;
 }
 
-function buildModeThemes(semantic: SemanticColors, chrome: ThemeChrome): TuiModeThemes {
+function buildModeThemes(colors: ColorScheme, semantic: SemanticColors, chrome: ThemeChrome): TuiModeThemes {
   return {
-    timeline: buildTimelineModeTheme(semantic),
+    timeline: buildTimelineModeTheme(colors, semantic),
     focus: buildFocusModeTheme(semantic),
     workspace: buildWorkspaceModeTheme(semantic, chrome),
     wiki: buildWikiModeTheme(semantic),
@@ -205,7 +207,7 @@ function buildModeThemes(semantic: SemanticColors, chrome: ThemeChrome): TuiMode
   };
 }
 
-function buildTimelineModeTheme(semantic: SemanticColors): TimelineModeTheme {
+function buildTimelineModeTheme(colors: ColorScheme, semantic: SemanticColors): TimelineModeTheme {
   return {
     cardFills: {
       grouped: semantic.fill.grouped,
@@ -214,6 +216,8 @@ function buildTimelineModeTheme(semantic: SemanticColors): TimelineModeTheme {
       separator: semantic.separator,
       tint: semantic.tint,
       tintMuted: semantic.tintMuted,
+      borderMuted: colors.border.normal,
+      borderAccentFrames: buildBorderAccentFrames(semantic.tint),
       activity: semantic.activity,
     },
     question: { fg: semantic.label.secondary },
@@ -233,6 +237,37 @@ function buildTimelineModeTheme(semantic: SemanticColors): TimelineModeTheme {
       toolSummaryFg: semantic.label.tertiary,
     },
   };
+}
+
+function buildBorderAccentFrames(tint: string): readonly string[] {
+  return [
+    tint,
+    mixHexColor(tint, '#ffffff', 0.18),
+    tint,
+  ];
+}
+
+function mixHexColor(from: string, to: string, ratio: number): string {
+  const fromRgb = parseHexColor(from);
+  const toRgb = parseHexColor(to);
+  if (!fromRgb || !toRgb) return from;
+
+  const mix = fromRgb.map((channel, index) => {
+    const target = toRgb[index] ?? channel;
+    return Math.round(channel + (target - channel) * ratio);
+  });
+  return `#${mix.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function parseHexColor(color: string): [number, number, number] | undefined {
+  const match = /^#([0-9a-f]{6})$/i.exec(color);
+  if (!match) return undefined;
+  const hex = match[1];
+  return [
+    Number.parseInt(hex.slice(0, 2), 16),
+    Number.parseInt(hex.slice(2, 4), 16),
+    Number.parseInt(hex.slice(4, 6), 16),
+  ];
 }
 
 function buildFocusModeTheme(semantic: SemanticColors): FocusModeTheme {

@@ -1,6 +1,6 @@
 /**
  * Notification Types for Flow Observer
- * 支持多平台推送（微信/飞书/钉钉）
+ * 微信通知类型。
  */
 
 export type NotificationType =
@@ -12,7 +12,7 @@ export type NotificationType =
 
 export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
 
-export type PlatformType = 'wechat' | 'feishu' | 'dingtalk';
+export type PlatformType = 'wechat';
 
 /**
  * 通知消息结构
@@ -48,7 +48,6 @@ export interface PlatformAdapter {
  */
 export interface NotificationConfig {
   enabled: boolean;
-  platforms: PlatformType[];
   // 自动触发规则
   autoTriggers: {
     onError: boolean;           // 检测到错误时自动推送

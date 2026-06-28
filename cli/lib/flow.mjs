@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { runDoctor } from './doctor.mjs';
+import { readNotifyConfig } from './notify.mjs';
 
 function commandExists(command) {
   const result = spawnSync('bash', ['-lc', `command -v ${command}`], { stdio: 'pipe' });
@@ -179,6 +180,11 @@ function openInBrowser(target) {
   }
 }
 
+export function buildFlowEnv(rootDir, baseEnv = process.env) {
+  const notifyConfig = readNotifyConfig(rootDir);
+  return { ...notifyConfig, ...baseEnv };
+}
+
 export async function runFlowCommand({ rootDir, options }) {
   if (!commandExists('zellij')) {
     throw new Error('Zellij is required. Install with: brew install zellij');
@@ -212,10 +218,15 @@ export async function runFlowCommand({ rootDir, options }) {
 
   const scriptPath = path.join(rootDir, 'scripts', 'flow-run.sh');
   const scriptArgs = buildFlowScriptArgs(options);
+  const env = buildFlowEnv(rootDir);
+  if (!env.FLOW_NOTIFY_WECHAT_USER_ID && env.FLOW_NOTIFY_ENABLED !== 'false') {
+    console.error('[ga flow] WeChat notifications are not configured. Run `ga notify setup` to enable them.');
+    env.FLOW_NOTIFY_HINT_SHOWN = '1';
+  }
   const result = spawnSync(scriptPath, scriptArgs, {
     cwd: rootDir,
     stdio: 'inherit',
-    env: process.env,
+    env,
   });
 
   if (typeof result.status === 'number') {

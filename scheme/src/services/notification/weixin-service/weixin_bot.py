@@ -44,11 +44,13 @@ CHANNEL_VERSION = "2.2.0"
 ILINK_APP_CLIENT_VERSION = (2 << 16) | (2 << 8) | 0
 
 EP_SEND_MESSAGE = "ilink/bot/sendmessage"
+EP_GET_UPDATES = "ilink/bot/getupdates"
 EP_GET_BOT_QR = "ilink/bot/get_bot_qrcode"
 EP_GET_QR_STATUS = "ilink/bot/get_qrcode_status"
 
 API_TIMEOUT_MS = 15_000
 QR_TIMEOUT_MS = 35_000
+LONG_POLL_TIMEOUT_MS = 35_000
 
 ITEM_TEXT = 1
 MSG_TYPE_BOT = 2
@@ -410,6 +412,46 @@ class WeixinBotClient:
         except Exception as e:
             logger.error(f"Failed to send message: {e}")
             return False
+
+    async def wait_for_inbound_user(self, timeout_seconds: int = 60) -> Optional[str]:
+        """Return the sender id from the next inbound DM to this bot."""
+        if not self.token:
+            raise RuntimeError("Not logged in. Please call qr_login() first.")
+
+        sync_buf = ""
+        deadline = time.monotonic() + timeout_seconds
+
+        while time.monotonic() < deadline:
+            remaining_ms = max(1000, int((deadline - time.monotonic()) * 1000))
+            timeout_ms = min(LONG_POLL_TIMEOUT_MS, remaining_ms)
+            try:
+                resp = await self._api_post(
+                    EP_GET_UPDATES,
+                    {"get_updates_buf": sync_buf},
+                    timeout_ms=timeout_ms,
+                )
+            except asyncio.TimeoutError:
+                continue
+
+            ret = resp.get("ret", 0)
+            errcode = resp.get("errcode", 0)
+            if ret not in {0, None} or errcode not in {0, None}:
+                logger.warning(
+                    "getupdates failed ret=%s errcode=%s errmsg=%s",
+                    ret,
+                    errcode,
+                    resp.get("errmsg", ""),
+                )
+                await asyncio.sleep(1)
+                continue
+
+            sync_buf = str(resp.get("get_updates_buf") or sync_buf)
+            for message in resp.get("msgs") or []:
+                sender_id = str(message.get("from_user_id") or "").strip()
+                if sender_id and sender_id != self.account_id:
+                    return sender_id
+
+        return None
 
 
 # CLI for testing

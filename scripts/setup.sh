@@ -6,6 +6,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCHEME_DIR="$ROOT_DIR/scheme"
+WEIXIN_SERVICE_DIR="$ROOT_DIR/scheme/src/services/notification/weixin-service"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -50,6 +51,43 @@ setup_zellij_env() {
   else
     log_info "Install Zellij: https://zellij.dev/documentation/installation.html"
   fi
+}
+
+setup_weixin_notification_deps() {
+  log_info "Preparing WeChat notification Python environment..."
+
+  if [[ ! -d "$WEIXIN_SERVICE_DIR" ]]; then
+    log_warn "WeChat service directory not found; skipped notification dependencies"
+    return 0
+  fi
+
+  if ! command_exists python3; then
+    log_warn "Python 3 not found; skipped WeChat notification dependencies"
+    log_info "Install Python 3, then run: ./scripts/start-weixin-service.sh"
+    return 0
+  fi
+
+  local venv_dir="$WEIXIN_SERVICE_DIR/.venv"
+  local venv_python="$venv_dir/bin/python"
+
+  if [[ ! -x "$venv_python" ]]; then
+    log_info "Creating local virtualenv: $venv_dir"
+    python3 -m venv "$venv_dir"
+  fi
+
+  if ! "$venv_python" -m pip --version >/dev/null 2>&1; then
+    log_warn "pip is unavailable in $venv_dir; skipped WeChat notification dependencies"
+    return 0
+  fi
+
+  if "$venv_python" -c "import aiohttp, fastapi, uvicorn, qrcode, cryptography" 2>/dev/null; then
+    log_success "WeChat notification dependencies already installed"
+    return 0
+  fi
+
+  log_info "Installing WeChat notification dependencies into local virtualenv..."
+  "$venv_python" -m pip install -r "$WEIXIN_SERVICE_DIR/requirements.txt"
+  log_success "WeChat notification dependencies installed"
 }
 
 # Install Bun
@@ -234,6 +272,7 @@ print_summary() {
   echo "  ga flow"
   echo "  ga flow --continue"
   echo "  ga flow --resume <id>"
+  echo "  ga notify setup   # optional WeChat notifications"
   echo ""
   echo "Or:"
   echo "  ./scripts/flow-run.sh"
@@ -273,6 +312,8 @@ main() {
   check_claude_cli
   echo ""
   setup_zellij_env
+  echo ""
+  setup_weixin_notification_deps
   echo ""
   set_permissions
   echo ""

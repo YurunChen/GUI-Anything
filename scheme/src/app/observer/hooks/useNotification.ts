@@ -1,8 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { NotificationService, FlowNotificationListener } from '../../../services/notification';
 import type { ActivityTree } from '../../../domain/types';
+import type { NotificationResult } from '../../../services/notification';
 
-type NotifySummaryHint = { shouldPersist?: boolean; summary?: string };
+type NotifySummaryItem = {
+  id: string;
+  text?: string;
+  status?: string;
+  persistMeta?: { should_persist?: boolean } | null;
+};
+
+export function isKnowledgeNotifyEligible(item: NotifySummaryItem): boolean {
+  return item.status === 'ready' && item.persistMeta?.should_persist === true;
+}
+
+export function initialNotifiedKnowledgeIds(items: NotifySummaryItem[]): Set<string> {
+  return new Set(items.filter(isKnowledgeNotifyEligible).map((item) => item.id));
+}
+
+export function consumeNewKnowledgeNotifications(
+  items: NotifySummaryItem[],
+  notifiedIds: Set<string>
+): NotifySummaryItem[] {
+  const notifications: NotifySummaryItem[] = [];
+  for (const item of items) {
+    if (!isKnowledgeNotifyEligible(item)) continue;
+    if (notifiedIds.has(item.id)) continue;
+    notifiedIds.add(item.id);
+    notifications.push(item);
+  }
+  return notifications;
+}
 
 /**
  * 通知服务 Hook
@@ -11,16 +39,23 @@ type NotifySummaryHint = { shouldPersist?: boolean; summary?: string };
 export function useNotification(
   sessionId?: string,
   tree?: ActivityTree,
-  explorationSummaries?: NotifySummaryHint[]
+  summaryItems?: Record<string, NotifySummaryItem>
 ) {
-  const [notificationEnabled, setNotificationEnabled] = useState(() => {
+  const wechatUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID;
+  const [notificationEnabled] = useState(() => {
     const envEnabled = process.env.FLOW_NOTIFY_ENABLED;
-    return envEnabled !== 'false'; // 默认启用
+    return envEnabled !== 'false' && Boolean(wechatUserId);
   });
 
-  const [lastNotifyStatus, setLastNotifyStatus] = useState<string>('');
+  const [lastNotifyStatus, setLastNotifyStatus] = useState<string>(() => {
+    if (process.env.FLOW_NOTIFY_ENABLED === 'false') return 'WeChat notify disabled';
+    if (!wechatUserId) return 'WeChat notify not configured';
+    return '';
+  });
   const notificationServiceRef = useRef<NotificationService | null>(null);
   const listenerRef = useRef<FlowNotificationListener | null>(null);
+  const notifiedKnowledgeIdsRef = useRef<Set<string>>(new Set());
+  const knowledgeInitializedRef = useRef(false);
 
   // 初始化通知服务
   useEffect(() => {
@@ -54,6 +89,8 @@ export function useNotification(
       process.env.FLOW_PROJECT_DIR || process.cwd()
     );
     listenerRef.current = listener;
+    notifiedKnowledgeIdsRef.current = new Set();
+    knowledgeInitializedRef.current = false;
 
     // 发送启动测试消息（静默，不影响用户）
     // service.testAll().then((results) => {
@@ -72,27 +109,27 @@ export function useNotification(
   // 监听 tree 更新
   useEffect(() => {
     if (!tree || !listenerRef.current) return;
-    listenerRef.current.onTreeUpdate(tree);
+    void listenerRef.current.onTreeUpdate(tree).catch(() => undefined);
   }, [tree]);
 
-  // 监听知识提取（基于 explorationSummaries 增长）
-  const lastSummaryCountRef = useRef(0);
+  // 监听知识提取（基于新的可持久化 summary item）
   useEffect(() => {
-    if (!explorationSummaries || !listenerRef.current) return;
+    if (!summaryItems || !listenerRef.current) return;
 
-    const currentCount = explorationSummaries.length;
-    if (currentCount > lastSummaryCountRef.current) {
-      const newSummary = explorationSummaries[currentCount - 1];
-      if (newSummary && newSummary.shouldPersist) {
-        // 新的知识被提取
-        listenerRef.current.onKnowledgeExtracted(
-          '新发现',
-          newSummary.summary || '检测到新的关键知识点'
-        );
-      }
+    const items = Object.values(summaryItems);
+    if (!knowledgeInitializedRef.current) {
+      notifiedKnowledgeIdsRef.current = initialNotifiedKnowledgeIds(items);
+      knowledgeInitializedRef.current = true;
+      return;
     }
-    lastSummaryCountRef.current = currentCount;
-  }, [explorationSummaries]);
+
+    for (const item of consumeNewKnowledgeNotifications(items, notifiedKnowledgeIdsRef.current)) {
+      void listenerRef.current.onKnowledgeExtracted(
+        '新发现',
+        item.text || '检测到新的关键知识点'
+      ).catch(() => undefined);
+    }
+  }, [summaryItems]);
 
   /**
    * 手动发送快照
@@ -104,8 +141,11 @@ export function useNotification(
         return;
       }
 
-      listenerRef.current.sendManualSnapshot(tree, note).then(() => {
-        setLastNotifyStatus('✓ Snapshot sent');
+      listenerRef.current.sendManualSnapshot(tree, note).then((results) => {
+        setLastNotifyStatus(formatNotifyStatus(results));
+        setTimeout(() => setLastNotifyStatus(''), 3000);
+      }).catch((error) => {
+        setLastNotifyStatus(`⚠ ${error instanceof Error ? error.message : String(error)}`);
         setTimeout(() => setLastNotifyStatus(''), 3000);
       });
     },
@@ -129,4 +169,11 @@ export function useNotification(
     sendCompletion,
     lastNotifyStatus,
   };
+}
+
+function formatNotifyStatus(results: NotificationResult[]): string {
+  if (results.length === 0) return '⚠ WeChat notification skipped';
+  const failed = results.find((result) => !result.success);
+  if (!failed) return '✓ WeChat snapshot sent';
+  return failed.error ? `⚠ WeChat send failed: ${failed.error}` : '⚠ WeChat send failed';
 }

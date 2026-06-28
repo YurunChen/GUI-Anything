@@ -8,6 +8,14 @@
     "start": "bun run src/main.ts --",
     "start:live": "bun run src/main.ts --live",
     "web": "bun run src/main.ts --web",
+    "preview:buddy": "bun run scripts/preview-buddy-crests.ts",
+    "preview:buddy:tui": "bun run scripts/preview-buddy-opentui.tsx",
+    "preview:buddy:chafa": "bun run scripts/preview-buddy-chafa-compare.ts",
+    "gen:buddy:images": "bun run scripts/gen-buddy-animal-sources.ts",
+    "export:buddy": "bun run scripts/export-buddy-crest-svg.ts",
+    "export:buddy:statusbar": "bun run scripts/export-buddy-statusbar-svg.ts",
+    "export:buddy:motion": "bun run scripts/export-buddy-motion-html.ts",
+    "export:buddy:chafa": "bun run scripts/export-buddy-chafa-ansi.ts",
     "start:observer": "bun run src/main.ts --live",
     "test": "bun test",
     "typecheck": "bunx tsc --noEmit",
@@ -21,6 +29,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/react": "^19.2.14"
+    "@types/react": "^19.2.14",
+    "chafa-wasm": "^0.3.3"
   }
 }

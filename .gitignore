@@ -56,3 +56,5 @@ temp/
 /wiki/
 /scheme/wiki/
 
+# Local WeChat notification credentials
+/scheme/src/services/notification/weixin-service/data/

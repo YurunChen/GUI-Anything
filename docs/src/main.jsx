@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import {
   Bell,
   BookOpen,
+  FileText,
   GitBranch,
+  Github,
   Map,
   Network,
 } from 'lucide-react';
@@ -21,21 +23,25 @@ import {
 } from './site-content.js';
 
 const capabilityIcons = {
-  Intent: Network,
   Flow: Network,
   Notify: Bell,
   Map: Map,
   Wiki: BookOpen,
-  意图: Network,
   心流: Network,
   通知: Bell,
   可视化: Map,
   沉淀: BookOpen,
 };
 
+const DEMO_CYCLE_IDS = ['flow', 'knowledge', 'timeline', 'replay', 'note'];
+
+function findScenario(id) {
+  return terminalScenarios.find((s) => s.id === id) ?? terminalScenarios[1];
+}
+
 function App() {
   const [locale, setLocale] = useState(resolveInitialLocale);
-  const [active, setActive] = useState(terminalScenarios[1]);
+  const [active, setActive] = useState(() => findScenario('flow'));
   const [autoplayPaused, setAutoplayPaused] = useState(false);
   const demoRef = useRef(null);
   const demoInView = useInView(demoRef);
@@ -45,6 +51,9 @@ function App() {
     () => terminalScenarios.findIndex((scenario) => scenario.id === active.id),
     [active],
   );
+
+  const scenarioNarrative = t.scenarioCopy[active.id] ?? t.scenarioCopy.flow;
+  const scenarioCallouts = t.demo.callouts?.[active.id] ?? [];
 
   const pauseAutoplay = useCallback(() => setAutoplayPaused(true), []);
 
@@ -63,87 +72,155 @@ function App() {
 
     const timer = window.setInterval(() => {
       setActive((current) => {
-        const index = terminalScenarios.findIndex((scenario) => scenario.id === current.id);
-        return terminalScenarios[(index + 1) % terminalScenarios.length];
+        const cycleIndex = DEMO_CYCLE_IDS.indexOf(current.id);
+        const nextId = cycleIndex >= 0
+          ? DEMO_CYCLE_IDS[(cycleIndex + 1) % DEMO_CYCLE_IDS.length]
+          : DEMO_CYCLE_IDS[0];
+        return findScenario(nextId);
       });
-    }, 5500);
+    }, 6500);
 
     return () => window.clearInterval(timer);
   }, [demoInView, autoplayPaused]);
 
   return (
-    <div className="site terminal-site">
+    <div className="site site-v4 site-landing">
       <a className="skip-link" href="#main">{t.ui.skip}</a>
-      <header className="site-header">
+      <header className="site-header site-header-v4">
         <a className="brand" href="#top" aria-label={t.ui.brandAria}>
           <img className="brand-mark brand-logo" src={siteLogo} alt="" aria-hidden="true" />
-          <span className="brand-name">gui-anything</span>
+          <span className="brand-name">GUI-Anything</span>
         </a>
         <nav className="nav" aria-label="Primary navigation">
-          <a href="#problem">{t.nav.problem}</a>
           <a href="#demo">{t.nav.demo}</a>
+          <a href="#moments">{t.nav.moments}</a>
+          <a href="#problem">{t.nav.problem}</a>
           <a href="#capabilities">{t.nav.capabilities}</a>
+          <a href="#lifecycle">{t.nav.lifecycle}</a>
           <a href="#contribute">{t.nav.contribute}</a>
         </nav>
-        <div className="lang-switch" role="group" aria-label={t.ui.langLabel}>
-          <button
-            type="button"
-            className={locale === 'en' ? 'active' : ''}
-            aria-pressed={locale === 'en'}
-            onClick={() => setLocale('en')}
+        <div className="header-actions">
+          <a
+            className="header-github"
+            href="https://github.com/YurunChen/GUI-Anything"
+            target="_blank"
+            rel="noreferrer"
           >
-            EN
-          </button>
-          <button
-            type="button"
-            className={locale === 'zh' ? 'active' : ''}
-            aria-pressed={locale === 'zh'}
-            onClick={() => setLocale('zh')}
-          >
-            中文
-          </button>
+            <Github size={16} strokeWidth={1.7} aria-hidden="true" />
+            {t.hero.ctaPrimary}
+          </a>
+          <div className="lang-switch" role="group" aria-label={t.ui.langLabel}>
+            <button
+              type="button"
+              className={locale === 'en' ? 'active' : ''}
+              aria-pressed={locale === 'en'}
+              onClick={() => setLocale('en')}
+            >
+              EN
+            </button>
+            <button
+              type="button"
+              className={locale === 'zh' ? 'active' : ''}
+              aria-pressed={locale === 'zh'}
+              onClick={() => setLocale('zh')}
+            >
+              中文
+            </button>
+          </div>
         </div>
       </header>
 
       <main id="main">
-        <section id="top" className="hero">
-          <div className="hero-scrim" aria-hidden="true" />
-          <div className="hero-inner">
-            <div className="hero-grid">
-              <div className="hero-copy">
-                <p className="hero-label">
-                  <span className="prompt" aria-hidden="true">$</span>
-                  {' '}
-                  {t.hero.command}
-                </p>
-                <h1>{t.hero.title}</h1>
-                <p className="lede">{t.hero.lede}</p>
-                <div className="hero-actions">
-                  <a
-                    className="button button-primary"
-                    href="https://github.com/YurunChen/GUI-Anything"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {t.hero.ctaPrimary}
-                  </a>
-                  <a className="button button-secondary" href="#demo">{t.hero.ctaSecondary}</a>
-                </div>
-                <ul className="hero-proof-list" aria-label={t.hero.proofLabel}>
-                  {t.hero.proof.map((item) => (
-                    <li key={item}>{item}</li>
+        <section id="top" className="landing-hero">
+          <div className="landing-hero-head">
+            <h1>{t.hero.title}</h1>
+            <p className="lede lede-hero">{t.hero.lede}</p>
+            <ul className="hero-proof-list hero-proof-list-v4" aria-label={t.hero.proofLabel}>
+              {t.hero.proof.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </div>
+
+          <div id="demo" className="demo-shell" ref={demoRef} aria-label={t.ui.demoAria}>
+            <div className="demo-section-intro">
+              <p className="section-kicker">{t.demo.tag}</p>
+              <h2 className="demo-section-title">{t.demo.title}</h2>
+              <p className="stack-lead demo-section-lead">{t.demo.body}</p>
+            </div>
+
+            <ScenarioTabs
+              active={active}
+              onSelect={selectScenario}
+              ariaLabel={t.ui.demoTabsAria}
+            />
+
+            <div className="demo-narrative" role="status" aria-live="polite">
+              <h3 className="demo-narrative-title">{scenarioNarrative.title}</h3>
+              <p className="demo-narrative-thesis">{scenarioNarrative.thesis}</p>
+              {scenarioCallouts.length ? (
+                <ul className="demo-callouts">
+                  {scenarioCallouts.map((item) => (
+                    <li key={item.target} data-target={item.target}>{item.label}</li>
                   ))}
                 </ul>
-              </div>
-              <HeroProductScene content={t.hero.product} />
+              ) : null}
+              <dl className="demo-artifacts">
+                {scenarioNarrative.artifacts.map(([label, value]) => (
+                  <div className="demo-artifact-row" key={label}>
+                    <dt>{label}</dt>
+                    <dd>{value}</dd>
+                  </div>
+                ))}
+              </dl>
             </div>
+
+            <div
+              className="demo-stage demo-stage-hero"
+              onMouseEnter={pauseAutoplay}
+              onFocus={pauseAutoplay}
+            >
+              <FlowTerminal
+                active={active}
+                activeIndex={activeIndex}
+                onSelect={selectScenario}
+                showStrip={false}
+                onInteract={pauseAutoplay}
+              />
+            </div>
+            <p className="demo-hint-line">{t.demo.hint}</p>
           </div>
         </section>
 
+        <section id="moments" className="moments-section">
+          <div className="moments-head">
+            <h2 className="section-title">{t.moments.title}</h2>
+            <p className="stack-lead">{t.moments.body}</p>
+          </div>
+          <ul className="moments-grid">
+            {t.moments.items.map((moment) => (
+              <li key={moment.id}>
+                <button
+                  type="button"
+                  className="moment-card"
+                  onClick={() => {
+                    pauseAutoplay();
+                    setActive(findScenario(moment.scenarioId));
+                    document.getElementById('demo')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  <h3>{moment.title}</h3>
+                  <p>{moment.text}</p>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <div className="content-stack content-stack-problem">
-          <section id="problem" className="stack-section stack-section-pain stack-section-reveal">
+          <section id="problem" className="stack-section stack-section-pain">
             <p className="section-kicker section-kicker-pain">{t.problem.tag}</p>
-            <div className="pain-pillars">
+            <div className="pain-pillars" aria-label={t.ui.painAria}>
               {t.problem.pillars.map((pillar, index) => (
                 <PainPillarTypewriter
                   key={`${locale}-${pillar.id}`}
@@ -156,39 +233,8 @@ function App() {
           </section>
         </div>
 
-        <section id="demo" className="demo-section" ref={demoRef}>
-          <div className="demo-section-inner">
-            <div className="demo-stage-head">
-              <h2 className="stack-heading">{t.demo.title}</h2>
-              <p className="demo-hint">
-                <span className="demo-hint-pulse" aria-hidden="true" />
-                {t.demo.hint}
-              </p>
-            </div>
-            <ScenarioTabs
-              active={active}
-              onSelect={selectScenario}
-              ariaLabel={t.ui.demoTabsAria}
-              variant="stage"
-            />
-            <div
-              className="demo-stage"
-              onMouseEnter={pauseAutoplay}
-              onFocus={pauseAutoplay}
-            >
-              <FlowTerminal
-                active={active}
-                activeIndex={activeIndex}
-                onSelect={selectScenario}
-                showStrip={false}
-                onInteract={pauseAutoplay}
-              />
-            </div>
-          </div>
-        </section>
-
         <div className="content-stack">
-          <section id="capabilities" className="stack-section stack-section-capabilities stack-section-reveal">
+          <section id="capabilities" className="stack-section stack-section-capabilities">
             <p className="section-kicker section-kicker-cap">{t.capabilities.tag}</p>
             <h2 className="section-title">{t.capabilities.title}</h2>
             <p className="stack-lead stack-lead-tight">{t.capabilities.body}</p>
@@ -206,43 +252,97 @@ function App() {
 
           <hr className="stack-divider" />
 
-          <section id="how" className="stack-section stack-section-how stack-section-reveal">
+          <section id="lifecycle" className="stack-section stack-section-how">
             <SessionBeats lifecycle={t.lifecycle} />
           </section>
 
           <hr className="stack-divider" />
 
-          <section id="contribute" className="stack-section stack-section-contribute stack-section-reveal">
-            <h2 className="section-title">{t.contribute.title}</h2>
-            <p className="stack-lead stack-lead-tight">{t.contribute.body}</p>
-            <div className="link-row">
-              <a className="button button-primary" href="https://github.com/YurunChen/GUI-Anything">
-                <GitBranch size={18} strokeWidth={1.5} aria-hidden="true" />
-                {t.contribute.github}
-              </a>
-              <a
-                className="button button-secondary"
-                href="https://github.com/YurunChen/GUI-Anything/blob/main/CONTRIBUTING.md"
-              >
-                {t.contribute.guide}
-              </a>
+          <section id="principles" className="stack-section stack-section-principles">
+            <p className="section-kicker">{t.principles.tag}</p>
+            <ul className="principle-list">
+              {t.principles.items.map((item) => (
+                <li className="principle-item" key={item.title}>
+                  <h3>{item.title}</h3>
+                  <p>{item.text}</p>
+                </li>
+              ))}
+            </ul>
+          </section>
+
+          <hr className="stack-divider" />
+
+          <section id="contribute" className="stack-section stack-section-contribute">
+            <p className="section-kicker">{t.contribute.tag}</p>
+            <div className="contribute-layout">
+              <div className="contribute-intro">
+                <h2 className="section-title">{t.contribute.title}</h2>
+                <p className="stack-lead stack-lead-tight">{t.contribute.body}</p>
+                <div className="link-row">
+                  <a
+                    className="button button-primary"
+                    href="https://github.com/YurunChen/GUI-Anything/issues"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <GitBranch size={18} strokeWidth={1.5} aria-hidden="true" />
+                    {t.contribute.github}
+                  </a>
+                  <a
+                    className="button button-secondary"
+                    href="https://github.com/YurunChen/GUI-Anything/blob/main/CONTRIBUTING.md"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <FileText size={18} strokeWidth={1.5} aria-hidden="true" />
+                    {t.contribute.guide}
+                  </a>
+                </div>
+              </div>
+              <div className="contribute-facts">
+                <div className="contribute-block">
+                  <h3>{t.contribute.verifyTitle}</h3>
+                  <ul className="cmd-list">
+                    {t.contribute.verify.map((cmd) => (
+                      <li key={cmd}><code>{cmd}</code></li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="contribute-block">
+                  <h3>{t.contribute.areasTitle}</h3>
+                  <ul className="path-list">
+                    {t.contribute.areas.map((area) => (
+                      <li key={area.path}>
+                        <code>{area.path}</code>
+                        <span>{area.note}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
             </div>
           </section>
         </div>
       </main>
 
-      <footer className="site-footer">
-        <span className="footer-prompt" aria-hidden="true">$</span>
+      <footer className="site-footer site-footer-v4">
         <span>{t.footer.line}</span>
+        <a
+          href="https://github.com/YurunChen/GUI-Anything#quick-start"
+          target="_blank"
+          rel="noreferrer"
+        >
+          {t.footer.readme}
+        </a>
         <a href="#top">{t.footer.top}</a>
       </footer>
     </div>
   );
 }
 
-function ScenarioTabs({ active, onSelect, ariaLabel, variant = 'stage' }) {
+function ScenarioTabs({ active, onSelect, ariaLabel }) {
   return (
-    <div className={`scenario-tabs scenario-tabs-${variant}`} role="tablist" aria-label={ariaLabel}>
+    <div className="scenario-tabs scenario-tabs-v4" role="tablist" aria-label={ariaLabel}>
       {terminalScenarios.map((scenario) => (
         <button
           type="button"
@@ -274,43 +374,6 @@ function CapabilityItem({ title, text, preview }) {
       </div>
       <p>{text}</p>
     </li>
-  );
-}
-
-function HeroProductScene({ content }) {
-  return (
-    <div className="hero-product" aria-label={content.ariaLabel}>
-      <div className="hero-product-bar">
-        <span>{content.title}</span>
-        <span>{content.mode}</span>
-      </div>
-      <div className="hero-product-grid">
-        <div className="hero-product-pane hero-product-pane-claude">
-          <div className="hero-pane-title">{content.claudeTitle}</div>
-          {content.claudeLines.map((line) => (
-            <div className="hero-log-line" key={line}>{line}</div>
-          ))}
-        </div>
-        <div className="hero-product-pane hero-product-pane-observer">
-          <div className="hero-pane-title">{content.observerTitle}</div>
-          {content.cards.map((card) => (
-            <div className={`hero-observer-card ${card.active ? 'is-active' : ''}`} key={card.title}>
-              <span>{card.badge}</span>
-              <strong>{card.title}</strong>
-              <small>{card.meta}</small>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="hero-product-footer">
-        {content.footer.map(([label, value]) => (
-          <span key={label}>
-            <b>{label}</b>
-            {value}
-          </span>
-        ))}
-      </div>
-    </div>
   );
 }
 

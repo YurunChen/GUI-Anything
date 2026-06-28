@@ -334,6 +334,14 @@ Flow 图**仅**由 `useGraphSnapshot` 写入 `bundle.session.flow`。
 | `FLOW_LOG_FILE` | 日志落盘路径（默认 `logs/observer.log`，相对仓库根） |
 | `FLOW_LOG_DISABLED` | `1` 时禁用文件落盘 |
 | `FLOW_LOG_STDERR` | `1` 时同时输出 stderr（默认仅写 `logs/observer.log`，避免破坏 OpenTUI） |
+| `FLOW_NOTIFY_WECHAT_USER_ID` | 启用微信通知并指定接收人 |
+| `FLOW_NOTIFY_WECHAT_SERVICE_URL` | 微信本地服务地址（默认 `http://127.0.0.1:8765`） |
+| `FLOW_NOTIFY_ENABLED` | `false` 禁用微信通知 |
+| `FLOW_NOTIFY_ON_ERROR` | `false` 禁用错误告警 |
+| `FLOW_NOTIFY_ON_KNOWLEDGE` | `false` 禁用知识提取通知 |
+| `FLOW_NOTIFY_PROGRESS_INTERVAL` | 进度通知间隔分钟数，`0` 禁用 |
+| `FLOW_NOTIFY_MIN_PRIORITY` | 最低通知优先级：`low` / `normal` / `high` / `urgent` |
+| `FLOW_NOTIFY_QUIET_HOURS_*` | 免打扰配置：`ENABLED` / `START` / `END` |
 
 完整列表：`./scripts/flow-run.sh --help`、`scripts/wiki/README.md`。
 
@@ -436,6 +444,8 @@ Mirror 独立终端需手动 `FLOW_SESSION_ID` 与 flow 对齐。
 | 笔记 | `NotesSidePanel`（`i`）· `InspirationPanel` | 侧栏灵感笔记 |
 | 键盘 | `observer-key-dispatch.ts` | 聚焦 observer 窗格；`k` = audit |
 | 主题 | `useTuiTheme()` · `resolved-theme.ts` | `palette → semantic → chrome → modes → motion`；组件优先读 mode token |
+
+底部 personality：运行时不再展示 Buddy 动物绘图；`LiveObserverContainer` 只把当前 flow graph 命中的 coding-persona 类型传给 `PersonalityStrip`，在快捷键栏上方以 `Personality · CODE 名称 · TYPECODE` 的紧凑文本展示。HTML evolution export 仍保留完整 persona 卡片。
 
 动态反馈保持统一、轻量：running turn 的 `Active` 与 SUMMARY loading 行复用同一个 Node/Ora 风格 spinner；summary 生成时 meta 行保持 turn 状态静态，避免上下两个 `Summarizing`。新卡片进入与 summary ready 只做一次短暂 accent，不做持续闪烁。真实百分比或步骤数明确时才使用 progress bar。节奏由 theme chrome 单点控制，避免每个组件各自动画；需要降低动态时可设 `FLOW_NO_ANIMATIONS=1`。
 

@@ -76,11 +76,32 @@ describe('kinetic helpers', () => {
     };
     const border = resolveCardBorderChrome(
       chrome,
-      { accent: true, fresh: false, focused: false },
+      { focused: true },
       { tint: '#aaa', activity: '#bbb', separator: '#ccc', tintMuted: '#999' },
       1,
     );
     expect(border.borderColor).toBe('#222');
+  });
+
+  it('prefers theme-derived border frames over chrome color frames', () => {
+    const chrome = {
+      ...resolveThemeChrome('transparent'),
+      cardBorderAccentFrames: ['#111', '#222'],
+    };
+    const border = resolveCardBorderChrome(
+      chrome,
+      { focused: true },
+      {
+        tint: '#aaa',
+        tintMuted: '#999',
+        borderMuted: '#456',
+        borderAccentFrames: ['#aaa', '#bbb', '#aaa'],
+        activity: '#bbb',
+        separator: '#ccc',
+      },
+      1,
+    );
+    expect(border.borderColor).toBe('#bbb');
   });
 });
 
@@ -89,14 +110,14 @@ describe('resolveCardShellChrome', () => {
     const chrome = resolveThemeChrome('transparent');
     const shell = resolveCardShellChrome(
       chrome,
-      { accent: false, fresh: false, focused: false },
+      { focused: false },
       shellFills(),
     );
     expect(shell.layout).toBe('classic');
     expect(shell.backgroundColor).toBe('#222');
     expect(shell.border).toEqual(['left']);
-    expect(shell.borderColor).toBe('#444');
-    expect(shell.borderStyle).toBe('single');
+    expect(shell.borderColor).toBe('#456');
+    expect(shell.borderStyle).toBe('heavy');
     expect(shell.padX).toBe(2);
     expect(shell.padY).toBe(1);
     expect(shell.gap).toBe(2);
@@ -108,48 +129,79 @@ describe('resolveCardShellChrome', () => {
     const baseChrome = resolveThemeChrome('transparent');
     const panelIdle = resolveCardShellChrome(
       { ...baseChrome, cardLayout: 'panel' },
-      { accent: false, fresh: false, focused: false },
+      { focused: false },
       fills,
     );
-    const panelActive = resolveCardShellChrome(
+    const panelLatest = resolveCardShellChrome(
       { ...baseChrome, cardLayout: 'panel' },
-      { accent: true, fresh: false, focused: false },
+      { focused: true },
       fills,
     );
     expect(panelIdle.border).toEqual(['top', 'bottom']);
-    expect(panelActive.border).toEqual(panelIdle.border);
+    expect(panelLatest.border).toEqual(panelIdle.border);
 
     const ledgerIdle = resolveCardShellChrome(
       { ...baseChrome, cardLayout: 'ledger' },
-      { accent: false, fresh: false, focused: false },
+      { focused: false },
       fills,
     );
-    const ledgerActive = resolveCardShellChrome(
+    const ledgerLatest = resolveCardShellChrome(
       { ...baseChrome, cardLayout: 'ledger' },
-      { accent: true, fresh: false, focused: false },
+      { focused: true },
       fills,
     );
     expect(ledgerIdle.border).toEqual(['top']);
-    expect(ledgerActive.border).toEqual(ledgerIdle.border);
+    expect(ledgerLatest.border).toEqual(ledgerIdle.border);
   });
 
-  it('highlights the focused latest card and dims historical cards', () => {
+  it('uses two border colors: latest bright, non-latest muted', () => {
     const chrome = resolveThemeChrome('transparent');
     const fills = shellFills();
-    const latest = resolveCardShellChrome(
+    const latestA = resolveCardShellChrome(
       chrome,
-      { accent: false, fresh: false, focused: true },
+      { focused: true },
+      fills,
+    );
+    const latestB = resolveCardShellChrome(
+      chrome,
+      { focused: true },
       fills,
     );
     const historical = resolveCardShellChrome(
       chrome,
-      { accent: false, fresh: false, focused: false },
+      { focused: false },
       fills,
     );
-    expect(latest.border).toEqual(['left']);
-    expect(historical.border).toEqual(['left']);
-    expect(latest.borderColor).toBe(fills.tint);
-    expect(historical.borderColor).toBe(fills.separator);
+    expect(latestA.border).toEqual(['left']);
+    expect(latestB.border).toEqual(['left']);
+    expect(latestA.borderColor).toBe(fills.tint);
+    expect(latestB.borderColor).toBe(fills.tint);
+    expect(historical.borderColor).toBe(fills.borderMuted);
+    expect(latestA.borderStyle).toBe('heavy');
+    expect(latestB.borderStyle).toBe('heavy');
+  });
+
+  it('animates only the latest border color when accent frames are provided', () => {
+    const chrome = resolveThemeChrome('transparent');
+    const fills = {
+      ...shellFills(),
+      borderAccentFrames: ['#0af', '#4cf', '#0af'],
+    };
+    const latest = resolveCardShellChrome(
+      chrome,
+      { focused: true },
+      fills,
+      1,
+    );
+    const historical = resolveCardShellChrome(
+      chrome,
+      { focused: false },
+      fills,
+      1,
+    );
+
+    expect(latest.borderColor).toBe('#4cf');
+    expect(historical.borderColor).toBe(fills.borderMuted);
   });
 });
 
@@ -180,6 +232,7 @@ function shellFills() {
     separator: '#444',
     tint: '#0af',
     tintMuted: '#08a',
+    borderMuted: '#456',
     activity: '#fa0',
   };
 }

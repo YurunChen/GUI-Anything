@@ -23,6 +23,7 @@ import {
   type EggSignals,
   type PersonaArchetype,
   type PersonaEgg,
+  type PersonaRarity,
 } from './persona-archetypes';
 
 export interface PersonaSignals {
@@ -56,6 +57,14 @@ export interface PersonaAxis {
 export interface ArchetypeMatch {
   code: string;
   spectrum: { code: string; cn: string; similarity: number }[];
+}
+
+export interface PersonaMatchSignals extends EggSignals {
+  substepCount: number;
+  toolCount: number;
+  errorCount: number;
+  retrievals: number;
+  pivotShare: number;
 }
 
 function clamp(n: number): number {
@@ -150,11 +159,12 @@ const MAX_DIST = Math.sqrt(6 * 100 * 100); // farthest possible distance in 6-di
  * Judge the nearest archetype from the six axis values, SBTI-Buddy-style.
  * Hidden eggs (extreme behaviour) take precedence over the nearest-centroid match.
  */
-export function matchArchetype(axes: PersonaAxis[], eggSignals: EggSignals): ArchetypeMatch {
+export function matchArchetype(axes: PersonaAxis[], signals: PersonaMatchSignals): ArchetypeMatch {
   const vec = axes.map((a) => a.value);
 
-  const egg = EGGS.find((e) => e.egg(eggSignals));
-  const ranked = ARCHETYPES.map((a) => {
+  const egg = EGGS.find((e) => isEggEligible(e, signals) && e.egg(signals));
+  const candidates = ARCHETYPES.filter((a) => isArchetypeEligible(a, signals));
+  const ranked = candidates.map((a) => {
     let sum = 0;
     for (let i = 0; i < 6; i++) sum += (vec[i] - a.dims[i]) ** 2;
     const dist = Math.sqrt(sum);
@@ -166,6 +176,77 @@ export function matchArchetype(axes: PersonaAxis[], eggSignals: EggSignals): Arc
     return { code: egg.code, spectrum: ranked.slice(0, 3) };
   }
   return { code: ranked[0].code, spectrum: ranked.slice(0, 3) };
+}
+
+function isArchetypeEligible(archetype: PersonaArchetype, signals: PersonaMatchSignals): boolean {
+  return isRarityEvidenceReady(archetype.rarity, signals) && isArchetypeSignalReady(archetype.code, signals);
+}
+
+function isEggEligible(egg: PersonaEgg, signals: PersonaMatchSignals): boolean {
+  switch (egg.code) {
+    case 'OWL':
+      return signals.milestoneCount >= 4;
+    case 'VOID':
+    case 'GHOST':
+      return signals.milestoneCount >= 3;
+    default:
+      return isRarityEvidenceReady(egg.rarity, signals);
+  }
+}
+
+export function isArchetypeSignalReady(code: string, signals: PersonaMatchSignals): boolean {
+  const errorDensity = signals.toolCount > 0 ? signals.errorCount / signals.toolCount : 0;
+  switch (code) {
+    case 'ARCH':
+      return signals.writes >= 2 && errorDensity <= 0.2;
+    case 'SHIP':
+      return signals.writes >= 2;
+    case 'REFAC':
+      return signals.retrievals >= 1 || signals.substepCount >= signals.milestoneCount;
+    case 'REUSE':
+      return signals.retrievals >= 1;
+    case 'PIONEER':
+      return signals.pivotShare >= 0.2 || (signals.milestoneCount >= 3 && signals.writes <= 1);
+    case 'TINKER':
+      return signals.errorCount >= 2 || errorDensity >= 0.15;
+    case 'DIVER':
+      return signals.substepCount >= signals.milestoneCount;
+    case 'SPARK':
+      return signals.pivotShare >= 0.2 || (signals.milestoneCount >= 3 && signals.writes <= 1);
+    case 'PIVOT':
+      return signals.pivotShare >= 0.25;
+    case 'FIRE':
+      return signals.errorCount > 0 || signals.interruptedShare > 0;
+    case 'MARATHON':
+      return signals.milestoneCount >= 4 && signals.pivotShare <= 0.2;
+    case 'NIGHT':
+      return signals.nightShare >= 0.25;
+    case 'STAR':
+      return signals.milestoneCount >= 6 && signals.writes >= 3 && errorDensity <= 0.25;
+    case 'SCOUT':
+    case 'STEADY':
+    case 'CHILL':
+      return true;
+    default:
+      return true;
+  }
+}
+
+export function isRarityEvidenceReady(rarity: PersonaRarity, signals: EggSignals): boolean {
+  switch (rarity) {
+    case 'common':
+      return true;
+    case 'uncommon':
+      return signals.milestoneCount >= 2 && signals.writes >= 1;
+    case 'rare':
+      return signals.milestoneCount >= 3 && signals.writes >= 1;
+    case 'epic':
+      return signals.milestoneCount >= 4 && signals.writes >= 2;
+    case 'legendary':
+      return signals.milestoneCount >= 6 && signals.writes >= 3;
+    case 'hidden':
+      return signals.milestoneCount >= 3;
+  }
 }
 
 /** Deterministic, fully self-contained persona (also the AI-failure fallback). */
@@ -180,6 +261,11 @@ export function ruleBasedPersona(nodes: EvolutionNode[], sessionCount: number): 
     interruptedShare: signals.interruptedShare,
     writes: signals.writes,
     milestoneCount: signals.milestoneCount,
+    substepCount: signals.substepCount,
+    toolCount: signals.toolCount,
+    errorCount: signals.errorCount,
+    retrievals: signals.retrievals,
+    pivotShare: signals.pivotShare,
   });
   const arch = (archetypeByCode(match.code) ?? ARCHETYPES[0]) as PersonaArchetype | PersonaEgg;
 

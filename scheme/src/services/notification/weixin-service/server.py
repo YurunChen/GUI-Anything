@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
 
 from weixin_bot import WeixinBotClient
@@ -30,15 +30,28 @@ class SendMessageRequest(BaseModel):
     text: str
 
 
+class PairReceiverRequest(BaseModel):
+    """接收人配对请求"""
+    timeout_seconds: int = 60
+
+
 class LoginStatusResponse(BaseModel):
     """登录状态响应"""
     logged_in: bool
     account_id: Optional[str] = None
+    user_id: Optional[str] = None
 
 
 class SendMessageResponse(BaseModel):
     """发送消息响应"""
     success: bool
+    message: str
+
+
+class PairReceiverResponse(BaseModel):
+    """接收人配对响应"""
+    success: bool
+    user_id: Optional[str] = None
     message: str
 
 
@@ -76,6 +89,17 @@ async def root():
     return {"service": "weixin-notification", "status": "running"}
 
 
+@app.get("/login", response_class=PlainTextResponse)
+async def login_help():
+    """Browser-friendly login hint."""
+    return (
+        "WeChat login uses POST /login so the QR code can be printed in the service terminal.\n"
+        "Run one of:\n"
+        "  ga notify setup\n"
+        "  ./scripts/weixin-login.sh\n"
+    )
+
+
 @app.get("/status", response_model=LoginStatusResponse)
 async def get_status():
     """获取登录状态"""
@@ -84,7 +108,8 @@ async def get_status():
 
     return LoginStatusResponse(
         logged_in=bool(bot_client.token),
-        account_id=bot_client.account_id
+        account_id=bot_client.account_id,
+        user_id=bot_client.user_id
     )
 
 
@@ -166,6 +191,30 @@ async def send_message(request: SendMessageRequest):
     except Exception as e:
         logger.error(f"Send error: {e}")
         raise HTTPException(status_code=500, detail=f"Send error: {str(e)}")
+
+
+@app.post("/pair-receiver", response_model=PairReceiverResponse)
+async def pair_receiver(request: PairReceiverRequest):
+    """等待一条发给 bot 的微信消息，并返回发送人 user id。"""
+    if not bot_client:
+        raise HTTPException(status_code=500, detail="Bot client not initialized")
+
+    if not bot_client.token:
+        raise HTTPException(
+            status_code=401,
+            detail="Not logged in. Please call /login first"
+        )
+
+    timeout_seconds = max(5, min(request.timeout_seconds, 180))
+    user_id = await bot_client.wait_for_inbound_user(timeout_seconds=timeout_seconds)
+    if not user_id:
+        raise HTTPException(status_code=408, detail="No WeChat message received")
+
+    return PairReceiverResponse(
+        success=True,
+        user_id=user_id,
+        message="Receiver paired"
+    )
 
 
 if __name__ == "__main__":

@@ -46,16 +46,10 @@ export interface ThemeChrome {
   sectionKnowledgeFrames?: readonly string[];
   /** Rotating suffix on the active focus rail row. */
   focusActiveFrames?: readonly string[];
-  /** Leading accent glyph while a card is fresh. */
-  freshAccentFrames?: readonly string[];
   /** Decorative motion tick; defaults to spinnerIntervalMs. */
   decorMotionIntervalMs?: number;
-  /** Running card border color cycle (hex). */
+  /** Latest card border color cycle (hex). Color themes usually provide this. */
   cardBorderAccentFrames?: readonly string[];
-  /** Fresh card border color cycle (hex). */
-  cardBorderFreshFrames?: readonly string[];
-  /** Left rail glyphs while running. */
-  runningLeadFrames?: readonly string[];
   /** Status badge glyph while running (replaces spinner prefix). */
   runningBadgeFrames?: readonly string[];
   compactSeparatorFrames?: readonly string[];
@@ -80,9 +74,7 @@ export interface ThemeChromeBinding {
   themes: readonly ThemeName[];
 }
 
-export interface CardBorderChromeInput {
-  accent: boolean;
-  fresh: boolean;
+export interface CardShellChromeInput {
   /** Latest card in the timeline — keeps left-rail highlight after completion. */
   focused: boolean;
 }
@@ -105,7 +97,6 @@ export interface CardShellChrome {
   borderColor: string;
   borderStyle: 'single' | 'rounded' | 'double' | 'heavy';
   knowledgeInset: ThemeCardKnowledgeInset;
-  showLeadColumn: boolean;
 }
 
 export interface KnowledgeInsetChrome {

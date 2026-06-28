@@ -1,15 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as fs from 'node:fs';
 
-import { exportEvolutionToHtml } from '../../../export/evolution/export-evolution';
-import { evolutionExportPath } from '../../../data/wiki/wiki-data-layout';
-import { openPath } from '../../../services/flow/open-file';
+import { exportAndOpenEvolutionHtml } from '../../../services/evolution/evolution-export-service';
 import { getObserverMessages } from '../../ui/i18n/observer-messages';
 
 /**
  * Project-evolution HTML export, orchestrated for the live observer.
- * `e` (force=false): open cached HTML if present, else generate (full AI) then open.
- * `Shift+E` (force=true): always regenerate, then open.
+ * `h` (force=false): regenerate deterministic HTML, then open.
+ * `r` (force=true): regenerate with AI enrichment, then open.
  */
 export function useEvolutionExport(): {
   exportHtml: (force?: boolean) => void;
@@ -35,12 +32,6 @@ export function useEvolutionExport(): {
 
   const exportHtml = useCallback((force?: boolean) => {
     if (inFlightRef.current) return;
-    const cachePath = evolutionExportPath();
-
-    if (force !== true && fs.existsSync(cachePath)) {
-      flashStatus(openPath(cachePath) ? messages.exportOpened : messages.exportFailed);
-      return;
-    }
 
     inFlightRef.current = true;
     if (clearTimerRef.current) {
@@ -49,12 +40,17 @@ export function useEvolutionExport(): {
     }
     setLastExportStatus(messages.exportInProgress);
 
-    exportEvolutionToHtml({ scope: 'project', outputPath: cachePath })
-      .then(() => {
-        flashStatus(openPath(cachePath) ? messages.exportDone : messages.exportFailed);
+    exportAndOpenEvolutionHtml(force === true ? 'ai' : 'deterministic')
+      .then((result) => {
+        if (result.status === 'opened') {
+          flashStatus(messages.exportDone);
+          return;
+        }
+        flashStatus(result.error ? `${messages.exportFailed}: ${result.error}` : messages.exportFailed);
       })
-      .catch(() => {
-        flashStatus(messages.exportNoData);
+      .catch((error) => {
+        const reason = error instanceof Error ? error.message : String(error);
+        flashStatus(`${messages.exportFailed}: ${reason}`);
       })
       .finally(() => {
         inFlightRef.current = false;

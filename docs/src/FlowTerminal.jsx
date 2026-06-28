@@ -49,6 +49,7 @@ const observeExplorations = [
     intentBadge: 'Implement',
     intentTitle: 'Replay Banner Copy',
     toolMeta: 'Done · 2 tools · Edit×1 · Bash×1',
+    wikiBadge: 'wiki saved · pivot closed intent bucket',
     summary: 'Tightened replay banner text in session-banner.ts. Runtime policy tests still green.',
   },
   {
@@ -112,6 +113,24 @@ function formatNoteTimestamp(iso) {
   if (date.length < 10) return s.slice(0, 16);
   return `${date} ${time}`;
 }
+
+const replayExplorations = observeExplorations.map((item) => ({
+  ...item,
+  status: 'complete',
+  summary: item.summary ?? 'Replayed from wiki/sessions/session-a/bundle.json — no regen.',
+}));
+
+const knowledgeExplorations = [
+  observeExplorations[0],
+  {
+    ...observeExplorations[1],
+    status: 'complete',
+  },
+  {
+    ...observeExplorations[2],
+    status: 'complete',
+  },
+];
 
 export const terminalScenarios = [
   {
@@ -203,6 +222,53 @@ export const terminalScenarios = [
       explorations: observeExplorations.slice(0, 2),
     },
     notes: sessionNotes,
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge',
+    layout: 'dual',
+    command: 'ga flow  (prior wiki retrieval)',
+    claude: {
+      prompt: 'how does wiki curation gate on pivot?',
+      showGhost: false,
+      transcript: observeClaudeTranscript.slice(18, 28),
+      footerModel: 'sonnet',
+      contextPct: 26,
+    },
+    observer: {
+      mode: 'live',
+      model: 'sonnet',
+      tokenDisplay: 'Tok 6.2k',
+      doneCount: 3,
+      currentIntent: {
+        badge: 'Explore',
+        title: 'Wiki Curator Triggers',
+      },
+      empty: false,
+      explorations: knowledgeExplorations,
+    },
+  },
+  {
+    id: 'replay',
+    label: 'Replay',
+    layout: 'dual',
+    command: 'ga flow -r session-a',
+    claude: {
+      prompt: '',
+      showGhost: false,
+      transcript: observeClaudeTranscript.slice(0, 12),
+      footerModel: 'sonnet',
+      contextPct: 0,
+    },
+    observer: {
+      mode: 'replay',
+      replayBanner: true,
+      model: 'sonnet',
+      tokenDisplay: 'Tok 7.8k',
+      doneCount: 4,
+      empty: false,
+      explorations: replayExplorations,
+    },
   },
 ];
 
@@ -726,7 +792,13 @@ export function FlowTerminal({
 
   const layout = active.layout ?? 'dual';
   const isNoteLayout = layout === 'note';
-  const followScroll = active.id !== 'idle';
+  const followScroll = active.id !== 'idle' && active.id !== 'replay';
+
+  useEffect(() => {
+    setCalmMode(Boolean(active.observer?.initialCalm));
+    setShowHelp(Boolean(active.observer?.initialHelp));
+    setFocusedPane('observer');
+  }, [active.id, active.observer?.initialCalm, active.observer?.initialHelp]);
 
   useScrollFollow(claudeScrollRef, active.id, followScroll);
   useScrollFollow(observerScrollRef, active.id, followScroll);

@@ -13,6 +13,7 @@
       "devDependencies": {
         "@types/bun": "latest",
         "@types/react": "^19.2.14",
+        "chafa-wasm": "^0.3.3",
       },
     },
   },
@@ -128,6 +129,8 @@
     "bun-webgpu-linux-x64": ["bun-webgpu-linux-x64@0.1.6", "", { "os": "linux", "cpu": "x64" }, "sha512-Y/f15j9r8ba0xUz+3lATtS74OE+PPzQXO7Do/1eCluJcuOlfa77kMjvBK/ShWnem3Y9xqi59pebTPOGRB+CaJA=="],
 
     "bun-webgpu-win32-x64": ["bun-webgpu-win32-x64@0.1.6", "", { "os": "win32", "cpu": "x64" }, "sha512-MHSFAKqizISb+C5NfDrFe3g0Al5Njnu0j/A+oO2Q+bIWX+fUYjBSowiYE1ZXJx65KuryuB+tiM7Qh6cQbVvkEg=="],
+
+    "chafa-wasm": ["chafa-wasm@0.3.3", "", {}, "sha512-fwdsZH3hYTqCxO4fwrX6RkNXGpU4Ioo88HNfzW85uhLWFypLhzhOo3X1z7+ycqmL2vjIOLJf0SMMRd6ro3v9mw=="],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 

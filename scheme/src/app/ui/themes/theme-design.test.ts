@@ -45,17 +45,17 @@ describe('theme design matrix', () => {
     expect(profile.chrome.cardLayout).toBe('classic');
   });
 
-  it('keeps running vs idle card topology stable', () => {
+  it('keeps latest vs historical card topology stable', () => {
     const chrome = resolveThemeChrome('transparent');
     const fills = shellFills();
-    const idle = resolveCardShellChrome(chrome, { accent: false, fresh: false, focused: false }, fills);
-    const active = resolveCardShellChrome(chrome, { accent: true, fresh: false, focused: false }, fills);
+    const historical = resolveCardShellChrome(chrome, { focused: false }, fills);
+    const latest = resolveCardShellChrome(chrome, { focused: true }, fills);
 
-    expect(idle.layout).toBe('classic');
-    expect(active.border).toEqual(idle.border);
-    expect(active.borderStyle).toBe(idle.borderStyle);
-    expect(active.padX).toBe(idle.padX);
-    expect(idle.borderColor).not.toBe(active.borderColor);
+    expect(historical.layout).toBe('classic');
+    expect(latest.border).toEqual(historical.border);
+    expect(latest.borderStyle).toBe(historical.borderStyle);
+    expect(latest.padX).toBe(historical.padX);
+    expect(historical.borderColor).not.toBe(latest.borderColor);
   });
 
   it('uses the committed legacy morandi aliases only', () => {

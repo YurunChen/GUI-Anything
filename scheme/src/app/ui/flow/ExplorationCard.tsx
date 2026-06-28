@@ -4,7 +4,7 @@
 
 import type { ReactNode } from 'react';
 import { memo, useMemo } from 'react';
-import { useThemeMotionFrame, useThemeVersion, useTuiTheme } from '../theme';
+import { useThemeVersion, useTuiTheme } from '../theme';
 import {
   resolveCompactSeparator,
   resolveKineticSpinner,
@@ -44,11 +44,10 @@ interface ExplorationCardProps {
   calmMode: boolean;
   /** Latest turn in the timeline; in calm mode only this card shows full summary. */
   isLatestExploration?: boolean;
-  /** Newly appended to the observed timeline; used for a short accent flash. */
-  isFreshExploration?: boolean;
   /** Summary just moved from loading to ready; used for a short reveal highlight. */
   isSummaryFresh?: boolean;
   spinnerFrame: string;
+  motionFrame?: number;
   summary?: string;
   summaryItem?: SummaryItem;
   isGenerating: boolean;
@@ -58,8 +57,6 @@ interface ExplorationCardProps {
   wikiPersistResult?: PersistResult;
   wikiTargetId?: string;
   wikiTurnCount?: number;
-  /** Latest turn only — `e` toggles full question text. */
-  questionExpanded?: boolean;
 }
 
 export const ExplorationCard = memo(function ExplorationCard(props: ExplorationCardProps): ReactNode {
@@ -69,9 +66,9 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     exploration,
     calmMode,
     isLatestExploration = false,
-    isFreshExploration = false,
     isSummaryFresh = false,
     spinnerFrame,
+    motionFrame = 0,
     summary,
     summaryItem,
     isGenerating,
@@ -81,7 +78,6 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     wikiPersistResult,
     wikiTargetId,
     wikiTurnCount,
-    questionExpanded = false,
   } = props;
 
   const showWikiPersist = Boolean(
@@ -122,7 +118,6 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
   const timelineTheme = tuiTheme.modes.timeline;
   const accentRunning = exploration.status === 'running';
   const spinnerAnimating = accentRunning || isGenerating;
-  const motionFrame = useThemeMotionFrame(spinnerAnimating);
   const kineticSpinner = resolveKineticSpinner(chrome, spinnerFrame, motionFrame, spinnerAnimating);
   const compactSeparator = resolveCompactSeparator(chrome, motionFrame);
   const messages = getObserverMessages();
@@ -131,14 +126,12 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
   const questionFitsPreview = !resolveQuestionBody({
     question: exploration.question,
     contentColumns: questionColumns,
-    expanded: false,
   }).truncated;
   const questionBody = resolveQuestionBody({
     question: exploration.question,
     contentColumns: questionColumns,
-    expanded: questionExpanded,
   });
-  const showQuestionExpandHint = isLatestExploration && !questionFitsPreview;
+  const showQuestionPreview = isLatestExploration && !questionFitsPreview;
   const liveFootnote = buildLiveFootnote({
     status: exploration.status,
     spinnerFrame: kineticSpinner,
@@ -183,7 +176,10 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
     });
 
     return (
-      <FlowInsetGroup accent={accentRunning} fresh={isFreshExploration} focused={isLatestExploration}>
+      <FlowInsetGroup
+        focused={isLatestExploration}
+        motionFrame={motionFrame}
+      >
         <text wrapMode="word" fg={timelineTheme.compact.fg}>
           {compactLine}
         </text>
@@ -192,7 +188,10 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
   }
 
   return (
-    <FlowInsetGroup accent={accentRunning} fresh={isFreshExploration} focused={isLatestExploration}>
+    <FlowInsetGroup
+      focused={isLatestExploration}
+      motionFrame={motionFrame}
+    >
       <box style={{ flexDirection: 'column', width: '100%' }}>
         <text wrapMode="none">
           <span fg={timelineTheme.summary.labelFallbackFg}>{`[${cardHeader.badge}] `}</span>
@@ -212,14 +211,9 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
           wikiTargetId={showWikiPersist ? wikiTargetId : undefined}
           wikiTurnCount={showWikiPersist ? wikiTurnCount : undefined}
         />
-        {questionExpanded ? (
+        {showQuestionPreview ? (
           <text wrapMode="word" fg={tuiTheme.semantic.label.tertiary}>
             {questionBody.text}
-          </text>
-        ) : null}
-        {showQuestionExpandHint ? (
-          <text wrapMode="none" fg={tuiTheme.semantic.label.tertiary} style={{ marginTop: 0 }}>
-            {questionExpanded ? messages.questionCollapseHint : messages.questionExpandHint}
           </text>
         ) : null}
       </box>
@@ -233,6 +227,7 @@ export const ExplorationCard = memo(function ExplorationCard(props: ExplorationC
               labelSuffix={formatKnowledgeSuffix(wikiMatch.entry.id, wikiMatch.score)}
               variant="knowledge"
               gap={false}
+              motionFrame={motionFrame}
             >
               <WikiMatchCard
                 match={wikiMatch}

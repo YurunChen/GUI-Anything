@@ -140,11 +140,10 @@ describe('timeline card chrome', () => {
 });
 
 describe('resolveQuestionBody', () => {
-  it('returns full text when expanded', () => {
+  it('returns short questions without truncation', () => {
     const body = resolveQuestionBody({
       question: 'short',
       contentColumns: 40,
-      expanded: true,
     });
     expect(body.text).toBe('short');
     expect(body.truncated).toBe(false);
@@ -155,7 +154,6 @@ describe('resolveQuestionBody', () => {
     const body = resolveQuestionBody({
       question: long,
       contentColumns: 20,
-      expanded: false,
     });
     expect(body.truncated).toBe(true);
     expect(body.text.split('\n').length).toBeLessThanOrEqual(QUESTION_PREVIEW_MAX_LINES);

@@ -23,27 +23,28 @@ const base: ObserverHotkeyContext = {
 
 describe('buildObserverHotkeyHints', () => {
   test('default mode includes mode switch, notes, calm, help, theme, notify, quit', () => {
-    const ids = buildObserverHotkeyHints(base).map((h) => h.id);
+    const hints = buildObserverHotkeyHints(base);
+    const ids = hints.map((h) => h.id);
     expect(ids).not.toContain('move');
     expect(ids).not.toContain('latest');
     expect(ids).toContain('mode');
     expect(ids).toContain('notes');
+    expect(ids).not.toContain('buddy-gallery');
     expect(ids).toContain('calm');
     expect(ids).toContain('help');
     expect(ids).toContain('theme');
     expect(ids).toContain('notify');
     expect(ids).toContain('html-export');
     expect(ids).toContain('quit');
-    expect(ids).toContain('question');
+    expect(ids).not.toContain('question');
+    expect(hints.find((h) => h.id === 'mode')?.full).toBe('g → Focus');
   });
 
-  test('question expand is only advertised in timeline mode', () => {
-    expect(buildObserverHotkeyHints({ ...base, observerMode: 'timeline' }).map((h) => h.id))
-      .toContain('question');
-    expect(buildObserverHotkeyHints({ ...base, observerMode: 'focus' }).map((h) => h.id))
-      .not.toContain('question');
-    expect(buildObserverHotkeyHints({ ...base, observerMode: 'workspace' }).map((h) => h.id))
-      .not.toContain('question');
+  test('mode hint names the next view', () => {
+    expect(buildObserverHotkeyHints({ ...base, observerMode: 'focus' }).find((h) => h.id === 'mode')?.full)
+      .toBe('g → Workspace');
+    expect(buildObserverHotkeyHints({ ...base, observerMode: 'workspace' }).find((h) => h.id === 'mode')?.full)
+      .toBe('g → Timeline');
   });
 
   test('notify hidden when unavailable', () => {
@@ -69,10 +70,10 @@ describe('formatFooterHotkeyLines', () => {
   test('splits hints across two rows', () => {
     const hints = buildObserverHotkeyHints(base);
     const { line1, line2 } = formatFooterHotkeyLines(hints, false, 200);
-    expect(line1).toContain('g → View');
-    expect(line1).not.toContain('Focus');
+    expect(line1).toContain('g → Focus');
     expect(line1).not.toContain('Timeline');
     expect(line1).toContain('? / F1 / Ctrl+/ / Ctrl-K help');
+    expect(line1).not.toContain('b buddy gallery');
     expect(line1).not.toContain('?:help');
     expect(line2).toContain('theme');
   });
@@ -83,6 +84,7 @@ describe('formatFooterHotkeyLines', () => {
     expect(line1).toContain('? / help');
     expect(line1).not.toContain('?:help');
   });
+
 });
 
 describe('buildFooterHotkeyBody', () => {
@@ -90,5 +92,12 @@ describe('buildFooterHotkeyBody', () => {
     expect(buildFooterHotkeyBody({ line1: 'g → View', line2: 'q quit' })).toBe(
       'g → View\nq quit',
     );
+  });
+
+  test('does not include personality content in the hotkey body', () => {
+    expect(buildFooterHotkeyBody({
+      line1: 'g → View',
+      line2: 'q quit',
+    })).not.toContain('Personality');
   });
 });

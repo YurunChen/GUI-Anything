@@ -30,6 +30,8 @@ import { getObserverMessages } from '../i18n/observer-messages';
 
 import { CommandBar } from './CommandBar';
 import { HelpOverlay } from './HelpOverlay';
+import { PersonalityStrip } from './PersonalityStrip';
+import type { PersonalityStripInfo } from '../../observer/view-model/personality-strip-view';
 import { nextObserverViewMode, type ObserverHotkeyContext, type ObserverViewMode } from './observer-hotkeys';
 import { dispatchObserverKey } from './observer-key-dispatch';
 import { NotesSidePanel } from './NotesSidePanel';
@@ -42,6 +44,7 @@ import {
 } from '../../../constants/flow-constants';
 import { ObserverStatusBar } from './ObserverStatusBar';
 import { flowSpacing } from './flow-ui/flow-spacing';
+import { useFlowMotionFrame } from '../hooks/useFlowMotion';
 
 interface FlowObserverShellProps {
   explorations: Exploration[];
@@ -71,6 +74,7 @@ interface FlowObserverShellProps {
   onExportHtml?: (force?: boolean) => void;
   exportStatus?: string;
   notifyStatus?: string;
+  personalityStripInfo?: PersonalityStripInfo;
 }
 
 function resolveSpinnerIntervalMs(): number | undefined {
@@ -92,11 +96,11 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const [showHelp, setShowHelp] = useState(false);
   const [observerMode, setObserverMode] = useState<ObserverViewMode>('timeline');
   const [calmMode, setCalmMode] = useState(false);
-  const [questionExpandedId, setQuestionExpandedId] = useState<string | null>(null);
   const [chromeHint, setChromeHint] = useState<string | undefined>();
   const chromeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const spinnerIntervalMs = useMemo(() => resolveSpinnerIntervalMs(), []);
+  const personalityMotionFrame = useFlowMotionFrame(Boolean(props.personalityStripInfo), spinnerIntervalMs ?? 720);
   const notesSidebarWidth = useMemo(
     () => (showNotes ? resolveNotesSidebarWidth(terminalWidth) : 0),
     [showNotes, terminalWidth],
@@ -105,19 +109,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     () => Math.max(24, terminalWidth - notesSidebarWidth - flowSpacing.contentPadX * 2),
     [terminalWidth, notesSidebarWidth],
   );
-  const latestExplorationId = props.explorations.at(-1)?.id ?? null;
   const terminalTooSmall = isObserverTerminalTooSmall(terminalWidth, terminalHeight);
-
-  useEffect(() => {
-    setQuestionExpandedId((prev) => (prev === latestExplorationId ? prev : null));
-  }, [latestExplorationId]);
-
-  const toggleLatestQuestionExpand = useCallback(() => {
-    if (!latestExplorationId) return;
-    setQuestionExpandedId((prev) => (
-      prev === latestExplorationId ? null : latestExplorationId
-    ));
-  }, [latestExplorationId]);
 
   const flashChromeHint = useCallback((text: string) => {
     if (chromeHintTimerRef.current) {
@@ -169,7 +161,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     summaryItems: props.summaryItems,
     sessionIntent: props.sessionIntent,
   });
-
   const hotkeyContext: ObserverHotkeyContext = useMemo(() => ({
     footerMode: inspirationInputFocused
       ? 'notes-input'
@@ -265,11 +256,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       case 'toggle_calm':
         setCalmMode((prev) => !prev);
         break;
-      case 'toggle_question_expand':
-        if (observerMode === 'timeline') {
-          toggleLatestQuestionExpand();
-        }
-        break;
       case 'toggle_mode':
         setObserverMode(nextObserverViewMode);
         break;
@@ -300,13 +286,15 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     props,
     showHelp,
     showNotes,
-    toggleLatestQuestionExpand,
     toggleNotes,
   ]));
 
   return (
     <box style={{ width: '100%', height: '100%', flexDirection: 'column', backgroundColor: tuiTheme.semantic.fill.base }}>
-      <ObserverStatusBar {...chrome.statusBar} viewMode={observerMode} />
+      <ObserverStatusBar
+        {...chrome.statusBar}
+        viewMode={observerMode}
+      />
 
       <box style={{ flexGrow: 1, flexDirection: 'row', minHeight: 0 }}>
         <box style={{ flexGrow: 1, flexDirection: 'column', minWidth: 0 }}>
@@ -355,7 +343,6 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
                 sessionBannerHint={props.sessionBannerHint}
                 mode={observerMode}
                 calmMode={calmMode}
-                questionExpandedId={questionExpandedId}
                 spinnerIntervalMs={spinnerIntervalMs}
               />
             )}
@@ -376,11 +363,18 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       {showHelp && <HelpOverlay hotkeyContext={hotkeyContext} />}
 
       {!showHelp && (
-        <CommandBar
-          terminalWidth={terminalWidth}
-          context={hotkeyContext}
-          active={Boolean(chromeHint || themeSwitchBanner || showThemeNotification)}
-        />
+        <>
+          <PersonalityStrip
+            personality={props.personalityStripInfo}
+            terminalWidth={terminalWidth}
+            motionFrame={personalityMotionFrame}
+          />
+          <CommandBar
+            terminalWidth={terminalWidth}
+            context={hotkeyContext}
+            active={Boolean(chromeHint || themeSwitchBanner || showThemeNotification)}
+          />
+        </>
       )}
     </box>
   );

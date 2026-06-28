@@ -1,5 +1,6 @@
 import type { ActivityTree, RepeatAlert } from '../../domain/types';
 import type { NotificationService } from './service';
+import type { NotificationResult } from './types';
 
 /**
  * Flow Observer 事件监听器
@@ -30,11 +31,11 @@ export class FlowNotificationListener {
   /**
    * 监听任务完成事件
    */
-  async onCompletion(tree: ActivityTree, summary?: string): Promise<void> {
+  async onCompletion(tree: ActivityTree, summary?: string): Promise<NotificationResult[]> {
     const duration = this.formatDuration(Date.now() - this.sessionStartTime);
     const content = summary || '任务已完成';
 
-    await this.notificationService.notifyCompletion('Flow 任务完成', content, {
+    return this.notificationService.notifyCompletion('Flow 任务完成', content, {
       sessionId: this.sessionId,
       projectDir: this.projectDir,
       duration,
@@ -46,8 +47,8 @@ export class FlowNotificationListener {
   /**
    * 监听知识提取事件
    */
-  async onKnowledgeExtracted(title: string, content: string): Promise<void> {
-    await this.notificationService.notifyKnowledge('新知识提取', content, {
+  async onKnowledgeExtracted(title: string, content: string): Promise<NotificationResult[]> {
+    return this.notificationService.notifyKnowledge('新知识提取', content, {
       sessionId: this.sessionId,
       projectDir: this.projectDir,
       extractedAt: new Date().toISOString(),
@@ -57,11 +58,11 @@ export class FlowNotificationListener {
   /**
    * 手动快照推送
    */
-  async sendManualSnapshot(tree: ActivityTree, note?: string): Promise<void> {
+  async sendManualSnapshot(tree: ActivityTree, note?: string): Promise<NotificationResult[]> {
     const duration = this.formatDuration(Date.now() - this.sessionStartTime);
     const content = note || this.buildSnapshotContent(tree);
 
-    await this.notificationService.notify({
+    return this.notificationService.notify({
       type: 'manual',
       priority: 'normal',
       title: '📸 Flow 快照',
@@ -83,9 +84,10 @@ export class FlowNotificationListener {
    */
   private async checkForErrors(tree: ActivityTree): Promise<void> {
     const currentErrorCount = tree.alerts.filter((a) => a.severity === 'error').length;
+    const currentErrors = tree.alerts.filter((a) => a.severity === 'error');
 
     if (currentErrorCount > this.lastErrorCount) {
-      const newErrors = tree.alerts.slice(this.lastErrorCount);
+      const newErrors = currentErrors.slice(this.lastErrorCount);
       const errorDetails = newErrors
         .map((alert) => `${alert.tool}: ${alert.params} (${alert.count}次重复)`)
         .join('\n');

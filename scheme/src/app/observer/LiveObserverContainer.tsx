@@ -20,6 +20,8 @@ import { useNotification } from './hooks/useNotification';
 import { useEvolutionExport } from './hooks/useEvolutionExport';
 import { fileWikiAudit } from '../../services/wiki/audit-service';
 import { formatKnowledgeExcerpt } from '../../services/wiki/wiki-text-utils';
+import { resolveLiveCodingPersona } from '../../services/evolution/live-persona';
+import { buildPersonalityStripInfo } from './view-model/personality-strip-view';
 
 const log = createLogger('observer');
 let observerBootLogged = false;
@@ -145,12 +147,22 @@ export function LiveObserverContainer(): ReactNode {
     sessionPath,
     runtime.presentation.allowWikiLiveSearch,
   );
+  const personalityStripInfo = useMemo(
+    () => buildPersonalityStripInfo(resolveLiveCodingPersona({
+      graphSnapshot,
+      explorations,
+      flowchartHints: mergedFlowchartHints,
+      explorationPersistStatus,
+      wikiMatchesByExploration,
+    })) ?? undefined,
+    [graphSnapshot, explorations, mergedFlowchartHints, explorationPersistStatus, wikiMatchesByExploration],
+  );
 
   const {
     notificationEnabled,
     sendManualSnapshot,
     lastNotifyStatus,
-  } = useNotification(sessionId, tree ?? undefined);
+  } = useNotification(sessionId, tree ?? undefined, summaryItems);
 
   const { exportHtml, lastExportStatus } = useEvolutionExport();
 
@@ -209,6 +221,7 @@ export function LiveObserverContainer(): ReactNode {
       onExportHtml={exportHtml}
       exportStatus={lastExportStatus}
       notifyStatus={pickerStatusHint ?? lastNotifyStatus}
+      personalityStripInfo={personalityStripInfo}
     />
   );
 }

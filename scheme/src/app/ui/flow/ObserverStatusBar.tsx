@@ -7,7 +7,11 @@ import { useTuiTheme } from '../theme';
 import type { StatusBarModeTheme } from '../themes/resolved-theme';
 import { truncateFlowText } from '../../../utils/flow-text';
 import type { ObserverStatusBarViewProps } from '../../observer/view-model/shell-chrome.types';
-import { resolveIntentChromeDisplay } from '../../observer/view-model/intent-chrome-display';
+import {
+  resolveIntentChromeDisplay,
+  type IntentChromeDisplay,
+} from '../../observer/view-model/intent-chrome-display';
+import type { LiveIntentChromeView } from '../../observer/view-model/intent-chrome';
 import { flowSpacing } from './flow-ui/flow-spacing';
 import { getObserverMessages, resolveObserverLocale } from '../i18n/observer-messages';
 import type { ObserverViewMode } from './observer-hotkeys';
@@ -26,7 +30,6 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
     themeNotification,
     terminalWidth,
     fileAccessLine,
-    sessionArc,
     liveIntent,
     viewMode,
   } = props;
@@ -35,20 +38,18 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
   const m = getObserverMessages(locale);
   const statusTheme = useTuiTheme().modes.statusBar;
   const contentWidth = Math.max(32, terminalWidth - flowSpacing.chromePadX * 2);
-  const intentDisplay = liveIntent
-    ? resolveIntentChromeDisplay({
-      intentKey: liveIntent.intentKey,
-      title: liveIntent.title,
-      locale,
-      idleTitle: m.trivialGreetingIntentTitle,
-    })
-    : null;
-  const intentTitle = intentDisplay
-    ? truncateFlowText(
-      intentDisplay.title,
-      Math.max(20, contentWidth - (intentDisplay.badge?.length ?? 0) - 6),
-    )
-    : '';
+  const intentDisplay = resolveStatusBarIntentDisplay({
+    liveIntent,
+    locale,
+    idleTitle: m.trivialGreetingIntentTitle,
+  });
+  const intentTitle = truncateFlowText(
+    intentDisplay.title,
+    resolveIntentTitleBudget({
+      contentWidth,
+      badgeLength: intentDisplay.badge?.length ?? 0,
+    }),
+  );
 
   return (
     <box
@@ -80,16 +81,24 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
         statusTheme,
       })}
 
-      {intentDisplay ? (
+      <box
+        style={{
+          width: '100%',
+          flexShrink: 0,
+          flexDirection: 'row',
+          paddingTop: 0,
+          paddingBottom: 0,
+          marginTop: 0,
+          marginBottom: 0,
+        }}
+      >
         <box
           style={{
-            width: '100%',
-            flexShrink: 0,
-            flexDirection: 'row',
-            paddingTop: 0,
-            paddingBottom: 0,
-            marginTop: 0,
-            marginBottom: 0,
+            flexDirection: 'column',
+            justifyContent: 'center',
+            marginLeft: 0,
+            minWidth: 0,
+            flexGrow: 1,
           }}
         >
           <text wrapMode="none">
@@ -107,13 +116,31 @@ export function ObserverStatusBar(props: ObserverStatusBarProps): ReactNode {
             </span>
           </text>
         </box>
-      ) : sessionArc ? (
-        <text wrapMode="none" fg={statusTheme.sessionArcFg}>
-          {truncateFlowText(sessionArc, contentWidth)}
-        </text>
-      ) : null}
+      </box>
     </box>
   );
+}
+
+export function resolveIntentTitleBudget(input: {
+  contentWidth: number;
+  badgeLength: number;
+}): number {
+  const intentChromeColumns = input.badgeLength + 6;
+
+  return Math.max(20, input.contentWidth - intentChromeColumns);
+}
+
+export function resolveStatusBarIntentDisplay(input: {
+  liveIntent?: LiveIntentChromeView;
+  locale: 'en' | 'zh-Hans';
+  idleTitle: string;
+}): IntentChromeDisplay {
+  return resolveIntentChromeDisplay({
+    intentKey: input.liveIntent?.intentKey ?? 'greeting',
+    title: input.liveIntent?.title ?? input.idleTitle,
+    locale: input.locale,
+    idleTitle: input.idleTitle,
+  });
 }
 
 function renderSessionMetaLine(input: {

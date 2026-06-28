@@ -22,6 +22,7 @@ export type LogModule =
   | 'bundle'
   | 'index'
   | 'observer'
+  | 'notification'
   | 'wiki';
 
 const LEVEL_ORDER: Record<LogLevel, number> = {

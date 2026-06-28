@@ -5,6 +5,7 @@ import { formatDoctorReport, runDoctor } from './lib/doctor.mjs';
 import { parseFlowArgs, runFlowCommand } from './lib/flow.mjs';
 import { runSessionsCommand } from './lib/sessions.mjs';
 import { parseExportArgs, runExportCommand } from './lib/export.mjs';
+import { runNotifyCommand } from './lib/notify.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,6 +18,7 @@ function printRootHelp() {
   console.log('  ga flow [--continue] [--resume [sessionId]] [--model <model>] [prompt]');
   console.log('  ga sessions                          List captured session history');
   console.log('  ga export [-o <file>] [--no-ai] [--theme <t>] [--watch]');
+  console.log('  ga notify setup|status|test');
   console.log('  ga doctor');
   console.log('');
   console.log('Notes:');
@@ -44,8 +46,11 @@ function printFlowHelp() {
   console.log('');
   console.log('By default, ga flow opens wiki/knowledge/outputs/evolution.html and keeps');
   console.log('it refreshed (deterministic) as you work. New projects open a placeholder');
-  console.log('that turns into the timeline on the first milestone. Press `e` in the');
-  console.log('observer for the AI-enriched version.');
+  console.log('that turns into the timeline on the first milestone. Press `h` in the');
+  console.log('observer to export/open HTML, or `r` to regenerate with AI enrichment.');
+  console.log('');
+  console.log('Notifications:');
+  console.log('  ga notify setup        Configure optional WeChat notifications');
 }
 
 function printExportHelp() {
@@ -76,6 +81,10 @@ async function main(argv) {
     const report = runDoctor({ rootDir });
     console.log(formatDoctorReport(report));
     return report.ok ? 0 : 1;
+  }
+
+  if (command === 'notify') {
+    return await runNotifyCommand({ rootDir, args: rest });
   }
 
   if (command === 'flow') {

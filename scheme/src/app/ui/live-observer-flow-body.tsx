@@ -18,7 +18,7 @@ import type { WorkspaceTreeSnapshot } from '../../data/protocol/workspace-tree';
 import { getSummaryItemForExploration } from '../../data/protocol/summary-contract';
 import { isExplorationSummarizing } from '../observer/view-model/presentation-summaries';
 import { useThemeChrome, useThemeVersion, useTuiTheme } from './theme';
-import { resolveSpinnerFrame } from './themes/theme-profile';
+import { chromeHasDecorMotion, resolveSpinnerFrame } from './themes/theme-profile';
 import { isFlowMotionEnabled } from './hooks/useFlowMotion';
 import { ExplorationCard } from './flow/ExplorationCard';
 import { FocusView } from './flow/graph/FocusView';
@@ -53,8 +53,6 @@ export type LiveObserverFlowBodyProps = {
   calmMode?: boolean;
   /** @deprecated use theme chrome spinnerIntervalMs; kept for FLOW_NO_ANIMATIONS baseline */
   spinnerIntervalMs?: number;
-  /** Latest exploration with question expanded via `e`. */
-  questionExpandedId?: string | null;
 };
 
 export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
@@ -79,12 +77,10 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     mode = 'timeline',
     calmMode = false,
     spinnerIntervalMs,
-    questionExpandedId = null,
   } = props;
   const chrome = useThemeChrome();
   const tuiTheme = useTuiTheme();
   const motionIntervalMs = spinnerIntervalMs ?? chrome.spinnerIntervalMs;
-  const [spinnerFrameIndex, setSpinnerFrameIndex] = useState(0);
   const [freshExplorationIds, setFreshExplorationIds] = useState<Set<string>>(() => new Set());
   const [freshSummaryIds, setFreshSummaryIds] = useState<Set<string>>(() => new Set());
   const seenExplorationIdsRef = useRef<Set<string> | null>(null);
@@ -93,6 +89,15 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
   const summaryFreshTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const hasRunning = explorations.some((item) => item.status === 'running');
   const shouldAnimateSpinner = hasRunning || pendingSummaryCount > 0;
+  const timelineMotionFrame = useFlowMotionFrame(
+    mode === 'timeline' && (
+      shouldAnimateSpinner
+      || freshExplorationIds.size > 0
+      || freshSummaryIds.size > 0
+      || chromeHasDecorMotion(chrome)
+    ),
+    motionIntervalMs,
+  );
   const workspaceActivity = useMemo(
     () => (mode === 'workspace' ? buildWorkspaceActivityView(explorations, 14, workspaceTree) : null),
     [explorations, mode, workspaceTree],
@@ -102,16 +107,7 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
     motionIntervalMs,
   );
 
-  useEffect(() => {
-    if (!shouldAnimateSpinner) return;
-    const frameCount = Math.max(1, chrome.spinnerFrames.length);
-    const timer = setInterval(() => {
-      setSpinnerFrameIndex((prev) => (prev + 1) % frameCount);
-    }, motionIntervalMs);
-    return () => clearInterval(timer);
-  }, [shouldAnimateSpinner, motionIntervalMs, chrome.spinnerFrames.length]);
-
-  const spinnerFrame = resolveSpinnerFrame(chrome, spinnerFrameIndex);
+  const spinnerFrame = resolveSpinnerFrame(chrome, timelineMotionFrame);
 
   useEffect(() => {
     const nextIds = new Set(explorations.map((item) => item.id));
@@ -253,21 +249,23 @@ export const LiveObserverFlowBody = memo(function LiveObserverFlowBody(
           />
         </box>
       ) : (
-        <ExplorationTimeline
-          explorations={explorations}
-          summaries={summaries}
-          summaryItems={summaryItems}
-          pendingByExplorationId={pendingByExplorationId}
-          availableWidth={availableWidth}
-          spinnerFrame={spinnerFrame}
-          calmMode={calmMode}
-          questionExpandedId={questionExpandedId}
-          wikiPersistResults={wikiPersistResults}
-          wikiWriteChromeByExploration={wikiWriteChromeByExploration}
-          wikiMatchesByExploration={wikiMatchesByExploration}
-          freshExplorationIds={freshExplorationIds}
-          freshSummaryIds={freshSummaryIds}
-        />
+        <>
+          <ExplorationTimeline
+            explorations={explorations}
+            summaries={summaries}
+            summaryItems={summaryItems}
+            pendingByExplorationId={pendingByExplorationId}
+            availableWidth={availableWidth}
+            spinnerFrame={spinnerFrame}
+            motionFrame={timelineMotionFrame}
+            calmMode={calmMode}
+            wikiPersistResults={wikiPersistResults}
+            wikiWriteChromeByExploration={wikiWriteChromeByExploration}
+            wikiMatchesByExploration={wikiMatchesByExploration}
+            freshExplorationIds={freshExplorationIds}
+            freshSummaryIds={freshSummaryIds}
+          />
+        </>
       )}
     </box>
   );
@@ -279,8 +277,8 @@ interface ExplorationTimelineProps {
   pendingByExplorationId?: Record<string, boolean>;
   availableWidth: number;
   spinnerFrame: string;
+  motionFrame: number;
   calmMode: boolean;
-  questionExpandedId?: string | null;
   summaryItems?: Record<SessionScopedId, SummaryItem>;
   wikiPersistResults?: Record<string, PersistResult>;
   wikiWriteChromeByExploration?: Record<string, WikiWriteChromeView>;
@@ -296,8 +294,8 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
     pendingByExplorationId = {},
     availableWidth,
     spinnerFrame,
+    motionFrame,
     calmMode,
-    questionExpandedId = null,
     summaryItems,
     wikiPersistResults,
     wikiWriteChromeByExploration,
@@ -324,6 +322,9 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
         // Only animating cards consume spinnerFrame; feeding a stable '' to the
         // rest lets memo skip their re-render on every 160ms spinner tick.
         const cardIsAnimating = exploration.status === 'running' || isGenerating;
+        const cardUsesMotion = cardIsAnimating
+          || freshExplorationIds.has(exploration.id)
+          || freshSummaryIds.has(exploration.id);
 
         return (
           <ExplorationCard
@@ -331,9 +332,9 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
             exploration={exploration}
             calmMode={calmMode}
             isLatestExploration={exploration.id === latestExplorationId}
-            isFreshExploration={freshExplorationIds.has(exploration.id)}
             isSummaryFresh={freshSummaryIds.has(exploration.id)}
             spinnerFrame={cardIsAnimating ? spinnerFrame : ''}
+            motionFrame={cardUsesMotion ? motionFrame : 0}
             summary={summaries[exploration.id]}
             summaryItem={summaryItem}
             isGenerating={isGenerating}
@@ -343,7 +344,6 @@ function ExplorationTimeline(props: ExplorationTimelineProps): ReactNode {
             wikiPersistResult={wikiChrome?.result ?? wikiPersistResults?.[exploration.id]}
             wikiTargetId={wikiChrome?.targetId}
             wikiTurnCount={wikiChrome?.turnCount}
-            questionExpanded={exploration.id === questionExpandedId}
           />
         );
       })}

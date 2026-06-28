@@ -4,7 +4,7 @@ import type { ObserverLocale } from '../../../constants/observer-locale';
 import { sessionIntentDisplayLabel } from '../../../constants/session-intent-keys';
 import { getObserverMessages } from '../../ui/i18n/observer-messages';
 
-export const QUESTION_PREVIEW_MAX_LINES = 3;
+export const QUESTION_PREVIEW_MAX_LINES = 8;
 
 export type CardDisplayMode = 'compact' | 'expanded';
 
@@ -85,11 +85,7 @@ export interface CompactLineInput {
 export function resolveQuestionBody(input: {
   question: string;
   contentColumns: number;
-  expanded: boolean;
 }): { text: string; truncated: boolean } {
-  if (input.expanded) {
-    return { text: formatFlowText(input.question) || 'N/A', truncated: false };
-  }
   return foldFlowTextPreview(
     input.question,
     input.contentColumns,

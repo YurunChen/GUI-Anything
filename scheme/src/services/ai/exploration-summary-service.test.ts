@@ -49,7 +49,7 @@ describe('DefaultExplorationSummaryService', () => {
     const historyByQuestion: Record<string, Array<{ summary?: string }>> = {};
 
     const service = new DefaultExplorationSummaryService({
-      maxAttempts: 2,
+      maxRetries: 1,
       generateSummary: async (question, _nodes, history, _model, sessionIntent) => {
         attempts[question] = (attempts[question] || 0) + 1;
         active += 1;
@@ -118,7 +118,7 @@ describe('DefaultExplorationSummaryService', () => {
   it('falls back to failed summary after retry budget exhausted', async () => {
     const service = new DefaultExplorationSummaryService({
       maxConcurrency: 1,
-      maxAttempts: 2,
+      maxRetries: 1,
       generateSummary: async () => {
         throw new Error('always-fail');
       },
@@ -145,6 +145,56 @@ describe('DefaultExplorationSummaryService', () => {
     expect(service.getRuntimeStats().completed).toBe(1);
     expect(service.getRuntimeStats().failed).toBe(0);
     expect(service.getRuntimeStats().retried).toBe(1);
+  });
+
+  it('retries structured-output fallback up to the retry budget before saving', async () => {
+    let attempts = 0;
+    const service = new DefaultExplorationSummaryService({
+      maxConcurrency: 1,
+      generateSummary: async () => {
+        attempts += 1;
+        if (attempts < 4) {
+          return {
+            displaySummary: 'bad json fallback',
+            persist: null,
+            validationError: 'json_parse_error',
+          };
+        }
+        return {
+          displaySummary: 'valid summary after retry',
+          persist: null,
+          flowchart: {
+            nodeId: 'intent_retry-json',
+            nodeTitle: 'retry json',
+            parentId: null,
+            branchType: 'trunk',
+            importance: 'medium',
+            dropFromChart: false,
+            intentKey: 'intent_retry-json',
+            titleDelta: 'pivot',
+          },
+        };
+      },
+      bundleRepository: {
+        load: () => null,
+        ensure: () => ({ session: { intent: null }, explorations: {} }) as never,
+        patch: () => ({ session: { intent: null } }) as never,
+        patchExploration: () => ({}) as never,
+      } as never,
+    });
+
+    const generated = await service.generateMissing({
+      sessionId: 'session-json-retry',
+      explorations: [makeExploration('exp_1', 'retry invalid json')],
+      jsonlPath: '/tmp/test-session-json-retry.jsonl',
+      existing: {},
+    });
+
+    const item = generated['session-json-retry:exp_1'];
+    expect(attempts).toBe(4);
+    expect(item?.source).toBe('ai');
+    expect(item?.text).toBe('valid summary after retry');
+    expect(service.getRuntimeStats().retried).toBe(3);
   });
 
   it('returns cache status details even when cache data is missing', () => {

@@ -12,61 +12,83 @@ export const siteContent = {
     },
     nav: {
       demo: 'demo',
+      moments: 'moments',
       problem: 'problem',
       capabilities: 'capabilities',
+      lifecycle: 'lifecycle',
       contribute: 'contribute',
     },
     hero: {
-      command: 'npm i -g gui-anything',
-      title: 'Make Claude Code sessions readable.',
+      title: 'The map for long Claude Code sessions.',
       lede:
-        'GUI-Anything runs alongside Claude Code, turning intent, progress, and reusable experience into a clear thread.',
-      ctaPrimary: 'View on GitHub',
-      ctaSecondary: 'See how it works',
+        'Claude keeps coding on the left. GUI-Anything keeps intent, turns, flowchart, and prior knowledge visible on the right — without taking over the terminal.',
+      ctaPrimary: 'GitHub',
       proofLabel: 'What stays clear',
-      proof: ['capture intent', 'flow timeline', 'local wiki'],
-      product: {
-        ariaLabel: 'GUI-Anything live observer preview',
-        title: 'ga flow',
-        mode: 'flow observer',
-        claudeTitle: 'Claude Code',
-        observerTitle: 'GUI-Anything',
-        claudeLines: [
-          '> try this direction',
-          '> hit a bug',
-          '> maybe add this module',
-          '> keep this thought',
-        ],
-        cards: [
-          {
-            badge: 'Intent',
-            title: 'What are you trying to do?',
-            meta: 'keeps the intent in view',
-          },
-          {
-            badge: 'Progress',
-            title: 'Where did we turn?',
-            meta: 'records the change of direction',
-            active: true,
-          },
-          {
-            badge: 'Note',
-            title: 'What should survive?',
-            meta: 'saved to your local wiki',
-          },
-        ],
-        footer: [
-          ['intent', 'what you meant'],
-          ['flow', 'how it changed'],
-          ['wiki', 'what stays useful'],
-        ],
-      },
+      proof: ['intent badges', 'live flowchart', 'prior KNOWLEDGE', 'session replay'],
     },
     demo: {
       tag: 'demo',
       title: 'A live observer for intent, flow, and knowledge.',
-      hint: 'Switch tabs · scan cards · open notes · press ? in the observer',
+      hint: 'Switch tabs · drag the split · press ? in the observer',
       body: 'The chat keeps moving. The observer keeps the shape of the work.',
+      callouts: {
+        flow: [
+          { target: 'intent', label: 'Intent badge on every exploration' },
+          { target: 'knowledge', label: 'KNOWLEDGE · prior wiki hit' },
+          { target: 'running', label: 'Active card + summarizer' },
+        ],
+        timeline: [
+          { target: 'focus', label: 'FOCUS · active exploration' },
+          { target: 'tree', label: 'Flowchart intent tree' },
+        ],
+        note: [
+          { target: 'notes', label: 'Notes sidebar · hotkey only' },
+        ],
+        knowledge: [
+          { target: 'knowledge', label: 'KNOWLEDGE card · live prior wiki' },
+          { target: 'wiki', label: 'wiki saved badge after pivot' },
+        ],
+        replay: [
+          { target: 'replay', label: 'Strict replay · no AI regen' },
+          { target: 'bundle', label: 'From wiki/sessions/.../bundle.json' },
+        ],
+      },
+    },
+    moments: {
+      title: 'Jump to a product moment',
+      body: 'Each card switches the live demo above to that view.',
+      items: [
+        {
+          id: 'timeline',
+          scenarioId: 'flow',
+          title: 'Live timeline',
+          text: 'Intent badges, summaries, and a running card at the bottom.',
+        },
+        {
+          id: 'knowledge',
+          scenarioId: 'knowledge',
+          title: 'KNOWLEDGE hit',
+          text: 'Prior wiki surfaces on the card while Claude is still running.',
+        },
+        {
+          id: 'flowchart',
+          scenarioId: 'timeline',
+          title: 'Flowchart focus',
+          text: 'Press g — see pivots and the active branch as a tree.',
+        },
+        {
+          id: 'replay',
+          scenarioId: 'replay',
+          title: 'Strict replay',
+          text: 'ga flow -r replays bundle.json without re-summarizing.',
+        },
+        {
+          id: 'notes',
+          scenarioId: 'note',
+          title: 'Session notes',
+          text: 'Press i — notes column, no popup over Claude.',
+        },
+      ],
     },
     problem: {
       tag: 'pain points',
@@ -263,12 +285,25 @@ export const siteContent = {
       tag: 'contribute',
       title: 'Contribute code.',
       body: 'Pick up an issue, send a PR, or improve the observer, wiki pipeline, notifications, or web GUI.',
-      github: 'github',
-      guide: 'contributing.md',
+      github: 'Issues',
+      guide: 'CONTRIBUTING.md',
+      verifyTitle: 'Before you PR',
+      verify: [
+        'cd scheme && bun test && bunx tsc --noEmit',
+        'ga doctor',
+      ],
+      areasTitle: 'High-value areas',
+      areas: [
+        { path: 'scheme/src/app/ui/flow/', note: 'Observer shell, cards, flowchart' },
+        { path: 'scheme/src/services/wiki/', note: 'Curation, retrieval, digest' },
+        { path: 'scheme/src/data/protocol/', note: 'Session shapes, projectors' },
+        { path: 'docs/', note: 'This site · development.md' },
+      ],
     },
     footer: {
       line: 'MIT · local by default · watches Claude, does not drive it',
-      top: '^ back to top',
+      top: 'Back to top',
+      readme: 'Install & commands → README',
     },
     painLines: [
       'What did we actually do this round?',
@@ -313,6 +348,24 @@ export const siteContent = {
           ['keys', 'Esc or i to close · g for timeline'],
         ],
       },
+      knowledge: {
+        title: 'Prior wiki while the run continues.',
+        thesis: 'KNOWLEDGE hits appear on exploration cards during a live session — retrieval is separate from wiki writes.',
+        artifacts: [
+          ['hit', 'KNOWLEDGE · C001 from wiki/knowledge/'],
+          ['write', 'wiki saved only after intent pivot'],
+          ['gate', 'explore intents may skip write badge'],
+        ],
+      },
+      replay: {
+        title: 'Honest resume.',
+        thesis: 'ga flow -r replays bundle.json exactly. Summaries are not silently regenerated.',
+        artifacts: [
+          ['mode', 'Replay banner · read-only observer'],
+          ['source', 'wiki/sessions/session-a/bundle.json'],
+          ['policy', 'strict cache replay · no new AI'],
+        ],
+      },
     },
   },
   zh: {
@@ -328,61 +381,83 @@ export const siteContent = {
     },
     nav: {
       demo: '演示',
+      moments: '时刻',
       problem: '问题',
       capabilities: '能力',
+      lifecycle: '生命周期',
       contribute: '贡献',
     },
     hero: {
-      command: 'npm i -g gui-anything',
-      title: '让 Claude Code 长会话，\n有清晰脉络。',
+      title: '长 Claude Code 会话的那张地图。',
       lede:
-        'GUI-Anything 伴随 Claude Code 运行，将会话中的意图、进展与可复用经验整理成清晰脉络。',
-      ctaPrimary: '查看 GitHub',
-      ctaSecondary: '看看怎么用',
+        '左边 Claude 照常写代码；右边实时呈现意图、转向、流程图和 prior 知识 —— 不接管终端。',
+      ctaPrimary: 'GitHub',
       proofLabel: '留下清楚的东西',
-      proof: ['捕获意图', '会话时间线', '本地知识库'],
-      product: {
-        ariaLabel: 'GUI-Anything 实时观察器预览',
-        title: 'ga flow',
-        mode: 'flow observer',
-        claudeTitle: 'Claude Code',
-        observerTitle: 'GUI-Anything',
-        claudeLines: [
-          '> 按这个方向试试',
-          '> 有 bug',
-          '> 也许要加这个模块',
-          '> 这个想法先记下来',
-        ],
-        cards: [
-          {
-            badge: '意图',
-            title: '这轮想做什么？',
-            meta: '意图一直看得见',
-          },
-          {
-            badge: '进度',
-            title: '现在走到哪了？',
-            meta: '转向和检查都记下来',
-            active: true,
-          },
-          {
-            badge: '笔记',
-            title: '哪些想法值得留下？',
-            meta: '存成本地知识',
-          },
-        ],
-        footer: [
-          ['intent', '你真正想做什么'],
-          ['flow', '过程怎么变化'],
-          ['wiki', '哪些以后还会用'],
-        ],
-      },
+      proof: ['意图标签', '实时流程图', 'prior KNOWLEDGE', '会话回放'],
     },
     demo: {
       tag: '演示',
       title: '实时观察意图、过程和知识。',
-      hint: '切换标签 · 扫卡片 · 打开笔记 · 在 observer 按 ?',
+      hint: '切换标签 · 拖动分栏 · 在 observer 按 ?',
       body: '对话继续向前，右栏留下清楚的过程。',
+      callouts: {
+        flow: [
+          { target: 'intent', label: '每段 exploration 的意图标签' },
+          { target: 'knowledge', label: 'KNOWLEDGE · prior wiki 命中' },
+          { target: 'running', label: '进行中卡片 + 摘要生成' },
+        ],
+        timeline: [
+          { target: 'focus', label: 'FOCUS · 当前 exploration' },
+          { target: 'tree', label: '流程图 intent 树' },
+        ],
+        note: [
+          { target: 'notes', label: '笔记侧栏 · 仅快捷键唤起' },
+        ],
+        knowledge: [
+          { target: 'knowledge', label: 'KNOWLEDGE 卡片 · 实时 prior wiki' },
+          { target: 'wiki', label: 'pivot 后的 wiki saved 标记' },
+        ],
+        replay: [
+          { target: 'replay', label: 'Strict replay · 不重跑摘要 AI' },
+          { target: 'bundle', label: '来自 wiki/sessions/.../bundle.json' },
+        ],
+      },
+    },
+    moments: {
+      title: '跳到某个产品时刻',
+      body: '点击卡片会切换上方 live demo 到对应视图。',
+      items: [
+        {
+          id: 'timeline',
+          scenarioId: 'flow',
+          title: '实时时间线',
+          text: '意图标签、摘要，底部钉住进行中的卡片。',
+        },
+        {
+          id: 'knowledge',
+          scenarioId: 'knowledge',
+          title: 'KNOWLEDGE 命中',
+          text: 'Claude 还在跑时，prior wiki 出现在卡片上。',
+        },
+        {
+          id: 'flowchart',
+          scenarioId: 'timeline',
+          title: '流程图焦点',
+          text: '按 g —— 以树形看转向和当前活跃分支。',
+        },
+        {
+          id: 'replay',
+          scenarioId: 'replay',
+          title: 'Strict replay',
+          text: 'ga flow -r 回放 bundle.json，不重新摘要。',
+        },
+        {
+          id: 'notes',
+          scenarioId: 'note',
+          title: '会话笔记',
+          text: '按 i —— 笔记列，不盖住 Claude。',
+        },
+      ],
     },
     problem: {
       tag: '痛点',
@@ -580,12 +655,25 @@ export const siteContent = {
       tag: '贡献',
       title: '欢迎代码贡献。',
       body: '从 issue 开始，提一个 PR。observer、wiki 链路、通知、网页 GUI 都欢迎改进。',
-      github: 'github',
-      guide: 'contributing.md',
+      github: 'Issues',
+      guide: 'CONTRIBUTING.md',
+      verifyTitle: 'PR 前请跑',
+      verify: [
+        'cd scheme && bun test && bunx tsc --noEmit',
+        'ga doctor',
+      ],
+      areasTitle: '高价值区域',
+      areas: [
+        { path: 'scheme/src/app/ui/flow/', note: 'Observer shell、卡片、流程图' },
+        { path: 'scheme/src/services/wiki/', note: '策展、检索、digest' },
+        { path: 'scheme/src/data/protocol/', note: 'Session 形状、projector' },
+        { path: 'docs/', note: '本站 · development.md' },
+      ],
     },
     footer: {
       line: 'MIT · 本地优先 · 只看 Claude，不接管它',
-      top: '^ 回到顶部',
+      top: '回到顶部',
+      readme: '安装与命令 → README',
     },
     painLines: [
       '这轮到底做了啥？',
@@ -628,6 +716,24 @@ export const siteContent = {
           ['宽度', 'notes 作为第三列打开（约 28%）'],
           ['输入', '纯文本，一条笔记一个想法'],
           ['按键', 'Esc 或 i 关闭 · g 切 timeline'],
+        ],
+      },
+      knowledge: {
+        title: '跑着也能命中 prior wiki。',
+        thesis: 'KNOWLEDGE 在 live 会话的卡片上出现 —— 检索与 wiki 写入是两条独立链路。',
+        artifacts: [
+          ['命中', 'KNOWLEDGE · C001 来自 wiki/knowledge/'],
+          ['写入', 'intent pivot 后才 wiki saved'],
+          ['门禁', 'explore 类 intent 可能无 write badge'],
+        ],
+      },
+      replay: {
+        title: '诚实的续跑。',
+        thesis: 'ga flow -r 原样回放 bundle.json，不会静默重新生成摘要。',
+        artifacts: [
+          ['模式', 'Replay 横幅 · 只读 observer'],
+          ['来源', 'wiki/sessions/session-a/bundle.json'],
+          ['策略', 'strict cache replay · 无新 AI'],
         ],
       },
     },

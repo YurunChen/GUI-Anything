@@ -20,8 +20,7 @@
 微信推送使用独立的 Python 微服务（基于 Hermes-agent 实现）。
 
 ```bash
-cd scheme/src/services/notification/weixin-service
-pip3 install -r requirements.txt
+./scripts/setup.sh
 ```
 
 需要的包：
@@ -30,6 +29,14 @@ pip3 install -r requirements.txt
 - `fastapi` - Web 框架
 - `uvicorn` - ASGI 服务器
 - `qrcode` - 二维码生成
+
+依赖会安装到项目本地虚拟环境：
+
+```
+scheme/src/services/notification/weixin-service/.venv/
+```
+
+不会写入系统 Python。
 
 ---
 
@@ -61,17 +68,25 @@ pip3 install -r requirements.txt
 curl -X POST http://127.0.0.1:8765/login
 ```
 
-### 步骤 3：配置环境变量
+### 步骤 3：配置接收人
 
-登录成功后，设置接收消息的微信用户ID：
+推荐直接运行：
+
+```bash
+ga notify setup
+```
+
+向导会优先尝试扫码用户；如果 iLink 不允许直接推送，会提示你用接收账号给 bot 发一条微信消息，并自动保存该消息的 `from_user_id`。
+
+手动模式下，设置接收消息的微信用户ID：
 
 ```bash
 export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
 ```
 
 **如何获取微信用户ID？**
-- 方法1：让对方给你发条消息，在服务日志中查看 `from_user_id`
-- 方法2：使用你自己的微信ID（给自己发送）
+- 让接收账号给 iLink bot 发一条消息，使用服务返回或日志里的 `from_user_id`
+- 不要把扫码登录返回的 bot `account_id` 当作接收人
 
 ### 步骤 4：启动 Flow Observer
 
@@ -229,8 +244,7 @@ ModuleNotFoundError: No module named 'aiohttp'
 
 **解决：**
 ```bash
-cd scheme/src/services/notification/weixin-service
-pip3 install -r requirements.txt
+./scripts/setup.sh
 ```
 
 ### 问题：登录超时
@@ -379,9 +393,7 @@ kill $(lsof -t -i:8765)
 **Linux (systemd):**
 创建 `/etc/systemd/system/flow-weixin.service`
 
-### 给自己发送
+### 接收人配对
 
-最简单的方式是给自己发送消息：
-1. 登录后，你的微信ID就是 bot account ID
-2. 设置 `FLOW_NOTIFY_WECHAT_USER_ID` 为你自己的微信ID
-3. 消息会出现在"文件传输助手"风格的对话框
+扫码登录得到的是 iLink bot `account_id`，不是接收人的微信 user id。
+需要手动排查时，让接收账号给 bot 发一条消息，使用返回的 `from_user_id`。

@@ -99,9 +99,12 @@ describe('dispatchObserverKey', () => {
     ).toBeNull();
   });
 
-  test('e toggles latest question expand', () => {
-    expect(dispatchObserverKey({ name: 'e', ctrl: false, meta: false }, baseState)?.type)
-      .toBe('toggle_question_expand');
+  test('e is not bound', () => {
+    expect(dispatchObserverKey({ name: 'e', ctrl: false, meta: false }, baseState)).toBeNull();
+  });
+
+  test('b is not bound', () => {
+    expect(dispatchObserverKey({ name: 'b', ctrl: false, meta: false }, baseState)).toBeNull();
   });
 
   test('Shift+J cycles morandi themes', () => {

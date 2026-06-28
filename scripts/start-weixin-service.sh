@@ -9,14 +9,31 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVICE_DIR="$PROJECT_ROOT/scheme/src/services/notification/weixin-service"
+VENV_DIR="$SERVICE_DIR/.venv"
+PYTHON_BIN="${PYTHON:-python3}"
 
-echo "=========================================="
-echo "  Weixin Notification Service"
-echo "=========================================="
-echo ""
+BACKGROUND=0
+RESTART=0
+QUIET=0
+for arg in "$@"; do
+    case "$arg" in
+        --background|-d) BACKGROUND=1 ;;
+        --restart|-y|--yes) RESTART=1 ;;
+        --quiet|-q) QUIET=1 ;;
+    esac
+done
+
+say() {
+    [[ "$QUIET" == "1" ]] || echo "$@"
+}
+
+say "=========================================="
+say "  Weixin Notification Service"
+say "=========================================="
+say ""
 
 # Check if Python 3 is available
-if ! command -v python3 &> /dev/null; then
+if ! command -v "$PYTHON_BIN" &> /dev/null; then
     echo "❌ Python 3 not found"
     echo ""
     echo "Please install Python 3:"
@@ -26,8 +43,8 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 --version 2>&1 | awk '{print $2}')
-echo "✓ Python 3 found: $PYTHON_VERSION"
+PYTHON_VERSION=$("$PYTHON_BIN" --version 2>&1 | awk '{print $2}')
+say "✓ Python 3 found: $PYTHON_VERSION"
 
 # Check if service directory exists
 if [ ! -d "$SERVICE_DIR" ]; then
@@ -37,62 +54,80 @@ fi
 
 cd "$SERVICE_DIR"
 
-# Check if dependencies are installed
-echo ""
-echo "Checking dependencies..."
+ensure_venv() {
+    if [ ! -x "$VENV_DIR/bin/python" ]; then
+        say "Creating local Python virtualenv..."
+        "$PYTHON_BIN" -m venv "$VENV_DIR"
+    fi
 
-if ! python3 -c "import aiohttp" 2>/dev/null; then
-    echo "⚠ Dependencies not installed"
-    echo ""
-    echo "Installing dependencies..."
-    pip3 install -r requirements.txt
-    echo ""
+    VENV_PYTHON="$VENV_DIR/bin/python"
+    if ! "$VENV_PYTHON" -m pip --version >/dev/null 2>&1; then
+        echo "❌ pip is unavailable in the local virtualenv"
+        echo "Please install Python with venv/ensurepip support, then retry."
+        exit 1
+    fi
+}
+
+# Check if dependencies are installed
+say ""
+say "Checking dependencies..."
+
+ensure_venv
+
+if ! "$VENV_DIR/bin/python" -c "import aiohttp, fastapi, uvicorn, qrcode, cryptography" 2>/dev/null; then
+    say "⚠ Dependencies not installed"
+    say ""
+    say "Installing dependencies into local virtualenv..."
+    if [[ "$QUIET" == "1" ]]; then
+        "$VENV_DIR/bin/python" -m pip install -q -r requirements.txt
+    else
+        "$VENV_DIR/bin/python" -m pip install -r requirements.txt
+    fi
+    say ""
 fi
 
-echo "✓ Dependencies OK"
-echo ""
+say "✓ Dependencies OK"
+say ""
 
 # Check if already running
-if lsof -Pi :8765 -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo "⚠ Service already running on port 8765"
-    echo ""
-    read -p "Kill existing process and restart? (y/N) " -n 1 -r
-    echo ""
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        echo "Stopping existing service..."
-        kill $(lsof -t -i:8765) 2>/dev/null || true
+LISTEN_PIDS="$(lsof -Pi :8765 -sTCP:LISTEN -t 2>/dev/null || true)"
+if [[ -n "$LISTEN_PIDS" ]]; then
+    say "⚠ Service already running on port 8765"
+    say ""
+    if [[ "$RESTART" == "1" ]]; then
+        say "Stopping existing service..."
+        kill $LISTEN_PIDS 2>/dev/null || true
         sleep 1
     else
-        echo "Exiting."
-        exit 0
+        read -p "Kill existing process and restart? (y/N) " -n 1 -r
+        echo ""
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo "Stopping existing service..."
+            kill $LISTEN_PIDS 2>/dev/null || true
+            sleep 1
+        else
+            echo "Exiting."
+            exit 0
+        fi
     fi
 fi
 
 # Start service
-echo "Starting Weixin Notification Service..."
-echo "  URL: http://127.0.0.1:8765"
-echo "  Logs: $SERVICE_DIR/weixin-service.log"
-echo ""
-echo "=========================================="
-echo ""
+say "Starting Weixin Notification Service..."
+say "  URL: http://127.0.0.1:8765"
+say "  Logs: $SERVICE_DIR/weixin-service.log"
+say ""
+say "=========================================="
+say ""
 
 # Run in background or foreground
-if [ "$1" == "--background" ] || [ "$1" == "-d" ]; then
-    nohup python3 server.py > weixin-service.log 2>&1 &
+if [[ "$BACKGROUND" == "1" ]]; then
+    nohup "$VENV_DIR/bin/python" server.py > weixin-service.log 2>&1 &
     PID=$!
-    echo "✓ Service started in background (PID: $PID)"
-    echo ""
-    echo "To view logs:"
-    echo "  tail -f $SERVICE_DIR/weixin-service.log"
-    echo ""
-    echo "To login (scan QR code):"
-    echo "  curl -X POST http://127.0.0.1:8765/login"
-    echo ""
-    echo "To check status:"
-    echo "  curl http://127.0.0.1:8765/status"
-    echo ""
+    say "✓ Service started in background"
+    say ""
 else
     echo "Press Ctrl+C to stop the service"
     echo ""
-    python3 server.py
+    "$VENV_DIR/bin/python" server.py
 fi

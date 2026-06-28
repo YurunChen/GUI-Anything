@@ -1,142 +1,89 @@
-# Flow Notification 快速开始
+# Flow WeChat Notification Quickstart
 
-## 5 分钟配置指南
+当前通知功能只支持微信。
 
-### 方式 1：微信推送（最简单）
+## 5 分钟配置
 
-**步骤：**
-
-1. 访问 https://sct.ftqq.com/
-2. 使用微信扫码登录
-3. 复制你的 SendKey
-4. 设置环境变量：
+推荐：
 
 ```bash
-export FLOW_NOTIFY_WECHAT_URL=https://sctapi.ftqq.com/YOUR_SENDKEY.send
+ga notify setup
 ```
 
-5. 启动 Flow Observer：
+已有接收人配置会复用；没有配置时会自动配对接收人。
+如果需要，向导会提示你用接收账号给 bot 发一条微信消息。
+
+手动配置：
+
+1. 启动本地微信服务：
 
 ```bash
-./scripts/flow-run.sh
+./scripts/start-weixin-service.sh
 ```
 
-6. 测试推送：在 Observer 右侧窗格按 `s` 键
-
-**完成！** 你会在微信"服务通知"收到推送消息。
-
----
-
-### 方式 2：飞书推送
-
-**步骤：**
-
-1. 打开飞书群聊
-2. 点击群设置 → 机器人 → 添加机器人 → 自定义机器人
-3. 设置名称为 "Flow Observer"
-4. 复制 Webhook 地址
-5. 设置环境变量：
+2. 扫码登录：
 
 ```bash
-export FLOW_NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
+./scripts/weixin-login.sh
 ```
 
-6. 启动并测试（同上）
-
----
-
-### 方式 3：钉钉推送
-
-**步骤：**
-
-1. 打开钉钉群
-2. 点击群设置 → 智能群助手 → 添加机器人 → 自定义
-3. 设置名称为 "Flow Observer"
-4. 安全设置选择"自定义关键词"，添加关键词 "Flow"
-5. 复制 Webhook 地址
-6. 设置环境变量：
+3. 设置接收人，推荐使用 `ga notify setup` 自动生成；手动模式可导出已知 user id：
 
 ```bash
-export FLOW_NOTIFY_DINGTALK_URL=https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN
+export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
 ```
 
-7. 启动并测试（同上）
-
----
-
-## 常见场景配置
-
-### 场景：只在出错时提醒我
+4. 启动 Observer：
 
 ```bash
-export FLOW_NOTIFY_WECHAT_URL=https://sctapi.ftqq.com/YOUR_KEY.send
+ga flow
+```
+
+5. 在 Observer 右侧窗格按 `s` 发送快照。
+
+未配置时，`ga flow` 会提示运行 `ga notify setup`，Observer 状态栏会显示微信通知未配置。
+
+## 常用配置
+
+只在错误时提醒：
+
+```bash
+export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
 export FLOW_NOTIFY_ON_ERROR=true
-export FLOW_NOTIFY_ON_COMPLETION=false
 export FLOW_NOTIFY_ON_KNOWLEDGE=false
-
-./scripts/flow-run.sh "Run integration tests"
+export FLOW_NOTIFY_PROGRESS_INTERVAL=0
+ga flow "Run integration tests"
 ```
 
-### 场景：夜间自动化，早上看结果
+夜间静音：
 
 ```bash
-export FLOW_NOTIFY_WECHAT_URL=https://sctapi.ftqq.com/YOUR_KEY.send
 export FLOW_NOTIFY_QUIET_HOURS_ENABLED=true
 export FLOW_NOTIFY_QUIET_HOURS_START=22:00
 export FLOW_NOTIFY_QUIET_HOURS_END=08:00
-
-# 定时任务
-echo "0 2 * * * cd /path/to/project && ./scripts/flow-run.sh 'Nightly build'" | crontab -
+ga flow
 ```
-
-### 场景：多平台同时推送
-
-```bash
-export FLOW_NOTIFY_WECHAT_URL=https://sctapi.ftqq.com/YOUR_KEY.send
-export FLOW_NOTIFY_FEISHU_URL=https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_TOKEN
-export FLOW_NOTIFY_PLATFORMS=wechat,feishu
-
-./scripts/flow-run.sh
-```
-
----
 
 ## 环境变量速查
 
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| `FLOW_NOTIFY_WECHAT_URL` | 微信推送地址 | Server酱/企业微信 URL |
-| `FLOW_NOTIFY_FEISHU_URL` | 飞书推送地址 | 飞书 Webhook URL |
-| `FLOW_NOTIFY_DINGTALK_URL` | 钉钉推送地址 | 钉钉 Webhook URL |
-| `FLOW_NOTIFY_ON_ERROR` | 错误时推送 | `true` (默认) |
-| `FLOW_NOTIFY_ON_COMPLETION` | 完成时推送 | `true` (默认) |
-| `FLOW_NOTIFY_ON_KNOWLEDGE` | 知识提取时推送 | `true` (默认) |
-| `FLOW_NOTIFY_MIN_PRIORITY` | 最低优先级 | `low`/`normal`/`high`/`urgent` |
-
----
-
-## 快捷键
-
-| 按键 | 功能 |
+| 变量 | 说明 |
 |------|------|
-| `s` | 手动发送当前状态快照到配置的平台 |
-
----
+| `FLOW_NOTIFY_WECHAT_USER_ID` | 接收消息的微信用户 ID |
+| `FLOW_NOTIFY_WECHAT_SERVICE_URL` | 本地微信服务地址，默认 `http://127.0.0.1:8765` |
+| `FLOW_NOTIFY_ENABLED` | `false` 时禁用通知 |
+| `FLOW_NOTIFY_ON_ERROR` | error 告警自动推送 |
+| `FLOW_NOTIFY_ON_KNOWLEDGE` | 可持久化知识生成后自动推送 |
+| `FLOW_NOTIFY_PROGRESS_INTERVAL` | 进度通知间隔分钟数，`0` 禁用 |
+| `FLOW_NOTIFY_MIN_PRIORITY` | 最低优先级：`low`、`normal`、`high`、`urgent` |
 
 ## 故障排查
 
-**问题：按 `s` 没反应**
-- 检查是否配置了 Webhook URL
-- 运行 `./test/notification.sh` 检查配置
+```bash
+ga notify status
+ga notify test
+./test/notification.sh
+./test/wechat-notify.sh
+curl http://127.0.0.1:8765/status
+```
 
-**问题：收不到消息**
-- 检查 Webhook URL 是否正确
-- 测试网络连接：`curl -X POST $FLOW_NOTIFY_WECHAT_URL -d '{"title":"test"}'`
-- 查看 Observer 控制台是否有错误信息
-
-**问题：钉钉提示"关键词不匹配"**
-- 在机器人安全设置中添加关键词 "Flow"
-
----
-
-更多详细配置请查看 [完整文档](NOTIFICATION.md)。
+更多信息见 [NOTIFICATION.md](NOTIFICATION.md) 和 [NOTIFICATION_WECHAT.md](NOTIFICATION_WECHAT.md)。

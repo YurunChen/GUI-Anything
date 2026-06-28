@@ -7,9 +7,21 @@
 set -e
 
 SERVICE_URL="${FLOW_NOTIFY_WECHAT_SERVICE_URL:-http://127.0.0.1:8765}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+SERVICE_LOG="$PROJECT_ROOT/scheme/src/services/notification/weixin-service/weixin-service.log"
+TAIL_PID=""
+
+cleanup_tail() {
+    if [[ -n "$TAIL_PID" ]]; then
+        kill "$TAIL_PID" 2>/dev/null || true
+        wait "$TAIL_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup_tail EXIT
 
 echo "=========================================="
-echo "  Weixin QR Login"
+echo "  WeChat Login"
 echo "=========================================="
 echo ""
 
@@ -23,16 +35,12 @@ if ! curl -s "$SERVICE_URL/" > /dev/null 2>&1; then
     exit 1
 fi
 
-echo "✓ Service is running"
-echo ""
-
 # Check current status
 STATUS=$(curl -s "$SERVICE_URL/status")
 LOGGED_IN=$(echo "$STATUS" | grep -o '"logged_in":[^,}]*' | cut -d: -f2)
 
 if [ "$LOGGED_IN" == "true" ]; then
-    ACCOUNT_ID=$(echo "$STATUS" | grep -o '"account_id":"[^"]*"' | cut -d'"' -f4)
-    echo "✓ Already logged in as: $ACCOUNT_ID"
+    echo "Already logged in."
     echo ""
     read -p "Re-login? (y/N) " -n 1 -r
     echo ""
@@ -43,13 +51,22 @@ if [ "$LOGGED_IN" == "true" ]; then
 fi
 
 # Start login
-echo "Starting QR login..."
-echo "Please scan the QR code with WeChat on your phone"
+echo "Scan the QR code with WeChat."
 echo ""
 echo "=========================================="
 echo ""
 
-curl -X POST "$SERVICE_URL/login" 2>/dev/null
+if [[ -f "$SERVICE_LOG" ]]; then
+    tail -n 0 -f "$SERVICE_LOG" &
+    TAIL_PID=$!
+else
+    echo "Log file not found yet: $SERVICE_LOG"
+    echo "If no QR code appears, check the service terminal."
+fi
+
+curl -s -X POST "$SERVICE_URL/login" 2>/dev/null
+cleanup_tail
+TAIL_PID=""
 
 echo ""
 echo "=========================================="
@@ -60,17 +77,9 @@ STATUS=$(curl -s "$SERVICE_URL/status")
 LOGGED_IN=$(echo "$STATUS" | grep -o '"logged_in":[^,}]*' | cut -d: -f2)
 
 if [ "$LOGGED_IN" == "true" ]; then
-    ACCOUNT_ID=$(echo "$STATUS" | grep -o '"account_id":"[^"]*"' | cut -d'"' -f4)
-    echo "✓ Login successful!"
-    echo "  Account ID: $ACCOUNT_ID"
-    echo ""
-    echo "You can now use Flow Notification with WeChat."
-    echo ""
-    echo "Set your WeChat user ID:"
-    echo "  export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>"
-    echo ""
+    echo "Login successful."
 else
-    echo "❌ Login failed"
+    echo "Login failed."
     echo ""
     echo "Please try again or check the service logs:"
     echo "  tail -f scheme/src/services/notification/weixin-service/weixin-service.log"

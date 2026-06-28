@@ -7,44 +7,32 @@ import { useThemeChrome, useThemeMotionFrame, useThemeVersion, useTuiTheme } fro
 import {
   formatThemeSectionLabel,
   resolveCardShellChrome,
-  resolveChromeFrame,
   resolveKnowledgeInsetChrome,
   resolveSectionLabelColor,
 } from '../../themes/theme-profile';
 
 interface FlowInsetGroupProps {
   children: ReactNode;
-  /** Left accent for running exploration */
-  accent?: boolean;
-  /** One-shot left accent for a newly observed exploration. */
-  fresh?: boolean;
   /** Latest card in timeline — keeps left-rail highlight when idle. */
   focused?: boolean;
+  /** Timeline-owned motion clock; keeps card chrome in sync with status text. */
+  motionFrame?: number;
 }
 
 export function FlowInsetGroup({
   children,
-  accent = false,
-  fresh = false,
   focused = false,
+  motionFrame = 0,
 }: FlowInsetGroupProps): ReactNode {
   useThemeVersion();
   const tuiTheme = useTuiTheme();
   const chrome = useThemeChrome();
-  const motionFrame = useThemeMotionFrame(accent || fresh);
   const shell = resolveCardShellChrome(
     chrome,
-    { accent, fresh, focused },
+    { focused },
     tuiTheme.modes.timeline.cardFills,
     motionFrame,
   );
-  const leadGlyph = shell.showLeadColumn
-    ? (accent
-      ? resolveChromeFrame(chrome.runningLeadFrames, '▌', motionFrame)
-      : resolveChromeFrame(chrome.freshAccentFrames, '▌', motionFrame))
-    : '';
-
-  const body = <>{children}</>;
 
   return (
     <box
@@ -62,42 +50,8 @@ export function FlowInsetGroup({
         borderStyle: shell.border === false ? undefined : shell.borderStyle,
       }}
     >
-      {leadGlyph ? (
-        <box style={{ width: '100%', flexDirection: 'row' }}>
-          <text fg={shell.borderColor} wrapMode="none">{leadGlyph}</text>
-          <box style={{ flexDirection: 'column', width: '100%' }}>{body}</box>
-        </box>
-      ) : body}
-    </box>
-  );
-}
-
-interface FlowSectionProps {
-  label: string;
-  labelSuffix?: string;
-  children: ReactNode;
-  gap?: boolean;
-}
-
-export function FlowSection({ label, labelSuffix, children, gap = true }: FlowSectionProps): ReactNode {
-  const tuiTheme = useTuiTheme();
-  const chrome = useThemeChrome();
-  const motionFrame = useThemeMotionFrame(Boolean(
-    chrome.sectionSummaryFrames?.length || chrome.sectionSummaryColorFrames?.length,
-  ));
-  const header = formatThemeSectionLabel(chrome, 'summary', label, labelSuffix, motionFrame);
-  const labelFg = resolveSectionLabelColor(
-    chrome,
-    'summary',
-    tuiTheme.modes.timeline.summary.labelFallbackFg,
-    motionFrame,
-  );
-  return (
-    <>
-      {gap && <FlowLineGap />}
-      <text fg={labelFg}>{header}</text>
       {children}
-    </>
+    </box>
   );
 }
 
@@ -107,6 +61,7 @@ interface FlowFramedSectionProps {
   children: ReactNode;
   gap?: boolean;
   variant?: 'knowledge' | 'neutral';
+  motionFrame?: number;
 }
 
 export function FlowFramedSection({
@@ -115,12 +70,13 @@ export function FlowFramedSection({
   children,
   gap = true,
   variant = 'neutral',
+  motionFrame,
 }: FlowFramedSectionProps): ReactNode {
   const tuiTheme = useTuiTheme();
   const chrome = useThemeChrome();
   const isKnowledge = variant === 'knowledge';
   const kind = isKnowledge ? 'knowledge' : 'summary';
-  const motionFrame = useThemeMotionFrame(Boolean(
+  const localMotionFrame = useThemeMotionFrame(motionFrame === undefined && Boolean(
     isKnowledge
       ? chrome.sectionKnowledgeFrames?.length
         || chrome.sectionKnowledgeColorFrames?.length
@@ -128,12 +84,13 @@ export function FlowFramedSection({
       : chrome.sectionSummaryFrames?.length
         || chrome.sectionSummaryColorFrames?.length,
   ));
-  const header = formatThemeSectionLabel(chrome, kind, label, undefined, motionFrame);
+  const sectionMotionFrame = motionFrame ?? localMotionFrame;
+  const header = formatThemeSectionLabel(chrome, kind, label, undefined, sectionMotionFrame);
   const labelFg = resolveSectionLabelColor(
     chrome,
     kind,
     isKnowledge ? tuiTheme.modes.wiki.labelFg : tuiTheme.modes.timeline.summary.labelFallbackFg,
-    motionFrame,
+    sectionMotionFrame,
   );
   const suffixFg = isKnowledge
     ? tuiTheme.semantic.label.secondary
@@ -146,7 +103,7 @@ export function FlowFramedSection({
       elevated: tuiTheme.semantic.fill.elevated,
       separator: tuiTheme.semantic.separator,
     },
-    motionFrame,
+    sectionMotionFrame,
   );
 
   if (chrome.cardKnowledgeInset === 'flat' && inset.border === false) {

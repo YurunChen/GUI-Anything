@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { readNotifyConfig } from './notify.mjs';
 
 function commandExists(command) {
   const pathValue = process.env.PATH ?? '';
@@ -53,6 +54,8 @@ export function runDoctor({ rootDir } = {}) {
   const projectRoot = rootDir ?? process.cwd();
   const wikiDir = path.join(projectRoot, 'wiki');
   const sessionIndexPath = path.join(wikiDir, 'sessions', '_index.json');
+  const notifyConfig = readNotifyConfig(projectRoot);
+  const notifyUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID || notifyConfig.FLOW_NOTIFY_WECHAT_USER_ID || '';
 
   const auth = claudeAuthHint();
 
@@ -106,6 +109,14 @@ export function runDoctor({ rootDir } = {}) {
         ? sessionIndexPath
         : 'not created yet (run flow once)',
       fix: 'Run `ga flow` to create wiki/sessions/_index.json.',
+    },
+    {
+      id: 'wechat-notify',
+      label: 'WeChat notifications (optional)',
+      required: false,
+      ok: Boolean(notifyUserId),
+      detail: notifyUserId ? 'configured' : 'not configured',
+      fix: 'Run `ga notify setup` to enable WeChat notifications.',
     },
   ];
 
