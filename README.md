@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/demo/readme-hero.svg" alt="GUI-Anything banner showing Claude Code, Flow Observer, live map, local memory, and reliable replay" width="960">
+  <img src="assets/demo/readme-hero.svg" alt="GUI-Anything banner: Claude Code, Flow Observer, live map, local memory, and reliable replay" width="960">
 </p>
 
 <h1 align="center">GUI-Anything</h1>
@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  Claude keeps coding in the left pane. GUI-Anything watches from the right,
+  Claude keeps coding in the left pane. GUI-Anything watches from the right,<br>
   turns long sessions into a live map, and brings useful context back when you need it.
 </p>
 
@@ -26,43 +26,34 @@
 </p>
 
 <p align="center">
-  <a href="package.json"><img src="https://img.shields.io/badge/license-MIT-111827" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-320%2B-10b981" alt="320+ tests">
-  <img src="https://img.shields.io/badge/themes-33-7c3aed" alt="33 themes">
-  <img src="https://img.shields.io/badge/local--first-memory-0f172a" alt="local-first memory">
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-111827?style=flat-square" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/tests-621%2B-10b981?style=flat-square" alt="621+ tests">
+  <img src="https://img.shields.io/badge/themes-33-7c3aed?style=flat-square" alt="33 themes">
+  <img src="https://img.shields.io/badge/local--first-memory-0f172a?style=flat-square" alt="local-first memory">
 </p>
 
 <br>
 
-> Vibe coding is fast until the trail disappears. GUI-Anything adds the missing sidecar: live timeline, intent graph, project memory, and replay you can trust, without wrapping or driving Claude Code.
+> Vibe coding is fast until the trail disappears. GUI-Anything adds the missing sidecar: live timeline, intent graph, project memory, and replay you can trust — without wrapping or driving Claude Code.
 
-<div align="center">
-<table>
+<table align="center">
 <tr>
 <td align="center" width="33%">
-
-### Run
-
+<strong>Run</strong><br><br>
 Claude Code stays native in the left pane. The observer shows explorations, tools, phases, and errors in real time.
-
 </td>
 <td align="center" width="33%">
-
-### Capture
-
+<strong>Capture</strong><br><br>
 The right pane turns long scrollback into summaries, flowchart hints, and intent-aware context.
-
 </td>
 <td align="center" width="33%">
-
-### Guide
-
+<strong>Guide</strong><br><br>
 Relevant project memory appears inline while the current exploration is still running. Resume keeps the story intact.
-
 </td>
 </tr>
 </table>
-</div>
+
+---
 
 ## Quick Start
 
@@ -80,18 +71,20 @@ ga flow
 
 Everyday commands:
 
-```bash
-ga doctor
-ga flow
-ga flow --continue
-ga flow --resume <session-id>
-ga flow --model sonnet "your task"
-./scripts/flow-run.sh --cleanup
-```
+| Command | Purpose |
+|---------|---------|
+| `ga doctor` | Verify dependencies and environment |
+| `ga flow` | Start dual-pane Claude Code + observer |
+| `ga flow --continue` | Continue session; summarize only new explorations |
+| `ga flow --resume <session-id>` | Replay saved session data |
+| `ga flow --model sonnet "your task"` | Start with a specific model and prompt |
+| `./scripts/flow-run.sh --cleanup` | Tear down stale flow runtime |
+
+---
 
 ## Sidecar View
 
-GUI-Anything is a sidecar. Claude Code stays native, while the observer renders the session as timeline, flowchart, summaries, and project memory.
+GUI-Anything is a **sidecar**. Claude Code stays native, while the observer renders the session as timeline, flowchart, summaries, and project memory.
 
 | Left pane | Right pane |
 |-----------|------------|
@@ -115,6 +108,8 @@ Focus the **right pane** first, then use:
 
 Chinese UI: `FLOW_LOCALE=zh-Hans`.
 
+---
+
 ## Memory Layer
 
 Most coding agents can generate. Fewer tools help you remember what just happened. GUI-Anything keeps three linked views of the same work:
@@ -126,6 +121,8 @@ Most coding agents can generate. Fewer tools help you remember what just happene
 | **Guide** | Prior wiki matches and focused trails | Context from past sessions while the current turn is still running |
 
 Project memory stays local by default. Related turns accumulate by intent; curation happens on pivot or idle sweep, not every exploration.
+
+---
 
 ## What Makes It Different
 
@@ -142,20 +139,26 @@ Project memory stays local by default. Related turns accumulate by intent; curat
 | **Web Mirror** | Watch progress from a browser when the terminal is not the best display. |
 | **WeChat notifications** | Walk away and still catch errors or milestones. |
 
+---
+
 ## Demo Gallery
 
-Recommended real recordings for the README:
+Planned screen recordings for this section (see [Roadmap](#roadmap)):
 
 | File | Length | Story |
 |------|--------|-------|
-| `assets/demo/hero.mp4` / `hero.gif` | 12-18s | Start `ga flow`, then watch timeline and flowchart update |
-| `assets/demo/knowledge.gif` | 8-12s | A prior wiki hit appears inline, then `k` audits a bad match |
-| `assets/demo/resume.gif` | 8-12s | `ga flow --resume <id>` replays without re-summary |
+| `assets/demo/hero.mp4` / `hero.gif` | 12–18s | Start `ga flow`, then watch timeline and flowchart update |
+| `assets/demo/knowledge.gif` | 8–12s | A prior wiki hit appears inline, then `k` audits a bad match |
+| `assets/demo/resume.gif` | 8–12s | `ga flow --resume <id>` replays without re-summary |
+
+Static preview: [`assets/demo/readme-hero.svg`](assets/demo/readme-hero.svg).
+
+---
 
 ## How It Works
 
 ```text
-Run      Session stream -> explorations, tools, errors, phases
+Run      Session stream → explorations, tools, errors, phases
 Capture  AI summaries, flowchart hints, intent buckets, wiki curation
 Guide    prior wiki matches, flowchart, notes, hotkeys
 ```
@@ -173,10 +176,12 @@ flowchart LR
 
 More detail: [data flow](docs/data-governance/data-flow.md) · [development guide](docs/development.md) · [agent rules](AGENTS.md)
 
+---
+
 ## Optional Superpowers
 
 <details>
-<summary><b>HTML export</b> - project evolution, mirror, knowledge graph</summary>
+<summary><strong>HTML export</strong> — project evolution, mirror, knowledge graph</summary>
 
 ```bash
 # Project evolution, defaulting to all sessions in this workspace.
@@ -200,10 +205,11 @@ bun run src/main.ts --knowledge-graph -o graph.html
 ```
 
 See [docs/IDEAS_HTML_INTEGRATION.md](docs/IDEAS_HTML_INTEGRATION.md).
+
 </details>
 
 <details>
-<summary><b>Notifications</b> - WeChat</summary>
+<summary><strong>Notifications</strong> — WeChat</summary>
 
 ```bash
 ga notify setup
@@ -211,10 +217,11 @@ ga flow
 ```
 
 See [docs/NOTIFICATION.md](docs/NOTIFICATION.md) and [docs/NOTIFICATION_WECHAT.md](docs/NOTIFICATION_WECHAT.md).
+
 </details>
 
 <details>
-<summary><b>llm-wiki</b> - agentic knowledge ingest</summary>
+<summary><strong>llm-wiki</strong> — agentic knowledge ingest</summary>
 
 Wiki curation uses the `/llm-wiki` skill in [skills/llm-wiki](skills/llm-wiki/).
 
@@ -224,7 +231,10 @@ Wiki curation uses the `/llm-wiki` skill in [skills/llm-wiki](skills/llm-wiki/).
 ```
 
 See [scripts/wiki/README.md](scripts/wiki/README.md).
+
 </details>
+
+---
 
 ## Project Status
 
@@ -239,6 +249,8 @@ GUI-Anything is early but usable. The core Claude Code sidecar path is the suppo
 | HTML export / Web Mirror | Experimental |
 | Other agent backends | Not yet supported |
 
+---
+
 ## Roadmap
 
 - Record real `ga flow` demo videos for the README gallery
@@ -246,6 +258,8 @@ GUI-Anything is early but usable. The core Claude Code sidecar path is the suppo
 - Add importers for session formats beyond Claude Code
 - Expand wiki maintenance reports and bad-match audit workflows
 - Package more themes and terminal layouts
+
+---
 
 ## Contributing
 
@@ -268,37 +282,46 @@ ga doctor
 
 Please do not commit `wiki/`, `.flow-runtime/`, local logs, or secrets.
 
+---
+
 ## FAQ
 
 <details>
-<summary><b>Does GUI-Anything replace or control Claude Code?</b></summary>
+<summary><strong>Does GUI-Anything replace or control Claude Code?</strong></summary>
 
 No. It is a sidecar. It watches the session stream, renders the observer, and saves local context. Claude Code runs unchanged.
+
 </details>
 
 <details>
-<summary><b>Does every exploration write to wiki?</b></summary>
+<summary><strong>Does every exploration write to wiki?</strong></summary>
 
 No. Related turns accumulate by intent. Wiki curation runs on intent pivot or idle sweep, not every turn.
+
 </details>
 
 <details>
-<summary><b>What is the difference between KNOWLEDGE and wiki saved?</b></summary>
+<summary><strong>What is the difference between KNOWLEDGE and wiki saved?</strong></summary>
 
 `KNOWLEDGE` is prior retrieval from existing local wiki content. `wiki saved` means this session curated and wrote new content. They are independent.
+
 </details>
 
 <details>
-<summary><b>Can I use it with Cursor or other agents?</b></summary>
+<summary><strong>Can I use it with Cursor or other agents?</strong></summary>
 
 Not yet. The observer pattern is agent-agnostic, but this repo currently supports Claude Code sessions.
+
 </details>
 
 <details>
-<summary><b>Where does data live?</b></summary>
+<summary><strong>Where does data live?</strong></summary>
 
 By default, in `<repo>/wiki/`, which is gitignored. Override with `FLOW_WIKI_DIR`.
+
 </details>
+
+---
 
 ## License
 
