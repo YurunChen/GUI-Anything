@@ -31,4 +31,39 @@ describe('deduplicateKnowledge', () => {
     expect(result.reason).toBe('same_entry_refresh');
     expect(result.targetId).toBe('C002');
   });
+
+  it('does not deduplicate against another project entry', async () => {
+    const entry = makeEntry({ tags: ['proj:gui-anything'] });
+    const repo = {
+      findBySource: async () => null,
+      listByType: async () => [
+        makeEntry({
+          id: 'C001',
+          request: '分析项目',
+          tags: ['proj:other-project'],
+        }),
+      ],
+    };
+
+    const result = await deduplicateKnowledge(entry, repo as never);
+    expect(result.action).toBe('create');
+  });
+
+  it('still deduplicates explicit global knowledge', async () => {
+    const entry = makeEntry({ tags: ['scope:global'] });
+    const repo = {
+      findBySource: async () => null,
+      listByType: async () => [
+        makeEntry({
+          id: 'C001',
+          request: '分析项目',
+          tags: ['scope:global'],
+        }),
+      ],
+    };
+
+    const result = await deduplicateKnowledge(entry, repo as never);
+    expect(result.action).toBe('skip');
+    expect(result.targetId).toBe('C001');
+  });
 });

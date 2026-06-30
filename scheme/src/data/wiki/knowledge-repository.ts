@@ -74,6 +74,28 @@ export const TYPE_TO_SUBDIR: Record<KnowledgeType, string> = {
 const MATCH_POOL_SUBDIRS = [...KNOWLEDGE_ENTRY_DIRS];
 const ID_FROM_FILENAME_RE = /^([CNS]\d{3})-/i;
 
+function cleanYamlListValue(value: string): string {
+  return value.trim().replace(/^["']|["']$/g, '');
+}
+
+function parseKnowledgeTags(yaml: string): string[] {
+  const inlineTagsMatch = yaml.match(/^tags:\s*\[([^\]]*)\]\s*$/m);
+  if (inlineTagsMatch) {
+    return inlineTagsMatch[1]
+      .split(',')
+      .map(cleanYamlListValue)
+      .filter(Boolean);
+  }
+
+  const tagsMatch = yaml.match(/^tags:\s*\n((?:[ \t]+-[ \t]*[^\n]+(?:\n|$))*)/m);
+  return tagsMatch
+    ? tagsMatch[1]
+        .split('\n')
+        .map(line => line.match(/-\s*(.+)/)?.[1])
+        .filter((t): t is string => !!t)
+        .map(cleanYamlListValue)
+    : [];
+}
 
 function listKnowledgeFilesFromSubdirs(subdirs: readonly string[]): string[] {
   const wikiRoot = resolveWikiRoot();
@@ -176,15 +198,7 @@ function parseKnowledgeFile(filePath: string, wikiRoot: string): KnowledgeEntry 
     const sessionId = sourceMatch?.[1].match(/session_id:\s*"?([^"\n]+)"?/)?.[1] || '';
     const explorationId = sourceMatch?.[1].match(/exploration_id:\s*"?([^"\n]+)"?/)?.[1] || '';
     
-    // 解析 tags
-    const tagsMatch = yaml.match(/^tags:\s*\n((?:\s+-\s*[^\n]+\n)*)/m);
-    const tags = tagsMatch
-      ? tagsMatch[1]
-          .split('\n')
-          .map(line => line.match(/-\s*(.+)/)?.[1])
-          .filter((t): t is string => !!t)
-          .map((t) => t.trim().replace(/^["']|["']$/g, ''))
-      : [];
+    const tags = parseKnowledgeTags(yaml);
     
     if (!idMatch || !requestMatch) return null;
     

@@ -8,7 +8,11 @@ import { WikiMaintenanceService } from './wiki-maintenance-service';
 import type { Exploration } from '../../data/protocol/observer-protocol';
 import { makeSessionScopedId } from '../../data/protocol/observer-protocol';
 import * as wikiAgentRun from './wiki-agent/run';
-import { mergeKnowledgeContent, reconcileWikiDecision } from './wiki-agent/run';
+import {
+  ensureKnowledgeSourceMetadata,
+  mergeKnowledgeContent,
+  reconcileWikiDecision,
+} from './wiki-agent/run';
 import type { WikiAgentDecision } from './wiki-agent/schema';
 import { validateWikiAgentDecision } from './wiki-agent/validate';
 
@@ -136,7 +140,7 @@ Agent wrote this on disk.
     const service = new WikiMaintenanceService(repo);
     const exploration = {
       id: 'exp_analyze',
-      question: '分析当前项目',
+      question: 'Record Flow Observer architecture note',
       status: 'complete' as const,
       nodes: [{ id: 'node_1', type: 'tool' as const, label: 'Read', timestamp: 1, status: 'ok' as const, phase: 'execute' as const, rawText: '', rawCommand: 'Read' }],
       startedAt: Date.now(),
@@ -161,6 +165,7 @@ Agent wrote this on disk.
 
     expect(result.status).toBe('saved');
     expect(result.reason).toContain('C002');
+    expect(fs.readFileSync(agentFile, 'utf-8')).toContain(`- "${resolveProjectTag()}"`);
     resolveSpy.mockRestore();
   });
 
@@ -324,6 +329,27 @@ Old content.
     expect(merged).toMatch(/version:\s*2/m);
     expect(merged).toContain('New summary');
     expect(merged).toContain('exp_2');
+    expect(merged).toContain(`- "${resolveProjectTag()}"`);
+  });
+});
+
+describe('ensureKnowledgeSourceMetadata', () => {
+  it('adds source and project scope to agent-written markdown', () => {
+    const stamped = ensureKnowledgeSourceMetadata(`---
+id: C002
+slug: agent-page
+request: "Agent page"
+type: context
+tags:
+  []
+---
+## 摘要
+Agent body.
+`, 'session-1', 'exp-1');
+
+    expect(stamped).toContain('session_id: "session-1"');
+    expect(stamped).toContain('exploration_id: "exp-1"');
+    expect(stamped).toContain(`- "${resolveProjectTag()}"`);
   });
 });
 

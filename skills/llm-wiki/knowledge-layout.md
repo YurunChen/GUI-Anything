@@ -52,6 +52,12 @@ wiki/knowledge/
 | persist error/snippet/decision | create/update | contexts/{intent_key}/ + facet |
 | No value / opt_out | skip | — |
 
+## Project scope
+
+- Project-specific entries must carry `proj:<repo>` in `tags`.
+- Use `scope:global` or `scope:shared` only for knowledge that is valid across projects.
+- Prior-hit search, Agent candidates, and dedup ignore entries scoped to other projects.
+
 ## Agent vs service
 
 | Who | Writes |

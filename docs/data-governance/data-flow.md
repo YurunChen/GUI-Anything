@@ -54,6 +54,8 @@ wiki/
 
 **Prior 检索**：`wiki-retrieval-policy.ensureExplorationRetrieval`（经 `SessionBundleService`）。`useWikiMatches` 与 `exploration-summary-service` 共用；live 卡片顺序 **retrieval → summary**。Bundle `retrieval`：`undefined` 未扫 · `null` 无 hit · `object` 命中。Restore 禁用 live search。
 
+**项目作用域**：保存链路会给项目专属条目补 `proj:<repo>`；检索、Agent 候选与 dedup 只消费当前项目兼容条目。显式 `scope:global` / `scope:shared` 的条目可跨项目复用；旧条目若只带裸 repo slug（如 `gui-anything`）仍兼容当前项目。
+
 ### Intent 策展时间序
 
 ```mermaid

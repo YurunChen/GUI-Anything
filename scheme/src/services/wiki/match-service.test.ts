@@ -2,6 +2,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'bun:test';
 import type { KnowledgeEntry } from '../../data/wiki/knowledge-repository';
 import {
   calculateRelevanceScore,
+  DefaultWikiMatchService,
   isGenericQuery,
   requestSimilarity,
 } from './match-service';
@@ -69,6 +70,45 @@ describe('wiki match-service', () => {
     const sameScore = calculateRelevanceScore('分析下当前的项目', sameProject);
     const otherScore = calculateRelevanceScore('分析下当前的项目', otherProject);
     expect(sameScore).toBeGreaterThan(otherScore);
+  });
+
+  it('does not return exact request hits scoped to another project', () => {
+    const service = new DefaultWikiMatchService({
+      listMatchPoolSync: () => [
+        makeEntry({
+          request: '分析下当前的项目',
+          tags: ['proj:other-project'],
+        }),
+      ],
+    } as never);
+
+    expect(service.searchByQuerySync('分析下当前的项目', 0.5)).toBeNull();
+  });
+
+  it('allows explicit global knowledge to match across projects', () => {
+    const service = new DefaultWikiMatchService({
+      listMatchPoolSync: () => [
+        makeEntry({
+          request: '分析下当前的项目',
+          tags: ['scope:global'],
+        }),
+      ],
+    } as never);
+
+    expect(service.searchByQuerySync('分析下当前的项目', 0.5)?.entry.id).toBe('C001');
+  });
+
+  it('keeps legacy bare project-slug tags compatible with the current project', () => {
+    const service = new DefaultWikiMatchService({
+      listMatchPoolSync: () => [
+        makeEntry({
+          request: '分析下当前的项目',
+          tags: ['gui-anything'],
+        }),
+      ],
+    } as never);
+
+    expect(service.searchByQuerySync('分析下当前的项目', 0.5)?.entry.id).toBe('C001');
   });
 
   it('matches project-analysis queries without filler particles', () => {

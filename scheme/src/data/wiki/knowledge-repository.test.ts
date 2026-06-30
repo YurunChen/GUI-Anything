@@ -74,6 +74,30 @@ old body
     ).toBe(false);
   });
 
+  it('parses inline tags', async () => {
+    const file = path.join(wikiRoot, 'knowledge', 'contexts', 'C003-inline-tags.md');
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(
+      file,
+      `---
+id: "C003"
+slug: "inline-tags"
+request: "q"
+type: "context"
+tags: ["scope:global", "intent:wiki"]
+source:
+  session_id: "s1"
+  exploration_id: "e1"
+---
+body
+`,
+      'utf-8',
+    );
+
+    const entry = await repo.findById('C003');
+    expect(entry?.tags).toEqual(['scope:global', 'intent:wiki']);
+  });
+
   it('save new context entry under intent_key bucket when provided', async () => {
     const saved = await repo.save({
       id: 'C010',

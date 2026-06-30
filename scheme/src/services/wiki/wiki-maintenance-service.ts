@@ -16,6 +16,10 @@ import {
   KnowledgeRepository,
   type KnowledgeEntry,
 } from '../../data/wiki/knowledge-repository';
+import {
+  ensureKnowledgeScopeTags,
+  filterProjectCompatibleKnowledge,
+} from '../../data/wiki/knowledge-scope';
 import { EvidenceRepository } from '../../data/wiki/evidence-repository';
 import { rebuildKnowledgeIndex } from '../../data/wiki/knowledge-index-service';
 import { appendKnowledgeLog } from '../../data/wiki/knowledge-log-service';
@@ -114,7 +118,7 @@ export class WikiMaintenanceService {
     sessionId: string,
     priorHit: WikiMatch | null,
   ): Promise<KnowledgeEntry[]> {
-    const pool = this.knowledgeRepo.listMatchPoolSync();
+    const pool = filterProjectCompatibleKnowledge(this.knowledgeRepo.listMatchPoolSync());
     if (priorHit) {
       const rest = pool.filter((e) => e.id !== priorHit.entry.id).slice(0, 4);
       return [priorHit.entry, ...rest];
@@ -286,8 +290,10 @@ export class WikiMaintenanceService {
     }
 
     const stampedContent = ensureKnowledgeSourceMetadata(entry.content, sessionId, explorationId);
-    if (stampedContent !== entry.content) {
-      const stamped = { ...entry, sessionId, explorationId, content: stampedContent };
+    const scopedTags = ensureKnowledgeScopeTags(entry.tags);
+    const tagsChanged = scopedTags.join('\n') !== (entry.tags || []).join('\n');
+    if (stampedContent !== entry.content || tagsChanged) {
+      const stamped = { ...entry, sessionId, explorationId, content: stampedContent, tags: scopedTags };
       await this.knowledgeRepo.save(stamped, { overwrite: true });
       entry = stamped;
     } else if (!entry.sessionId || !entry.explorationId) {
@@ -342,7 +348,9 @@ export class WikiMaintenanceService {
       explorationId,
       content,
       updatedAt: Date.now(),
-      tags: decision.tags.length > 0 ? decision.tags : existing.tags,
+      tags: ensureKnowledgeScopeTags(
+        decision.tags.length > 0 ? decision.tags : existing.tags,
+      ),
     };
 
     const saved = await this.knowledgeRepo.save(updated, { overwrite: true });
@@ -398,7 +406,7 @@ export class WikiMaintenanceService {
       request: extracted.request,
       content,
       confidence: extracted.confidence,
-      tags: decision.tags,
+      tags: ensureKnowledgeScopeTags(decision.tags),
       createdAt: Date.now(),
     };
 

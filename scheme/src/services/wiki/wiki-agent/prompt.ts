@@ -7,7 +7,7 @@ import type { ExplorationSummary } from '../../../data/protocol/wiki-types';
 import type { KnowledgeEntry } from '../../../data/wiki/knowledge-repository';
 import type { WikiMatch } from '../../../data/protocol/wiki-types';
 import { knowledgeSchemaPath, normalizeContextIntentBucket } from '../../../data/wiki/wiki-data-layout';
-import { resolveWikiRoot } from '../../../data/env';
+import { resolveProjectTag, resolveWikiRoot } from '../../../data/env';
 import type { IntentDigest } from '../../../services/wiki/intent-digest-service';
 import { WIKI_AGENT_JSON_SCHEMA, WIKI_AGENT_SKILL_HEADER } from './skill-prompt';
 
@@ -48,6 +48,11 @@ function buildExplorationPayloadBlocks(input: WikiAgentPromptInput): {
   explorationLines: string[];
 } {
   const wikiRoot = resolveWikiRoot();
+  const projectScopeBlock = [
+    '【项目作用域】',
+    `当前项目标签: ${resolveProjectTag()}`,
+    '项目专属知识必须保留/写入当前项目标签；仅当条目对任意项目都成立时才用 scope:global 或 scope:shared。',
+  ].join('\n');
   const schemaBlock = loadSchemaExcerpt(wikiRoot);
   const candidateBlock = input.candidates.length > 0
     ? input.candidates.slice(0, 5).map((e) => formatCandidate(e)).join('\n')
@@ -84,7 +89,12 @@ function buildExplorationPayloadBlocks(input: WikiAgentPromptInput): {
       candidateBlock,
     ];
 
-  return { schemaBlock, priorBlock, candidateBlock, explorationLines };
+  return {
+    schemaBlock: [projectScopeBlock, schemaBlock].filter(Boolean).join('\n\n'),
+    priorBlock,
+    candidateBlock,
+    explorationLines,
+  };
 }
 
 function buildDigestLines(digest: IntentDigest, candidateBlock: string): string[] {

@@ -5,8 +5,9 @@
 import type { ExplorationSummary } from '../../../data/protocol/wiki-types';
 import type { KnowledgeEntry } from '../../../data/wiki/knowledge-repository';
 import type { WikiMatch } from '../../../data/protocol/wiki-types';
-import { resolveProjectTag, resolveWikiRoot } from '../../../data/env';
+import { resolveWikiRoot } from '../../../data/env';
 import { KnowledgeRepository } from '../../../data/wiki/knowledge-repository';
+import { ensureKnowledgeScopeTags } from '../../../data/wiki/knowledge-scope';
 import { runClaudeAgentPrompt, runClaudePrintPrompt } from '../../ai/flow-summaries';
 import type { IntentDigest } from '../intent-digest-service';
 import {
@@ -354,6 +355,40 @@ function yamlBlockList(items: string[]): string {
   return items.map((item) => `  - "${item.replace(/"/g, '\\"')}"`).join('\n');
 }
 
+function readYamlTags(yaml: string): string[] {
+  const inline = yaml.match(/^tags:\s*\[([^\]]*)\]\s*$/m);
+  if (inline) {
+    return inline[1]
+      .split(',')
+      .map((item) => item.trim().replace(/^["']|["']$/g, ''))
+      .filter(Boolean);
+  }
+
+  const block = yaml.match(/^tags:\s*\n((?:[ \t]+[^\n]*(?:\n|$))*)/m);
+  if (!block) return [];
+  return block[1]
+    .split('\n')
+    .map((line) => line.match(/-\s*(.+)/)?.[1])
+    .filter((tag): tag is string => Boolean(tag))
+    .map((tag) => tag.trim().replace(/^["']|["']$/g, ''));
+}
+
+function replaceYamlTags(yaml: string, tags: string[]): string {
+  const rendered = `tags:\n${yamlBlockList(tags)}`;
+  if (/^tags:\s*\[[^\]]*\]\s*$/m.test(yaml)) {
+    return yaml.replace(/^tags:\s*\[[^\]]*\]\s*$/m, rendered);
+  }
+  if (/^tags:\s*\n(?:[ \t]+[^\n]*(?:\n|$))*/m.test(yaml)) {
+    return yaml.replace(/^tags:\s*\n(?:[ \t]+[^\n]*(?:\n|$))*/m, `${rendered}\n`);
+  }
+  return `${yaml}\n${rendered}`;
+}
+
+function applyKnowledgeScopeToYaml(yaml: string, extraTags: readonly string[] = []): string {
+  const tags = ensureKnowledgeScopeTags([...readYamlTags(yaml), ...extraTags]);
+  return replaceYamlTags(yaml, tags);
+}
+
 /**
  * Rule-based decision — default path (no LLM). Intent digest mode without a prior hit
  * creates a draft page from the digest (gated by FLOW_WIKI_RULES_CREATE, default on).
@@ -512,8 +547,7 @@ export function renderKnowledgeMarkdown(input: {
 
 function renderFreshMarkdown(decision: WikiAgentDecision, summary: ExplorationSummary): string {
   const dates = formatKnowledgeDates();
-  const projTag = resolveProjectTag();
-  const tagSet = new Set([...(decision.tags || []), projTag]);
+  const tags = ensureKnowledgeScopeTags(decision.tags || []);
   const sessionId = (summary.sessionId || 'unknown').trim() || 'unknown';
   const commands = decision.sections.commands ?? [];
 
@@ -527,7 +561,7 @@ version: 1
 type: "${decision.type}"
 category: "${categoryByType[decision.type]}"
 tags:
-${yamlBlockList([...tagSet])}
+${yamlBlockList(tags)}
 related: []
 aliases: []
 source:
@@ -577,6 +611,7 @@ export function mergeKnowledgeContent(
   if (!/^version:/m.test(yaml)) {
     yaml += `\nversion: ${nextVersion}`;
   }
+  yaml = applyKnowledgeScopeToYaml(yaml, decision.tags);
 
   const sourceLine = `  - session_id: "${sessionId}"\n    exploration_id: "${summary.id}"\n    saved_at: "${dates.updated}"`;
   if (/^sources:/m.test(yaml)) {
@@ -586,6 +621,7 @@ export function mergeKnowledgeContent(
   } else {
     yaml += `\nsources:\n${sourceLine}`;
   }
+  yaml = applyKnowledgeScopeToYaml(yaml);
 
   const addition = [
     '',
@@ -656,6 +692,7 @@ export function ensureKnowledgeSourceMetadata(
   } else {
     yaml += `\nsources:\n${sourceLine}`;
   }
+  yaml = applyKnowledgeScopeToYaml(yaml);
 
   return `---\n${yaml}\n---${body}`;
 }

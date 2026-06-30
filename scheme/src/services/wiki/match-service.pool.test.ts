@@ -3,6 +3,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { KnowledgeRepository } from '../../data/wiki/knowledge-repository';
+import { resolveProjectTag } from '../../data/env';
 import { DefaultWikiMatchService } from './match-service';
 
 function writeEntry(
@@ -20,7 +21,8 @@ id: "${id}"
 slug: "${slug}"
 request: "${request}"
 type: "${type}"
-tags: []
+tags:
+  - "${resolveProjectTag()}"
 ---
 ## 摘要
 ${request} body

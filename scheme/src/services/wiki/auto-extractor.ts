@@ -5,8 +5,9 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { resolveWikiRoot, resolveProjectTag } from '../../data/env';
+import { resolveWikiRoot } from '../../data/env';
 import { wikiKnowledgeDir } from '../../data/wiki/wiki-data-layout';
+import { ensureKnowledgeScopeTags } from '../../data/wiki/knowledge-scope';
 import { normalizeSessionIntentKey } from '../../constants/session-intent-keys';
 import {
   collectKnowledgeIds,
@@ -171,8 +172,7 @@ function generateWikiContent(
   const metaTags = summary.persistMeta?.tags && summary.persistMeta.tags.length > 0
     ? summary.persistMeta.tags
     : [];
-  const tagSet = new Set([resolveProjectTag(), ...metaTags]);
-  const tags = yamlBlockList([...tagSet]);
+  const tags = yamlBlockList(ensureKnowledgeScopeTags(metaTags));
   const facetLine = result.facet ? `facet: "${result.facet}"\n` : '';
 
   const sourceSessionId = (summary.sessionId || process.env.FLOW_SESSION_ID || 'unknown').trim() || 'unknown';

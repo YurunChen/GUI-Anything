@@ -5,6 +5,7 @@
 
 import type { KnowledgeRepository, KnowledgeEntry } from '../wiki/knowledge-repository';
 import type { EvidenceRepository } from '../wiki/evidence-repository';
+import { filterProjectCompatibleKnowledge } from '../wiki/knowledge-scope';
 import { requestSimilarity } from '../../services/wiki/match-service';
 
 export interface DeduplicationResult {
@@ -85,7 +86,7 @@ export async function deduplicateKnowledge(
   }
   
   // 2. 同类型 + 相同/极相似 request（与检索命中一致）
-  const candidates = await knowledgeRepo.listByType(newEntry.type);
+  const candidates = filterProjectCompatibleKnowledge(await knowledgeRepo.listByType(newEntry.type));
 
   for (const candidate of candidates) {
     const reqSim = requestSimilarity(newEntry.request, candidate.request);

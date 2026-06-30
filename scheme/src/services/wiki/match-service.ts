@@ -5,6 +5,7 @@ import {
   KnowledgeRepository,
   type KnowledgeEntry,
 } from '../../data/wiki/knowledge-repository';
+import { filterProjectCompatibleKnowledge } from '../../data/wiki/knowledge-scope';
 import {
   filterPriorKnowledge,
   type WikiRetrievalTurn,
@@ -152,9 +153,10 @@ function pickBestMatch(
   const pool = options?.excludeTurn
     ? filterPriorKnowledge(entries, options.excludeTurn)
     : entries;
-  if (pool.length === 0) return null;
+  const scopedPool = filterProjectCompatibleKnowledge(pool);
+  if (scopedPool.length === 0) return null;
 
-  const scored = pool
+  const scored = scopedPool
     .map((entry) => ({ entry, score: calculateRelevanceScore(query, entry) }))
     .filter((result) => result.score >= threshold)
     .sort((a, b) => b.score - a.score);

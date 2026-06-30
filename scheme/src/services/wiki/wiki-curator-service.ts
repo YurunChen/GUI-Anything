@@ -23,6 +23,7 @@ import {
 } from './wiki-maintenance-service';
 import type { KnowledgeEntry } from '../../data/wiki/knowledge-repository';
 import { KnowledgeRepository } from '../../data/wiki/knowledge-repository';
+import { filterProjectCompatibleKnowledge } from '../../data/wiki/knowledge-scope';
 import { DefaultWikiMatchService } from './match-service';
 import {
   resolveWikiDecisionAsync,
@@ -178,7 +179,7 @@ export class WikiCuratorService {
     digest: IntentDigest,
     priorHit: ReturnType<typeof findPriorHitForDigest>,
   ): Promise<KnowledgeEntry[]> {
-    const pool = this.knowledgeRepo.listMatchPoolSync();
+    const pool = filterProjectCompatibleKnowledge(this.knowledgeRepo.listMatchPoolSync());
     if (priorHit) {
       const rest = pool.filter((e) => e.id !== priorHit.entry.id).slice(0, 4);
       return [priorHit.entry, ...rest];
