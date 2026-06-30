@@ -65,6 +65,12 @@ Relevant project memory appears inline while the current exploration is still ru
 </tr>
 </table>
 
+<p align="center">
+  <img src="assets/demo/run-capture-guide-loop.gif" alt="Pixel animation showing GUI-Anything moving from Run to Capture to Guide across a long Claude Code session" width="960">
+</p>
+
+<p align="center"><em>Run the session. Capture the trail. Guide the next step.</em></p>
+
 ---
 
 ## Quick Start
