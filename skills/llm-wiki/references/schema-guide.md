@@ -1,6 +1,6 @@
-# SCHEMA.md guide (GUI-Anything)
+# SCHEMA.md guide
 
-`wiki/knowledge/SCHEMA.md` is the **schema document** for this repo's wiki — the GUI-Anything equivalent of upstream `CLAUDE.md`. Read it at the start of every **ingest** or **maintain** session, together with `wiki/knowledge/index.md`.
+`wiki/knowledge/SCHEMA.md` is the **schema document** for the current workspace wiki. Read it at the start of every **ingest** or **maintain** session, together with `wiki/knowledge/index.md`.
 
 Adapted from [Karpathy schema-guide](../../../reference/llm-wiki-skill/llm-wiki/references/schema-guide.md).
 

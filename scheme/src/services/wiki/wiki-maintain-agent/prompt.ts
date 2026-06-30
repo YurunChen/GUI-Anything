@@ -62,7 +62,7 @@ export function buildWikiMaintainSkillPrompt(report: WikiMaintenanceReport): str
     '',
     '## Task: Phase 2 maintain (same /llm-wiki session after Phase 1 when applicable)',
     '',
-    'Follow llm-wiki skill Phase 2 + gui-anything-layout.md + maintenance-guide (compile/lint/audit).',
+    'Follow llm-wiki skill Phase 2 + knowledge-layout.md + maintenance-guide (compile/lint/audit).',
     '',
     buildWikiMaintainSkillContext(report),
   ].join('\n');

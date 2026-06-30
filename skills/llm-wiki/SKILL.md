@@ -1,13 +1,13 @@
 ---
 name: llm-wiki
 description: >-
-  GUI-Anything wiki knowledge: Phase 1 ingest (create/update contexts/{intent_key},
+  Flow Observer wiki knowledge: Phase 1 ingest (create/update contexts/{intent_key},
   entities, summaries) then Phase 2 maintain (compile, lint, audit). One skill for
-  Flow Observer pivot/sweep and manual wiki-maintain.sh. Read gui-anything-layout.md.
+  Flow Observer pivot/sweep and manual wiki-maintain.sh. Read knowledge-layout.md.
   Not for session JSONL, flow launcher, or observer UI.
 ---
 
-# llm-wiki (GUI-Anything)
+# llm-wiki
 
 Karpathy five ops adapted for Flow Observer. Map: [`references/karpathy-ops-map.md`](references/karpathy-ops-map.md). Upstream: [`reference/llm-wiki-skill`](../../reference/llm-wiki-skill/llm-wiki/SKILL.md).
 
@@ -21,7 +21,7 @@ Write entry markdown only; the app rebuilds index, log, and progress.
 ## Start here
 
 1. Read `wiki/knowledge/SCHEMA.md` + `wiki/knowledge/index.md` ([`references/schema-guide.md`](references/schema-guide.md)).
-2. Read `gui-anything-layout.md`.
+2. Read `knowledge-layout.md`.
 3. Read the task prompt — digest (Phase 1) and/or maintenance report (Phase 2).
 
 ## When to run which phase
@@ -116,7 +116,7 @@ Defer stale anchors — do not list in `audits_resolved`.
 
 ## References
 
-- `gui-anything-layout.md` — layout contract
+- `knowledge-layout.md` — layout contract
 - `references/karpathy-ops-map.md` — five ops → phases
 - `references/schema-guide.md` — SCHEMA.md role
 - `references/research-guide.md` — pages, Idea Evolution, facet

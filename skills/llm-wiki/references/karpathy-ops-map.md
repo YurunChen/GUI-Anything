@@ -1,12 +1,12 @@
-# Karpathy llm-wiki → GUI-Anything mapping
+# Karpathy llm-wiki → Flow Observer mapping
 
 Upstream reference: [`reference/llm-wiki-skill/llm-wiki/SKILL.md`](../../../reference/llm-wiki-skill/llm-wiki/SKILL.md) (five operations: **compile**, **ingest**, **query**, **lint**, **audit**).
 
-GUI-Anything adapts the pattern for Flow Observer: session JSONL stays in `wiki/sessions/`; long-lived knowledge in `wiki/knowledge/`.
+Flow Observer adapts the pattern for any workspace: session JSONL-derived state stays in `wiki/sessions/`; long-lived knowledge stays in `wiki/knowledge/`.
 
 ## Five operations here
 
-| Upstream op | GUI-Anything phase | Who runs | Entry |
+| Upstream op | Flow Observer phase | Who runs | Entry |
 |-------------|-------------------|----------|-------|
 | **ingest** | Phase 1 — create/update context pages | Observer (automatic) | `/llm-wiki` on pivot / session sweep |
 | **compile** | Phase 2 — split/merge, bucket `index.md`, flat→intent | Human CLI | `./scripts/wiki/wiki-maintain.sh` |
@@ -30,7 +30,7 @@ Here:
 
 ## Directory mapping
 
-| Upstream | GUI-Anything |
+| Upstream | Flow Observer |
 |----------|--------------|
 | `CLAUDE.md` | `knowledge/SCHEMA.md` |
 | `wiki/concepts/` | `knowledge/contexts/{intent_key}/` |
@@ -54,4 +54,4 @@ Full manual session    →  Phase 1 (if digest) then Phase 2 in one /llm-wiki ru
 - [`reference/llm-wiki-skill/llm-wiki/references/schema-guide.md`](../../../reference/llm-wiki-skill/llm-wiki/references/schema-guide.md)
 - [`reference/llm-wiki-skill/llm-wiki/references/audit-guide.md`](../../../reference/llm-wiki-skill/llm-wiki/references/audit-guide.md)
 
-Use upstream for **workflow shape**; use [`gui-anything-layout.md`](../gui-anything-layout.md) for **paths and manifests**.
+Use upstream for **workflow shape**; use [`knowledge-layout.md`](../knowledge-layout.md) for **paths and manifests**.

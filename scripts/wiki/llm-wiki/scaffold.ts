@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * llm-wiki scaffold — knowledge meta + full entry tree for GUI-Anything.
+ * llm-wiki scaffold — knowledge meta + full entry tree for the current workspace.
  */
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';

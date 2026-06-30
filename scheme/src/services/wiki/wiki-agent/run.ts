@@ -80,7 +80,7 @@ export function buildWikiAgentSkillPrompt(input: WikiAgentRunInput): string {
     '',
     '## Task: Phase 1 ingest (Flow Observer)',
     '',
-    'Follow llm-wiki skill Phase 1 + gui-anything-layout.md + wiki/knowledge/SCHEMA.md.',
+    'Follow llm-wiki skill Phase 1 + knowledge-layout.md + wiki/knowledge/SCHEMA.md.',
     'Write entry bodies under knowledge/contexts/{intent_key}/ or entities/ (optional summaries/).',
     'Use the digest intent_key as the contexts/ subfolder when curating a closed intent bucket.',
     'Index, log, progress HTML are rebuilt by the app — not your job.',

@@ -27,7 +27,7 @@ status: open
 
 Body: **Anchor** (card excerpt), optional **Context request**, **Notes**.
 
-### Severity (GUI-Anything)
+### Severity
 
 | Value | Treat as | Process order |
 |-------|----------|---------------|

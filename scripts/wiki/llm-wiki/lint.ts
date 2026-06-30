@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * llm-wiki lint — delegates to knowledge-lint with GUI-Anything knowledge tree.
+ * llm-wiki lint — delegates to knowledge-lint with the current workspace tree.
  */
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';

@@ -1,6 +1,6 @@
-# Research wiki writing guide (GUI-Anything)
+# Research wiki writing guide
 
-Page length and mermaid rules for GUI-Anything research wiki (`contexts/{intent_key}/` ≈ session intent buckets).
+Page length and mermaid rules for Flow Observer project wikis (`contexts/{intent_key}/` aligns with session intent buckets).
 
 ## Page types
 
@@ -64,5 +64,5 @@ When ingest carries engineering persist types, use `facet` on **context** pages:
 
 ## Wikilinks
 
-- `[[C002]]` or `[[entities/N003-slug]]` per `gui-anything-layout.md`
+- `[[C002]]` or `[[entities/N003-slug]]` per `knowledge-layout.md`
 - Link first mention; avoid link walls in KNOWLEDGE card excerpts (keep ## 摘要 short)

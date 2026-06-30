@@ -154,10 +154,10 @@ summary = 用一句话讲清**本轮相对用户问题，做成了 / 想通了 /
 【对照示例】
 - 问「介绍整个项目的功能」
   ❌「我已经了解了整个项目」（这是回答开场白 → 错误）
-  ✅「梳理了 GUI-Anything 的 sidecar observer 架构与三大功能及用法」
+  ✅「梳理了当前项目的核心定位、主要架构与模块职责」
 - 问「html 功能在哪」
   ❌「找到了」（无信息 → 错误）
-  ✅「定位到 HTML 功能位于 progress-html / session-replay 等服务」
+  ✅「定位到 HTML 功能的入口文件、生成流程与打开方式」
 - 问「给我跑一次」
   ✅「已运行并在浏览器打开，输出正常」
 
@@ -233,7 +233,9 @@ summary = 用一句话讲清**本轮相对用户问题，做成了 / 想通了 /
 - continue/refine：flowchart.intent_key **必须等于**【当前 session intent】的 key。
 - pivot：flowchart.intent_key **必须不同于**上一轮 key，且 parent_id = 上一轮 key。
 - 低价值轮次：drop_from_chart=true；persist.should_persist 仍可为 true（落盘由 pivot/session 结束时的 Wiki Curator 判断）。
-- 只写日志与上下文中出现过的事实。`;
+- 只写日志与上下文中出现过的事实。
+- 项目名只能来自本轮日志 / 用户请求 / 工作目录；不要把示例里的项目名写入 summary 或 node_title。
+- Flow Observer / Claude Code / launcher 名称是运行环境或工具名，不等于被分析项目；除非本轮任务明确在分析这些工具本身，否则不要写入 summary 或 node_title。`;
 
 function getExplorationSummaryPrompt(): string {
   return EXPLORATION_SUMMARY_PROMPT.replace(

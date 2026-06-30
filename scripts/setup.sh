@@ -30,6 +30,23 @@ log_error() {
   echo -e "${RED}[ERROR]${NC} $1"
 }
 
+print_help() {
+  cat <<'EOF'
+GUI-Anything setup
+
+Usage:
+  ./scripts/setup.sh
+  ./scripts/setup.sh --help
+
+What it does:
+  - installs Bun dependencies under scheme/
+  - checks Claude Code CLI and Zellij
+  - prepares optional local WeChat notification dependencies
+  - refreshes project-local llm-wiki skill links
+  - links ga when running from a cloned repository
+EOF
+}
+
 # Check if command exists
 command_exists() {
   command -v "$1" >/dev/null 2>&1
@@ -189,6 +206,11 @@ set_permissions() {
 link_ga_cli() {
   log_info "Linking ga CLI..."
 
+  if [[ "$ROOT_DIR" == *"/node_modules/gui-anything" ]]; then
+    log_success "ga is provided by the npm package install"
+    return 0
+  fi
+
   if ! command_exists npm; then
     log_warn "npm not found; skipped global ga link"
     log_info "Run with: node cli/ga.mjs flow"
@@ -222,9 +244,9 @@ verify_installation() {
   fi
 }
 
-# Install Claude Code skills
-install_claude_skill() {
-  log_info "Installing Claude Code skills..."
+# Install project-local agent skills
+install_agent_skills() {
+  log_info "Installing project agent skills..."
 
   install_one_skill "$ROOT_DIR/skills/llm-wiki" "llm-wiki"
 }
@@ -232,8 +254,8 @@ install_claude_skill() {
 install_one_skill() {
   local source_dir="$1"
   local skill_name="$2"
-  local project_link="${ROOT_DIR}/.claude/skills/${skill_name}"
-  local global_link="${HOME}/.claude/skills/${skill_name}"
+  local claude_project_link="${ROOT_DIR}/.claude/skills/${skill_name}"
+  local codex_project_link="${ROOT_DIR}/.agents/skills/${skill_name}"
 
   if [[ ! -f "$source_dir/SKILL.md" ]]; then
     log_warn "Skill source not found at $source_dir/SKILL.md"
@@ -241,22 +263,44 @@ install_one_skill() {
   fi
 
   mkdir -p "${ROOT_DIR}/.claude/skills"
-  ln -sfn "${source_dir}" "${project_link}"
+  ln -sfn "../../skills/${skill_name}" "${claude_project_link}"
 
-  mkdir -p "${HOME}/.claude/skills"
-  if [[ -e "${global_link}" && ! -L "${global_link}" ]]; then
-    log_warn "~/.claude/skills/${skill_name} exists and is not a symlink — skipped global link"
-    log_success "Project skill: ${project_link} → skills/${skill_name}/"
-    return 0
-  fi
-  ln -sfn "${project_link}" "${global_link}"
+  mkdir -p "${ROOT_DIR}/.agents/skills"
+  ln -sfn "../../skills/${skill_name}" "${codex_project_link}"
 
-  if [[ -f "${project_link}/SKILL.md" ]]; then
+  mkdir -p "${ROOT_DIR}/.cursor/rules"
+  write_cursor_skill_rule "$skill_name"
+
+  if [[ -f "${claude_project_link}/SKILL.md" && -f "${codex_project_link}/SKILL.md" && -f "${ROOT_DIR}/.cursor/rules/${skill_name}.mdc" ]]; then
     log_success "Skill symlinked: .claude/skills/${skill_name}/ → skills/${skill_name}/"
-    log_success "  (also ~/.claude/skills/${skill_name}/ → project link)"
+    log_success "Skill symlinked: .agents/skills/${skill_name}/ → skills/${skill_name}/"
+    log_success "Cursor rule ready: .cursor/rules/${skill_name}.mdc"
   else
     log_warn "Symlink broken for ${skill_name}"
   fi
+}
+
+write_cursor_skill_rule() {
+  local skill_name="$1"
+  local rule_file="${ROOT_DIR}/.cursor/rules/${skill_name}.mdc"
+
+  cat > "$rule_file" <<EOF
+---
+description: Use ${skill_name} for project wiki ingest and maintenance.
+globs:
+  - "skills/${skill_name}/**"
+  - "scheme/src/services/wiki/**"
+  - "scripts/wiki/**"
+  - "wiki/**"
+alwaysApply: false
+---
+
+# ${skill_name}
+
+When working on project wiki ingest, wiki maintenance, or the \`/${skill_name}\`
+agent path, read \`skills/${skill_name}/SKILL.md\` first and follow its referenced
+guides. Keep \`skills/${skill_name}/\` as the single source of truth.
+EOF
 }
 
 # Print summary
@@ -279,8 +323,10 @@ print_summary() {
   echo "  ./scripts/flow-run.sh -m sonnet \"Your prompt\""
   echo ""
   if [[ -f "${ROOT_DIR}/.claude/skills/llm-wiki/SKILL.md" ]]; then
-    echo "Claude Code skills (symlink):"
+    echo "Project agent skills:"
     echo "  ${ROOT_DIR}/.claude/skills/llm-wiki/ → skills/llm-wiki/ (Phase 1 ingest + Phase 2 maintain)"
+    echo "  ${ROOT_DIR}/.agents/skills/llm-wiki/ → skills/llm-wiki/ (Codex project skill)"
+    echo "  ${ROOT_DIR}/.cursor/rules/llm-wiki.mdc (Cursor project rule)"
     echo "  Manual Phase 2: ./scripts/wiki/wiki-maintain.sh"
     echo ""
   fi
@@ -293,6 +339,13 @@ print_summary() {
 
 # Main
 main() {
+  case "${1:-}" in
+    -h|--help)
+      print_help
+      return 0
+      ;;
+  esac
+
   echo "========================================"
   echo "  GUI-Anything Flow Setup"
   echo "========================================"
@@ -321,7 +374,7 @@ main() {
   echo ""
   verify_installation
   echo ""
-  install_claude_skill
+  install_agent_skills
   echo ""
   print_summary
 }

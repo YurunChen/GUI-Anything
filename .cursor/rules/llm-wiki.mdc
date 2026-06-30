@@ -1,0 +1,15 @@
+---
+description: Use llm-wiki for project wiki ingest and maintenance.
+globs:
+  - "skills/llm-wiki/**"
+  - "scheme/src/services/wiki/**"
+  - "scripts/wiki/**"
+  - "wiki/**"
+alwaysApply: false
+---
+
+# llm-wiki
+
+When working on project wiki ingest, wiki maintenance, or the `/llm-wiki`
+agent path, read `skills/llm-wiki/SKILL.md` first and follow its referenced
+guides. Keep `skills/llm-wiki/` as the single source of truth.
