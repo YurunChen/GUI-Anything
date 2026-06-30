@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/demo/readme-hero-story.png" alt="GUI-Anything 像素风横幅：开发者困在漫长 AI 编码会话迷宫中，旁边的安静 sidecar 将路径记录成可复用记忆" width="960">
+  <img src="assets/demo/readme-hero-impact.png" alt="GUI-Anything 像素风首图：开发者和橙色 Claude 小助手面对坍缩的 AI 编码会话迷宫，sidecar 记录器照出可复用记忆路径" width="960">
 </p>
 
 <h1 align="center">GUI-Anything</h1>

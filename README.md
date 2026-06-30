@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/demo/readme-hero-story.png" alt="GUI-Anything pixel-art banner: a developer lost in a long AI coding-session maze while a quiet sidecar records the path into reusable memory" width="960">
+  <img src="assets/demo/readme-hero-impact.png" alt="GUI-Anything pixel-art hero: a developer and orange Claude companion face a collapsing AI coding-session maze while a sidecar recorder reveals a reusable memory trail" width="960">
 </p>
 
 <h1 align="center">GUI-Anything</h1>
