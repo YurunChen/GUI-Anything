@@ -68,9 +68,6 @@ Relevant project memory appears inline while the current exploration is still ru
 
 
 
-https://github.com/user-attachments/assets/fb4cf655-a5c4-4735-8185-7df89dc7407d
-
-
 
 
 
