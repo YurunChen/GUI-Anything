@@ -14,7 +14,27 @@ import { FlowTerminal, terminalScenarios } from './FlowTerminal.jsx';
 import { PainPillarTypewriter } from './PainPillarTypewriter.jsx';
 import { CapabilityPreview } from './CapabilityPreview.jsx';
 import { SessionBeats } from './SessionBeats.jsx';
+import { HeroClawd } from './HeroClawd.jsx';
 import siteLogo from '../../assets/logo.png';
+import archAvatar from '../../assets/Personality/thumbs/ARCH.jpg';
+import chillAvatar from '../../assets/Personality/thumbs/CHILL.jpg';
+import diverAvatar from '../../assets/Personality/thumbs/DIVER.jpg';
+import fireAvatar from '../../assets/Personality/thumbs/FIRE.jpg';
+import ghostAvatar from '../../assets/Personality/thumbs/GHOST.jpg';
+import marathonAvatar from '../../assets/Personality/thumbs/MARATHON.jpg';
+import nightAvatar from '../../assets/Personality/thumbs/NIGHT.jpg';
+import owlAvatar from '../../assets/Personality/thumbs/OWL.jpg';
+import pioneerAvatar from '../../assets/Personality/thumbs/PIONEER.jpg';
+import pivotAvatar from '../../assets/Personality/thumbs/PIVOT.jpg';
+import refacAvatar from '../../assets/Personality/thumbs/REFAC.jpg';
+import reuseAvatar from '../../assets/Personality/thumbs/REUSE.jpg';
+import scoutAvatar from '../../assets/Personality/thumbs/SCOUT.jpg';
+import shipAvatar from '../../assets/Personality/thumbs/SHIP.jpg';
+import sparkAvatar from '../../assets/Personality/thumbs/SPARK.jpg';
+import starAvatar from '../../assets/Personality/thumbs/STAR.jpg';
+import steadyAvatar from '../../assets/Personality/thumbs/STEADY.jpg';
+import tinkerAvatar from '../../assets/Personality/thumbs/TINKER.jpg';
+import voidAvatar from '../../assets/Personality/thumbs/VOID.jpg';
 import { useInView } from './hooks/useInView.js';
 import {
   persistLocale,
@@ -33,7 +53,29 @@ const capabilityIcons = {
   沉淀: BookOpen,
 };
 
-const DEMO_CYCLE_IDS = ['flow', 'knowledge', 'timeline', 'replay', 'note'];
+const DEMO_CYCLE_IDS = ['flow', 'workspace', 'knowledge', 'timeline', 'replay', 'note'];
+
+const cbtiAvatars = {
+  ARCH: archAvatar,
+  SHIP: shipAvatar,
+  REFAC: refacAvatar,
+  REUSE: reuseAvatar,
+  PIONEER: pioneerAvatar,
+  TINKER: tinkerAvatar,
+  DIVER: diverAvatar,
+  SPARK: sparkAvatar,
+  PIVOT: pivotAvatar,
+  SCOUT: scoutAvatar,
+  STEADY: steadyAvatar,
+  FIRE: fireAvatar,
+  MARATHON: marathonAvatar,
+  NIGHT: nightAvatar,
+  CHILL: chillAvatar,
+  STAR: starAvatar,
+  OWL: owlAvatar,
+  VOID: voidAvatar,
+  GHOST: ghostAvatar,
+};
 
 function findScenario(id) {
   return terminalScenarios.find((s) => s.id === id) ?? terminalScenarios[1];
@@ -96,6 +138,7 @@ function App() {
           <a href="#moments">{t.nav.moments}</a>
           <a href="#problem">{t.nav.problem}</a>
           <a href="#capabilities">{t.nav.capabilities}</a>
+          <a href="#cbti">{t.nav.cbti}</a>
           <a href="#lifecycle">{t.nav.lifecycle}</a>
           <a href="#contribute">{t.nav.contribute}</a>
         </nav>
@@ -132,14 +175,19 @@ function App() {
 
       <main id="main">
         <section id="top" className="landing-hero">
-          <div className="landing-hero-head">
-            <h1>{t.hero.title}</h1>
-            <p className="lede lede-hero">{t.hero.lede}</p>
-            <ul className="hero-proof-list hero-proof-list-v4" aria-label={t.hero.proofLabel}>
-              {t.hero.proof.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
+          <div className="landing-hero-intro">
+            <div className="landing-hero-head">
+              <div className="landing-hero-title-row">
+                <h1>{t.hero.title}</h1>
+              </div>
+              <p className="lede lede-hero">{t.hero.lede}</p>
+              <ul className="hero-proof-list hero-proof-list-v4" aria-label={t.hero.proofLabel}>
+                {t.hero.proof.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+            <HeroClawd />
           </div>
 
           <div id="demo" className="demo-shell" ref={demoRef} aria-label={t.ui.demoAria}>
@@ -252,6 +300,12 @@ function App() {
 
           <hr className="stack-divider" />
 
+          <section id="cbti" className="stack-section stack-section-cbti">
+            <CbtiSection cbti={t.cbti} locale={locale} />
+          </section>
+
+          <hr className="stack-divider" />
+
           <section id="lifecycle" className="stack-section stack-section-how">
             <SessionBeats lifecycle={t.lifecycle} />
           </section>
@@ -297,27 +351,6 @@ function App() {
                     <FileText size={18} strokeWidth={1.5} aria-hidden="true" />
                     {t.contribute.guide}
                   </a>
-                </div>
-              </div>
-              <div className="contribute-facts">
-                <div className="contribute-block">
-                  <h3>{t.contribute.verifyTitle}</h3>
-                  <ul className="cmd-list">
-                    {t.contribute.verify.map((cmd) => (
-                      <li key={cmd}><code>{cmd}</code></li>
-                    ))}
-                  </ul>
-                </div>
-                <div className="contribute-block">
-                  <h3>{t.contribute.areasTitle}</h3>
-                  <ul className="path-list">
-                    {t.contribute.areas.map((area) => (
-                      <li key={area.path}>
-                        <code>{area.path}</code>
-                        <span>{area.note}</span>
-                      </li>
-                    ))}
-                  </ul>
                 </div>
               </div>
             </div>
@@ -374,6 +407,72 @@ function CapabilityItem({ title, text, preview }) {
       </div>
       <p>{text}</p>
     </li>
+  );
+}
+
+function localizedText(text, locale) {
+  return text[locale === 'zh' ? 'zh-Hans' : 'en'];
+}
+
+function alternateLocalizedText(text, locale) {
+  return text[locale === 'zh' ? 'en' : 'zh-Hans'];
+}
+
+function CbtiSection({ cbti, locale }) {
+  const splitAt = Math.ceil(cbti.items.length / 2);
+  const rows = [
+    { id: 'top', items: cbti.items.slice(0, splitAt) },
+    { id: 'bottom', items: cbti.items.slice(splitAt) },
+  ];
+
+  return (
+    <div className="cbti-section">
+      <div className="cbti-head">
+        <p className="section-kicker">{cbti.tag}</p>
+        <h2 className="section-title">{cbti.title}</h2>
+        <p className="stack-lead stack-lead-tight">{cbti.body}</p>
+      </div>
+      <div className="cbti-marquee-set" aria-label={cbti.galleryLabel}>
+        {rows.map((row) => {
+          const marqueeItems = [...row.items, ...row.items];
+
+          return (
+            <div className={`cbti-marquee cbti-marquee-${row.id}`} key={row.id}>
+              <ul className="cbti-track">
+                {marqueeItems.map((item, index) => {
+                  const name = localizedText(item.name, locale);
+                  const alias = alternateLocalizedText(item.name, locale);
+                  const intro = localizedText(item.intro, locale);
+                  const style = localizedText(item.style, locale);
+
+                  return (
+                    <li
+                      className={`cbti-card cbti-card-${item.code.toLowerCase()}`}
+                      key={`${row.id}-${item.code}-${index}`}
+                      aria-hidden={index >= row.items.length}
+                    >
+                      <div className="cbti-avatar">
+                        <img src={cbtiAvatars[item.code]} alt={`${item.code} ${name}`} loading="lazy" />
+                      </div>
+                      <div className="cbti-card-body">
+                        <div className="cbti-meta">
+                          <span className="cbti-code">{item.code}</span>
+                          <span className={`cbti-rarity cbti-rarity-${item.rarity}`}>{item.rarity}</span>
+                        </div>
+                        <h3>{name}</h3>
+                        <p className="cbti-alias">{alias}</p>
+                        <p className="cbti-intro">{intro}</p>
+                        <div className="cbti-style">{style}</div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 

@@ -111,7 +111,7 @@ function VisualStrategyPreview({ preview }) {
             ) : null}
             {mode.type === 'tui' ? (
               <div className="visual-tui-panel">
-                <div className="visual-tui-prompt">$ ga flow</div>
+                <div className="visual-tui-prompt">session view</div>
                 <div className="visual-tui-lines">
                   {mode.lines.map((line) => (
                     <span key={line}>{line}</span>
