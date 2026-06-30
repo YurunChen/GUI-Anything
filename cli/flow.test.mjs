@@ -7,6 +7,7 @@ import path from 'node:path';
 import { buildFlowEnv, buildFlowScriptArgs, parseFlowArgs } from './lib/flow.mjs';
 import { formatDoctorReport } from './lib/doctor.mjs';
 import { notifyConfigPath, pairWeChatReceiver, parseNotifyEnv, readNotifyConfig, resolveNotifyReceiver, writeNotifyConfig } from './lib/notify.mjs';
+import { resolveWorkspaceDir } from './lib/workspace.mjs';
 
 test('parseFlowArgs parses continue mode with model and prompt', () => {
   const options = parseFlowArgs(['--continue', '--model', 'sonnet', 'hello', 'world']);
@@ -77,6 +78,7 @@ test('notify config is written under .flow-runtime and read back', () => {
 
 test('buildFlowEnv loads notify config but preserves explicit env overrides', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-flow-env-'));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-flow-workspace-'));
   writeNotifyConfig(root, {
     FLOW_NOTIFY_ENABLED: 'true',
     FLOW_NOTIFY_WECHAT_USER_ID: 'saved@im.wechat',
@@ -85,10 +87,32 @@ test('buildFlowEnv loads notify config but preserves explicit env overrides', ()
 
   const env = buildFlowEnv(root, {
     FLOW_NOTIFY_WECHAT_USER_ID: 'explicit@im.wechat',
-  });
+  }, workspace);
 
   assert.equal(env.FLOW_NOTIFY_WECHAT_USER_ID, 'explicit@im.wechat');
   assert.equal(env.FLOW_NOTIFY_WECHAT_SERVICE_URL, 'http://127.0.0.1:8765');
+  assert.equal(env.FLOW_PROJECT_DIR, workspace);
+  assert.equal(env.FLOW_ROOT_DIR, workspace);
+});
+
+test('resolveWorkspaceDir defaults to the invocation cwd', () => {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-workspace-cwd-'));
+  assert.equal(resolveWorkspaceDir({ cwd: workspace, env: {} }), fs.realpathSync(workspace));
+});
+
+test('resolveWorkspaceDir uses FLOW_PROJECT_DIR and ignores FLOW_ROOT_DIR', () => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-workspace-cwd-'));
+  const legacyRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-workspace-legacy-root-'));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'ga-workspace-env-'));
+
+  assert.equal(
+    resolveWorkspaceDir({ cwd, env: { FLOW_PROJECT_DIR: workspace, FLOW_ROOT_DIR: legacyRoot } }),
+    fs.realpathSync(workspace),
+  );
+  assert.equal(
+    resolveWorkspaceDir({ cwd, env: { FLOW_ROOT_DIR: legacyRoot } }),
+    fs.realpathSync(cwd),
+  );
 });
 
 test('resolveNotifyReceiver only uses explicit receiver config', () => {

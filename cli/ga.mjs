@@ -6,10 +6,11 @@ import { parseFlowArgs, runFlowCommand } from './lib/flow.mjs';
 import { runSessionsCommand } from './lib/sessions.mjs';
 import { parseExportArgs, runExportCommand } from './lib/export.mjs';
 import { runNotifyCommand } from './lib/notify.mjs';
+import { resolveWorkspaceDir } from './lib/workspace.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..');
+const toolRootDir = path.resolve(__dirname, '..');
 
 function printRootHelp() {
   console.log('ga - GUI-Anything CLI');
@@ -72,19 +73,20 @@ function printExportHelp() {
 
 async function main(argv) {
   const [command, ...rest] = argv;
+  const workspaceDir = resolveWorkspaceDir();
   if (!command || command === '--help' || command === '-h') {
     printRootHelp();
     return 0;
   }
 
   if (command === 'doctor') {
-    const report = runDoctor({ rootDir });
+    const report = runDoctor({ rootDir: workspaceDir, notifyRootDir: toolRootDir });
     console.log(formatDoctorReport(report));
     return report.ok ? 0 : 1;
   }
 
   if (command === 'notify') {
-    return await runNotifyCommand({ rootDir, args: rest });
+    return await runNotifyCommand({ rootDir: toolRootDir, args: rest });
   }
 
   if (command === 'flow') {
@@ -94,7 +96,7 @@ async function main(argv) {
         printFlowHelp();
         return 0;
       }
-      return await runFlowCommand({ rootDir, options });
+      return await runFlowCommand({ rootDir: toolRootDir, workspaceDir, options });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga flow: ${message}`);
@@ -105,7 +107,7 @@ async function main(argv) {
 
   if (command === 'sessions' || command === 'ls') {
     try {
-      return runSessionsCommand({ rootDir });
+      return runSessionsCommand({ rootDir: toolRootDir, workspaceDir });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga sessions: ${message}`);
@@ -120,7 +122,7 @@ async function main(argv) {
         printExportHelp();
         return 0;
       }
-      return runExportCommand({ rootDir, options });
+      return runExportCommand({ rootDir: toolRootDir, workspaceDir, options });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga export: ${message}`);
