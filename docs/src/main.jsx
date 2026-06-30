@@ -143,15 +143,6 @@ function App() {
           <a href="#contribute">{t.nav.contribute}</a>
         </nav>
         <div className="header-actions">
-          <a
-            className="header-github"
-            href="https://github.com/YurunChen/GUI-Anything"
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Github size={16} strokeWidth={1.7} aria-hidden="true" />
-            {t.hero.ctaPrimary}
-          </a>
           <div className="lang-switch" role="group" aria-label={t.ui.langLabel}>
             <button
               type="button"
@@ -186,6 +177,17 @@ function App() {
                   <li key={item}>{item}</li>
                 ))}
               </ul>
+              <div className="hero-github-row">
+                <a
+                  className="hero-github"
+                  href="https://github.com/YurunChen/GUI-Anything"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <Github size={16} strokeWidth={1.8} aria-hidden="true" />
+                  {t.hero.ctaPrimary}
+                </a>
+              </div>
             </div>
             <HeroClawd />
           </div>

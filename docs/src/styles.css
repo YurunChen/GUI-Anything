@@ -7818,22 +7818,32 @@ html[lang='zh-CN'] .site-landing .section-title {
   gap: 0.65rem;
 }
 
-.site-landing .header-github {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.65rem;
-  color: var(--v4-muted);
-  font-family: var(--font-mono);
-  font-size: 0.72rem;
-  text-decoration: none;
-  border: 1px solid var(--v4-line);
-  border-radius: var(--v4-radius);
+.site-landing .hero-github-row {
+  display: flex;
+  margin-top: 0.82rem;
 }
 
-.site-landing .header-github:hover {
+.site-landing .hero-github {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.46rem;
+  min-height: 2.35rem;
+  padding: 0 0.9rem;
+  color: var(--v4-ink);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 650;
+  text-decoration: none;
+  background: rgb(255 255 255 / 0.055);
+  border: 1px solid var(--v4-line-strong);
+  border-radius: var(--v4-radius);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.035);
+}
+
+.site-landing .hero-github:hover {
   color: var(--v4-accent);
-  border-color: var(--v4-line-strong);
+  background: rgb(78 217 130 / 0.08);
+  border-color: rgb(var(--v4-accent-rgb) / 0.45);
 }
 
 @media (max-width: 960px) {
