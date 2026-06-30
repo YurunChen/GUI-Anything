@@ -7,7 +7,7 @@
 <p align="center"><strong>The flight recorder for long Claude Code sessions.</strong></p>
 
 <p align="center">
-  <strong>English</strong> · <a href="README_CN.md">简体中文</a>
+  <strong>English</strong> · <a href="README_CN.md">简体中文</a> · <a href="https://yurunchen.github.io/GUI-Anything/">Project Page</a>
 </p>
 
 <p align="center">
@@ -66,13 +66,11 @@ Relevant project memory appears inline while the current exploration is still ru
 </tr>
 </table>
 
+<p align="center">
+  <img src="assets/demo/run-capture-guide-loop.gif" alt="Pixel animation showing GUI-Anything moving from Run to Capture to Guide across a long Claude Code session" width="960">
+</p>
 
-
-
-https://github.com/user-attachments/assets/a56444ea-0cf6-4778-8479-c6c1de90a7ac
-
-
-
+<p align="center"><em>Run the session. Capture the trail. Guide the next step.</em></p>
 
 ---
 
@@ -192,14 +190,10 @@ Project memory stays local by default. Related turns accumulate by intent; curat
 
 Watch the promotional walkthrough:
 
-<p align="center">
-  <video src="assets/video/video.mp4" poster="assets/video/Cover.jpg" controls width="960">
-    <a href="assets/video/video.mp4">Open the 85-second MP4 demo</a>
-  </video>
-</p>
+https://github.com/user-attachments/assets/a56444ea-0cf6-4778-8479-c6c1de90a7ac
 
 <p align="center">
-  <strong><a href="assets/video/video.mp4">Open the 85-second MP4 demo</a></strong>
+  <a href="assets/video/video.mp4">Open local MP4</a>
 </p>
 
 Static preview: [`assets/demo/readme-hero.svg`](assets/demo/readme-hero.svg).
