@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="https://yurunchen.github.io/GUI-Anything/"><img src="https://img.shields.io/badge/project%20page-live-2563eb?style=flat-square" alt="Project page"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-111827?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/tests-531%2B-10b981?style=flat-square" alt="531+ tests">
   <img src="https://img.shields.io/badge/themes-33-7c3aed?style=flat-square" alt="33 themes">
