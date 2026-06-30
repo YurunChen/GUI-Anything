@@ -1,6 +1,7 @@
 import { BasePlatformAdapter } from './base';
 import type { NotificationMessage, PlatformType } from '../types';
 import { createLogger } from '../../../utils/logger';
+import { resolveWechatServiceUrl } from '../config';
 
 const log = createLogger('notification');
 
@@ -12,7 +13,7 @@ const log = createLogger('notification');
  *
  * 环境变量：
  * - FLOW_NOTIFY_WECHAT_USER_ID: 接收消息的微信用户ID
- * - FLOW_NOTIFY_WECHAT_SERVICE_URL: Python服务地址（默认: http://127.0.0.1:8765）
+ * - FLOW_NOTIFY_WECHAT_SERVICE_URL: Python服务地址
  */
 export class WechatAdapter extends BasePlatformAdapter {
   name: PlatformType = 'wechat';
@@ -23,7 +24,7 @@ export class WechatAdapter extends BasePlatformAdapter {
     super(userId, token);
 
     this.toUserId = userId;
-    this.serviceUrl = process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL || 'http://127.0.0.1:8765';
+    this.serviceUrl = resolveWechatServiceUrl();
 
     // 检查是否已配置
     this.enabled = !!this.toUserId;
@@ -42,9 +43,7 @@ export class WechatAdapter extends BasePlatformAdapter {
         return false;
       }
 
-      const emoji = this.getPriorityEmoji(message.priority);
-      const formattedContent = this.formatMessage(message);
-      const text = `${emoji} ${message.title}\n\n${formattedContent}`;
+      const text = this.formatMessage(message);
 
       // 调用 Python 服务发送消息
       const response = await fetch(`${this.serviceUrl}/send`, {

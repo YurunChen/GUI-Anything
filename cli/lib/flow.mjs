@@ -15,8 +15,8 @@ export function parseFlowArgs(args) {
     model: '',
     promptArgs: [],
     skipDoctor: false,
-    watch: true,
-    open: true,
+    watch: false,
+    open: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -49,10 +49,16 @@ export function parseFlowArgs(args) {
     }
     if (arg === '--no-watch') {
       options.watch = false;
+      options.open = false;
       continue;
     }
     if (arg === '--watch') {
       options.watch = true;
+      continue;
+    }
+    if (arg === '--open') {
+      options.watch = true;
+      options.open = true;
       continue;
     }
     if (arg === '--no-open') {
@@ -93,16 +99,32 @@ export function buildFlowScriptArgs(options) {
   return args;
 }
 
-function evolutionOutputPath(rootDir) {
-  return path.join(rootDir, 'wiki', 'knowledge', 'outputs', 'evolution.html');
+function flowRuntimeEnv(workspaceDir, baseEnv = process.env) {
+  return {
+    ...baseEnv,
+    FLOW_PROJECT_DIR: workspaceDir,
+    FLOW_ROOT_DIR: workspaceDir,
+  };
 }
 
-/** Deterministic per-project port — must match evolutionServerPort() in
- *  scheme/src/export/evolution/server.ts (djb2 → 40000–49999). */
-function evolutionServerPort(root) {
-  let h = 5381;
-  for (let i = 0; i < root.length; i += 1) h = ((h << 5) + h + root.charCodeAt(i)) >>> 0;
-  return 40000 + (h % 10000);
+function evolutionOutputPath(workspaceDir) {
+  return path.join(workspaceDir, 'wiki', 'knowledge', 'outputs', 'evolution.html');
+}
+
+function resolveEvolutionServerPort(rootDir, workspaceDir) {
+  const result = spawnSync(
+    'bun',
+    ['run', 'src/main.ts', '--evolution-port'],
+    {
+      cwd: path.join(rootDir, 'scheme'),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: flowRuntimeEnv(workspaceDir),
+    },
+  );
+  if (result.status !== 0) return null;
+  const port = Number.parseInt(String(result.stdout).trim(), 10);
+  return Number.isInteger(port) && port > 0 ? port : null;
 }
 
 /** Best-effort: is something already serving on this port? */
@@ -121,7 +143,7 @@ async function portIsLive(port) {
  * One-shot deterministic static export. Offline fallback so a page always exists
  * on disk even when the live server can't run (e.g. bun missing).
  */
-function exportEvolutionOnce({ rootDir, outputPath }) {
+function exportEvolutionOnce({ rootDir, workspaceDir, outputPath }) {
   if (!commandExists('bun')) return false;
   const result = spawnSync(
     'bun',
@@ -129,7 +151,7 @@ function exportEvolutionOnce({ rootDir, outputPath }) {
     {
       cwd: path.join(rootDir, 'scheme'),
       stdio: 'ignore',
-      env: { ...process.env, FLOW_ROOT_DIR: rootDir },
+      env: flowRuntimeEnv(workspaceDir),
     },
   );
   return result.status === 0;
@@ -141,19 +163,20 @@ function exportEvolutionOnce({ rootDir, outputPath }) {
  * single-writer via its port: a duplicate launch self-exits on EADDRINUSE. Returns
  * the http URL to open, or null if bun is unavailable.
  */
-async function ensureEvolutionServer({ rootDir }) {
+async function ensureEvolutionServer({ rootDir, workspaceDir }) {
   if (!commandExists('bun')) return null;
-  const port = evolutionServerPort(rootDir);
+  const port = resolveEvolutionServerPort(rootDir, workspaceDir);
+  if (!port) return null;
   if (!(await portIsLive(port))) {
     // Detached so it outlives this `ga flow` process; a duplicate exits immediately.
     const child = spawn(
       'bun',
-      ['run', 'src/main.ts', '--evolution-server'],
+      ['run', 'src/main.ts', '--evolution-server', '--port', String(port)],
       {
         cwd: path.join(rootDir, 'scheme'),
         stdio: 'ignore',
         detached: true,
-        env: { ...process.env, FLOW_ROOT_DIR: rootDir },
+        env: flowRuntimeEnv(workspaceDir),
       },
     );
     child.on('error', () => {});
@@ -180,18 +203,18 @@ function openInBrowser(target) {
   }
 }
 
-export function buildFlowEnv(rootDir, baseEnv = process.env) {
+export function buildFlowEnv(rootDir, baseEnv = process.env, workspaceDir = rootDir) {
   const notifyConfig = readNotifyConfig(rootDir);
-  return { ...notifyConfig, ...baseEnv };
+  return { ...notifyConfig, ...baseEnv, FLOW_PROJECT_DIR: workspaceDir, FLOW_ROOT_DIR: workspaceDir };
 }
 
-export async function runFlowCommand({ rootDir, options }) {
+export async function runFlowCommand({ rootDir, workspaceDir = rootDir, options }) {
   if (!commandExists('zellij')) {
     throw new Error('Zellij is required. Install with: brew install zellij');
   }
 
   if (!options.skipDoctor) {
-    const doctor = runDoctor({ rootDir });
+    const doctor = runDoctor({ rootDir: workspaceDir, notifyRootDir: rootDir });
     if (!doctor.ok) {
       throw new Error('Doctor checks failed. Run `ga doctor` to see actionable fixes.');
     }
@@ -199,32 +222,32 @@ export async function runFlowCommand({ rootDir, options }) {
 
   // Do all async server setup + browser open BEFORE the blocking flow-run below
   // (spawnSync blocks the event loop, so awaited work must finish first).
-  if (options.watch !== false) {
-    // Live view is now served by a single per-project server that pushes updates
-    // over WebSocket — no more per-flow file watchers competing over a shared file.
-    // The server is a shared daemon; it survives this flow and self-exits when idle.
-    console.log('📊 Starting evolution server…');
-    const url = commandExists('bun') ? await ensureEvolutionServer({ rootDir }) : null;
+  if (options.watch) {
+    // Optional live view, served by a single per-project server that pushes updates
+    // over WebSocket. Normal flow sessions keep the browser quiet; use `h` in the
+    // observer for one-shot export/open, or `ga flow --watch --open` for this sidecar.
+    console.log('📊 Starting optional evolution server…');
+    const url = commandExists('bun') ? await ensureEvolutionServer({ rootDir, workspaceDir }) : null;
     if (url) {
-      console.log(`📊 Live evolution: ${url}  (disable with \`ga flow --no-watch\`)`);
-      if (options.open !== false) openInBrowser(url);
-    } else {
+      console.log(`📊 Live evolution: ${url}`);
+      if (options.open) openInBrowser(url);
+    } else if (options.open) {
       // bun/server unavailable — fall back to a one-shot static file so there's still something to open.
-      const outputPath = evolutionOutputPath(rootDir);
-      exportEvolutionOnce({ rootDir, outputPath });
-      if (options.open !== false) openInBrowser(outputPath);
+      const outputPath = evolutionOutputPath(workspaceDir);
+      exportEvolutionOnce({ rootDir, workspaceDir, outputPath });
+      openInBrowser(outputPath);
     }
   }
 
   const scriptPath = path.join(rootDir, 'scripts', 'flow-run.sh');
   const scriptArgs = buildFlowScriptArgs(options);
-  const env = buildFlowEnv(rootDir);
+  const env = buildFlowEnv(rootDir, process.env, workspaceDir);
   if (!env.FLOW_NOTIFY_WECHAT_USER_ID && env.FLOW_NOTIFY_ENABLED !== 'false') {
     console.error('[ga flow] WeChat notifications are not configured. Run `ga notify setup` to enable them.');
     env.FLOW_NOTIFY_HINT_SHOWN = '1';
   }
   const result = spawnSync(scriptPath, scriptArgs, {
-    cwd: rootDir,
+    cwd: workspaceDir,
     stdio: 'inherit',
     env,
   });

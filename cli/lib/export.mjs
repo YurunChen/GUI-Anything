@@ -69,9 +69,17 @@ export function parseExportArgs(args) {
   return options;
 }
 
-export function buildExportScriptArgs(options, rootDir) {
+function exportRuntimeEnv(workspaceDir) {
+  return {
+    ...process.env,
+    FLOW_PROJECT_DIR: workspaceDir,
+    FLOW_ROOT_DIR: workspaceDir,
+  };
+}
+
+export function buildExportScriptArgs(options, workspaceDir) {
   const output =
-    options.output || path.join(rootDir, 'wiki', 'knowledge', 'outputs', 'evolution.html');
+    options.output || path.join(workspaceDir, 'wiki', 'knowledge', 'outputs', 'evolution.html');
   const args = ['run', 'src/main.ts', '--export-html', '-o', output];
   if (options.noAi) args.push('--no-ai');
   if (options.theme) args.push('--theme', options.theme);
@@ -81,16 +89,16 @@ export function buildExportScriptArgs(options, rootDir) {
   return args;
 }
 
-export function runExportCommand({ rootDir, options }) {
+export function runExportCommand({ rootDir, workspaceDir = rootDir, options }) {
   if (!commandExists('bun')) {
     throw new Error('bun is required. Install from https://bun.sh');
   }
   const schemeDir = path.join(rootDir, 'scheme');
-  const args = buildExportScriptArgs(options, rootDir);
+  const args = buildExportScriptArgs(options, workspaceDir);
   const result = spawnSync('bun', args, {
     cwd: schemeDir,
     stdio: 'inherit',
-    env: { ...process.env, FLOW_ROOT_DIR: rootDir },
+    env: exportRuntimeEnv(workspaceDir),
   });
   if (typeof result.status === 'number') {
     return result.status;

@@ -25,9 +25,10 @@ describe('auto-extractor slug generation', () => {
   });
 
   it('uses document basename and intent instead of absolute path for slug', () => {
+    const planPath = path.join(tempDir, 'scheme', 'POCKETFLOW_INTEGRATION_PLAN.md');
     const summary: ExplorationSummary = {
       id: 'exp_1',
-      request: "'/Users/yurunchen/project/Method/GUI-Anything/scheme/POCKETFLOW_INTEGRATION_PLAN.md'看下这个方案可行吗",
+      request: `'${planPath}'看下这个方案可行吗`,
       summary: '评审 Pocket Flow 极简集成计划，确认方案方向可行并记录架构决策。',
       commands: [],
       files: [],
@@ -49,8 +50,7 @@ describe('auto-extractor slug generation', () => {
     expect(entry?.facet).toBe('protocol');
     expect(String(entry?.content)).toContain('category: "contexts"');
     expect(entry?.slug).toBe('pocketflow-integration-plan-review');
-    expect(entry?.slug).not.toContain('usersyurunchen');
-    expect(entry?.slug).not.toContain('projectmethod');
+    expect(entry?.slug).not.toContain(path.basename(tempDir).replace(/[^a-z0-9]/gi, '').toLowerCase());
   });
 
   it('includes proj tag in generated wiki frontmatter', () => {

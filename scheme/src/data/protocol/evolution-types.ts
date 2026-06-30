@@ -7,6 +7,7 @@
  */
 
 import type { TitleDelta } from './observer-protocol';
+import type { LocalizedText, ObserverLocale } from '../../constants/observer-locale';
 
 export type { TitleDelta } from './observer-protocol';
 
@@ -223,27 +224,29 @@ export interface TransitionNarrative {
 
 /** Coding personality (SBTI/ABTI) derived from behavioural metrics — no questionnaire. */
 export interface CodingPersona {
-  scores: { axis: string; value: number; leftLabel: string; rightLabel: string }[];
+  scores: {
+    axis: LocalizedText;
+    value: number;
+    leftLabel: LocalizedText;
+    rightLabel: LocalizedText;
+  }[];
   /** 6-letter pole code (e.g. "DTRSNV"). */
   typeCode: string;
-  title: string;
-  tagline: string;
-  reading: string;
+  name: LocalizedText;
+  intro: LocalizedText;
+  reading: LocalizedText;
   signatureNodeId?: string;
-  // ── archetype gallery (v2) ──
   /** Matched archetype short code, e.g. "ARCH" / "NIGHT" / "OWL". */
   archetypeCode?: string;
-  cnName?: string;
-  intro?: string;
-  catchphrase?: string;
-  devStyle?: string;
+  catchphrase: LocalizedText;
+  devStyle: LocalizedText;
   rarity?: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary' | 'hidden';
-  /** Human-readable dominant-pole DNA string, e.g. "聚焦·试错·复用·交付·夜行·坚守". */
-  dna?: string;
+  /** Human-readable dominant-pole DNA string. */
+  dna: LocalizedText;
   /** Avatar image: a server path (/persona/CODE.webp) live, or an inlined data URI for static export. */
   avatar?: string;
   /** Top-3 nearest archetypes for a "spectrum" display. */
-  spectrum?: { code: string; cn: string; similarity: number }[];
+  spectrum?: { code: string; name: LocalizedText; similarity: number }[];
 }
 
 /** Provenance for the work-canvas footer. */
@@ -256,6 +259,8 @@ export interface EvolutionProvenance {
 /** Top-level payload embedded into the self-contained HTML. */
 export interface EvolutionExport {
   version: '1.0';
+  /** Display locale for static HTML and live mirror snapshots. */
+  locale?: ObserverLocale;
   generatedAt: number;
   aiUsed: boolean;
   project: ProjectEvolution;

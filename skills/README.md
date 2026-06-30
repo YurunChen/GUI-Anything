@@ -1,13 +1,14 @@
-# Project skills (Claude Code)
+# Project skills
 
-| Skill | Source | Claude discovery |
-|-------|--------|------------------|
-| **llm-wiki** | [`llm-wiki/`](llm-wiki/) | `.claude/skills/llm-wiki/` → symlink |
+| Skill | Source | Claude Code | Codex | Cursor |
+|-------|--------|-------------|-------|--------|
+| **llm-wiki** | [`llm-wiki/`](llm-wiki/) | `.claude/skills/llm-wiki/` → symlink | `.agents/skills/llm-wiki/` → symlink | `.cursor/rules/llm-wiki.mdc` |
 
-Fresh clones already have `.claude/skills/llm-wiki` in the repo (relative symlink). Optional global link:
+Fresh clones include project-local entries for Claude Code, Codex, and Cursor.
+Setup refreshes project-local links only:
 
 ```bash
-./scripts/setup.sh   # also links ~/.claude/skills/llm-wiki → project .claude/skills/llm-wiki
+./scripts/setup.sh
 ```
 
 **One skill, two phases** (`/llm-wiki`):
@@ -16,5 +17,3 @@ Fresh clones already have `.claude/skills/llm-wiki` in the repo (relative symlin
 |-------|---------|------|
 | **1 — Ingest** | Flow pivot / session sweep | `wiki-agent/run.ts` |
 | **2 — Maintain** | `./scripts/wiki/wiki-maintain.sh` | `wiki-maintain-agent/run.ts` |
-
-Deprecated alias folder `llm-wiki-maintain/` redirects to `llm-wiki/SKILL.md`.

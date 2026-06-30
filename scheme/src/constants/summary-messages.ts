@@ -1,4 +1,5 @@
 import type { ObserverLocale } from './observer-locale';
+import { resolveObserverLocale } from './observer-locale';
 
 const SUMMARY_MESSAGES = {
   en: {
@@ -53,12 +54,6 @@ const SUMMARY_MESSAGES = {
 } as const;
 
 export type SummaryMessages = (typeof SUMMARY_MESSAGES)[ObserverLocale];
-
-export function resolveObserverLocale(raw?: string): ObserverLocale {
-  const value = (raw || process.env.FLOW_LOCALE || process.env.LANG || 'en').trim().toLowerCase();
-  if (value.startsWith('zh')) return 'zh-Hans';
-  return 'en';
-}
 
 export function getSummaryMessages(locale?: ObserverLocale): SummaryMessages {
   const resolved = locale ?? resolveObserverLocale();

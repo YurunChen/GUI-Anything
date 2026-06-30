@@ -30,20 +30,16 @@ export abstract class BasePlatformAdapter implements PlatformAdapter {
   }
 
   protected formatMessage(message: NotificationMessage): string {
-    const { title, content, timestamp, metadata } = message;
+    const { title, content, timestamp } = message;
     const time = new Date(timestamp).toLocaleString('zh-CN');
 
-    let text = `📌 ${title}\n\n${content}\n\n`;
-
-    if (metadata) {
-      if (metadata.phase) text += `📊 阶段: ${metadata.phase}\n`;
-      if (metadata.toolCount) text += `🔧 工具调用: ${metadata.toolCount}\n`;
-      if (metadata.sessionId) text += `🆔 Session: ${metadata.sessionId.slice(0, 8)}...\n`;
-    }
-
-    text += `\n⏰ ${time}`;
-
-    return text;
+    return [
+      title.trim(),
+      '',
+      content.trim(),
+      '',
+      time,
+    ].filter((line): line is string => line !== null).join('\n').trim();
   }
 
   protected getPriorityEmoji(priority: string): string {

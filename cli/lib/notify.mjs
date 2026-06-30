@@ -3,10 +3,57 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
 
-const DEFAULT_SERVICE_URL = 'http://127.0.0.1:8765';
+export const DEFAULT_WECHAT_SERVICE_HOST = '127.0.0.1';
+export const DEFAULT_WECHAT_SERVICE_PORT = '8765';
+export const DEFAULT_WECHAT_SERVICE_URL = `http://${DEFAULT_WECHAT_SERVICE_HOST}:${DEFAULT_WECHAT_SERVICE_PORT}`;
+
+function normalizeWechatServiceUrl(serviceUrl) {
+  return serviceUrl.replace(/\/+$/, '');
+}
+
+export function resolveWechatServiceUrl({ env = process.env, config = {} } = {}) {
+  const envUrl = env.FLOW_NOTIFY_WECHAT_SERVICE_URL?.trim();
+  if (envUrl) return normalizeWechatServiceUrl(envUrl);
+
+  const envHost = env.FLOW_NOTIFY_WECHAT_SERVICE_HOST?.trim();
+  const envPort = env.FLOW_NOTIFY_WECHAT_SERVICE_PORT?.trim();
+  if (envHost || envPort) {
+    return `http://${envHost || DEFAULT_WECHAT_SERVICE_HOST}:${envPort || DEFAULT_WECHAT_SERVICE_PORT}`;
+  }
+
+  const configUrl = config.FLOW_NOTIFY_WECHAT_SERVICE_URL?.trim();
+  if (configUrl) return normalizeWechatServiceUrl(configUrl);
+
+  const configHost = config.FLOW_NOTIFY_WECHAT_SERVICE_HOST?.trim();
+  const configPort = config.FLOW_NOTIFY_WECHAT_SERVICE_PORT?.trim();
+  if (configHost || configPort) {
+    return `http://${configHost || DEFAULT_WECHAT_SERVICE_HOST}:${configPort || DEFAULT_WECHAT_SERVICE_PORT}`;
+  }
+
+  return DEFAULT_WECHAT_SERVICE_URL;
+}
+
+export function resolveWechatServiceEndpoint(serviceUrl) {
+  try {
+    const parsed = new URL(serviceUrl);
+    return {
+      host: parsed.hostname || DEFAULT_WECHAT_SERVICE_HOST,
+      port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'),
+    };
+  } catch {
+    return {
+      host: DEFAULT_WECHAT_SERVICE_HOST,
+      port: DEFAULT_WECHAT_SERVICE_PORT,
+    };
+  }
+}
 
 export function notifyConfigPath(rootDir) {
   return path.join(rootDir, '.flow-runtime', 'notify.env');
+}
+
+export function wechatCredentialDir(rootDir) {
+  return path.join(rootDir, 'scheme', 'src', 'services', 'notification', 'weixin-service', 'data');
 }
 
 export function parseNotifyEnv(content) {
@@ -34,7 +81,7 @@ export function writeNotifyConfig(rootDir, values) {
     '# GUI-Anything local notification config. Do not commit.',
     `FLOW_NOTIFY_ENABLED=${quoteEnvValue(values.FLOW_NOTIFY_ENABLED ?? 'true')}`,
     `FLOW_NOTIFY_WECHAT_USER_ID=${quoteEnvValue(values.FLOW_NOTIFY_WECHAT_USER_ID ?? '')}`,
-    `FLOW_NOTIFY_WECHAT_SERVICE_URL=${quoteEnvValue(values.FLOW_NOTIFY_WECHAT_SERVICE_URL ?? DEFAULT_SERVICE_URL)}`,
+    `FLOW_NOTIFY_WECHAT_SERVICE_URL=${quoteEnvValue(resolveWechatServiceUrl({ config: values }))}`,
     '',
   ];
   fs.writeFileSync(file, lines.join('\n'), { mode: 0o600 });
@@ -115,6 +162,7 @@ export async function runNotifyCommand({ rootDir, args, stdin = process.stdin, s
   if (subcommand === 'setup') return setupNotify({ rootDir, stdin, stdout });
   if (subcommand === 'status') return statusNotify({ rootDir, stdout });
   if (subcommand === 'test') return testNotify({ rootDir, stdout });
+  if (subcommand === 'clean') return cleanNotify({ rootDir, stdout });
   stdout.write(`Unknown notify command: ${subcommand}\n\n${formatNotifyHelp()}`);
   return 2;
 }
@@ -127,23 +175,28 @@ function formatNotifyHelp() {
     '  ga notify setup    Start WeChat service, log in, save local config, send a test',
     '  ga notify status   Show WeChat notification readiness',
     '  ga notify test     Send a WeChat test message using saved config',
+    '  ga notify clean    Stop local service and clear saved notify state',
     '',
   ].join('\n');
 }
 
 async function setupNotify({ rootDir, stdin, stdout }) {
   const config = readNotifyConfig(rootDir);
-  const serviceUrl = process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || config.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || DEFAULT_SERVICE_URL;
+  const serviceUrl = resolveWechatServiceUrl({ config });
 
   stdout.write('Setting up WeChat notifications...\n');
   let status = await fetchWeChatStatus(serviceUrl);
   stdout.write(status.running ? 'Restarting WeChat service...\n' : 'Starting WeChat service...\n');
+  const endpoint = resolveWechatServiceEndpoint(serviceUrl);
   const startResult = spawnSync(path.join(rootDir, 'scripts', 'start-weixin-service.sh'), ['--background', '--restart', '--quiet'], {
     cwd: rootDir,
     stdio: 'inherit',
-    env: process.env,
+    env: {
+      ...process.env,
+      FLOW_NOTIFY_WECHAT_SERVICE_URL: serviceUrl,
+      FLOW_NOTIFY_WECHAT_SERVICE_HOST: process.env.FLOW_NOTIFY_WECHAT_SERVICE_HOST || endpoint.host,
+      FLOW_NOTIFY_WECHAT_SERVICE_PORT: process.env.FLOW_NOTIFY_WECHAT_SERVICE_PORT || endpoint.port,
+    },
   });
   if (startResult.status !== 0) return startResult.status ?? 1;
   await sleep(1200);
@@ -172,11 +225,10 @@ async function setupNotify({ rootDir, stdin, stdout }) {
 
   const envUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID || '';
   const configUserId = config.FLOW_NOTIFY_WECHAT_USER_ID || '';
+  const hasConfiguredReceiver = Boolean(envUserId.trim() || configUserId.trim());
   let userId = resolveNotifyReceiver({ envUserId, configUserId });
   if (!userId) {
-    userId = (status.user_id || '').trim();
-  }
-  if (!userId) {
+    stdout.write('Receiver needs pairing.\n');
     userId = await pairReceiverFromWeChat({ serviceUrl, stdin, stdout });
     if (!userId) return 1;
   }
@@ -192,8 +244,9 @@ async function setupNotify({ rootDir, stdin, stdout }) {
     return 0;
   }
 
-  if (envUserId.trim()) {
+  if (hasConfiguredReceiver) {
     stdout.write(`Test message failed: ${testResult.detail}\n`);
+    stdout.write('The saved WeChat login or receiver may be stale. Clear the saved notification config and login credentials, then rerun `ga notify setup`.\n');
     return 1;
   }
 
@@ -217,9 +270,7 @@ async function setupNotify({ rootDir, stdin, stdout }) {
 
 async function statusNotify({ rootDir, stdout }) {
   const config = readNotifyConfig(rootDir);
-  const serviceUrl = process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || config.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || DEFAULT_SERVICE_URL;
+  const serviceUrl = resolveWechatServiceUrl({ config });
   const userId = process.env.FLOW_NOTIFY_WECHAT_USER_ID || config.FLOW_NOTIFY_WECHAT_USER_ID || '';
   const status = await fetchWeChatStatus(serviceUrl);
 
@@ -237,9 +288,7 @@ async function statusNotify({ rootDir, stdout }) {
 
 async function testNotify({ rootDir, stdout }) {
   const config = readNotifyConfig(rootDir);
-  const serviceUrl = process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || config.FLOW_NOTIFY_WECHAT_SERVICE_URL
-    || DEFAULT_SERVICE_URL;
+  const serviceUrl = resolveWechatServiceUrl({ config });
   const userId = process.env.FLOW_NOTIFY_WECHAT_USER_ID || config.FLOW_NOTIFY_WECHAT_USER_ID || '';
   if (!userId) {
     stdout.write('WeChat receiver is not configured. Run `ga notify setup`.\n');
@@ -250,12 +299,128 @@ async function testNotify({ rootDir, stdout }) {
   return result.ok ? 0 : 1;
 }
 
+async function cleanNotify({ rootDir, stdout }) {
+  const config = readNotifyConfig(rootDir);
+  const serviceUrl = resolveWechatServiceUrl({ config });
+
+  stdout.write('Cleaning WeChat notification state...\n');
+  const stopResult = await stopWechatServiceIfNotify(serviceUrl);
+  if (stopResult.stopped > 0) {
+    stdout.write(`Stopped WeChat service: ${stopResult.stopped} process(es).\n`);
+  } else if (stopResult.remote) {
+    stdout.write('Remote WeChat service configured; skipped local process stop.\n');
+  } else if (stopResult.running) {
+    stdout.write('WeChat service is running, but no matching listener process was stopped.\n');
+  } else {
+    stdout.write('WeChat service is not running.\n');
+  }
+
+  const cleanResult = cleanNotifyFiles(rootDir);
+  stdout.write(cleanResult.removedConfig
+    ? `Removed notify config: ${cleanResult.configFile}\n`
+    : 'Notify config already clean.\n');
+  stdout.write(cleanResult.removedCredentialCount > 0
+    ? `Removed WeChat credential file(s): ${cleanResult.removedCredentialCount}\n`
+    : 'WeChat credentials already clean.\n');
+  stdout.write('Done. Run `ga notify setup` to configure notifications again.\n');
+  return 0;
+}
+
+export function cleanNotifyFiles(rootDir) {
+  const configFile = notifyConfigPath(rootDir);
+  const credentialDir = wechatCredentialDir(rootDir);
+  let removedConfig = false;
+  let removedCredentialCount = 0;
+
+  if (fs.existsSync(configFile)) {
+    fs.rmSync(configFile, { force: true });
+    removedConfig = true;
+  }
+
+  if (fs.existsSync(credentialDir)) {
+    for (const entry of fs.readdirSync(credentialDir, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+      fs.rmSync(path.join(credentialDir, entry.name), { force: true });
+      removedCredentialCount += 1;
+    }
+  }
+
+  return {
+    configFile,
+    credentialDir,
+    removedConfig,
+    removedCredentialCount,
+  };
+}
+
+async function stopWechatServiceIfNotify(serviceUrl) {
+  const endpoint = resolveWechatServiceEndpoint(serviceUrl);
+  if (!isLocalWechatServiceHost(endpoint.host)) {
+    return { running: true, stopped: 0, remote: true };
+  }
+
+  if (!await isWechatNotificationService(serviceUrl)) {
+    return { running: false, stopped: 0, remote: false };
+  }
+
+  const pids = listeningPidsForPort(endpoint.port);
+  let stopped = 0;
+  for (const pid of pids) {
+    try {
+      process.kill(Number(pid), 'SIGTERM');
+      stopped += 1;
+    } catch {
+      // Best effort: cleaning files is still useful, and setup can restart later.
+    }
+  }
+  return { running: true, stopped, remote: false };
+}
+
+export function isLocalWechatServiceHost(host) {
+  const normalized = String(host || '').trim().toLowerCase();
+  return normalized === 'localhost'
+    || normalized === '127.0.0.1'
+    || normalized === '0.0.0.0'
+    || normalized === '::1'
+    || normalized === '[::1]';
+}
+
+async function isWechatNotificationService(serviceUrl) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(`${serviceUrl.replace(/\/$/, '')}/`, {
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+    const payload = await response.json();
+    return payload?.service === 'weixin-notification';
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function listeningPidsForPort(port) {
+  if (!/^\d+$/.test(String(port))) return [];
+  const result = spawnSync('lsof', [`-tiTCP:${port}`, '-sTCP:LISTEN'], {
+    encoding: 'utf8',
+  });
+  if (result.error) return [];
+  return String(result.stdout || '')
+    .split(/\s+/)
+    .map((pid) => pid.trim())
+    .filter(Boolean);
+}
+
 async function pairReceiverFromWeChat({ serviceUrl, stdin, stdout }) {
   if (!stdin.isTTY) {
     stdout.write('Receiver is not configured. Run `ga notify setup` in an interactive terminal.\n');
     return '';
   }
-  await waitForEnter(stdin, stdout, 'Send any WeChat message to the bot, then press Enter.');
+  await waitForEnter(stdin, stdout, 'Press Enter, then send any WeChat message to the bot within 60 seconds.');
+  stdout.write('Waiting for the next WeChat message...\n');
   const result = await pairWeChatReceiver({ serviceUrl, timeoutSeconds: 60 });
   if (!result.ok) {
     stdout.write('No WeChat message received. Setup cancelled.\n');

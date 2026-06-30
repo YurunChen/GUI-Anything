@@ -76,7 +76,7 @@ curl -X POST http://127.0.0.1:8765/login
 ga notify setup
 ```
 
-向导会优先尝试扫码用户；如果 iLink 不允许直接推送，会提示你用接收账号给 bot 发一条微信消息，并自动保存该消息的 `from_user_id`。
+向导会提示你按 Enter 后，用接收账号在 60 秒内给 bot 发一条微信消息，并自动保存该消息的 `from_user_id`。如果本地登录态或接收人配置需要重来，先运行 `ga notify clean`。
 
 手动模式下，设置接收消息的微信用户ID：
 
@@ -94,7 +94,7 @@ export FLOW_NOTIFY_WECHAT_USER_ID=<your_wechat_id>
 ./scripts/flow-run.sh
 ```
 
-现在按 `s` 键就能将快照推送到微信了！
+现在聚焦右侧 Observer 后按 `s` 键，就能开启本轮微信提醒；随后继续在左侧执行 Claude 任务。从下一轮 exploration 开始，每轮完成并生成 summary 后都会发送一条简短 digest。
 
 ---
 
@@ -108,6 +108,10 @@ export FLOW_NOTIFY_WECHAT_USER_ID=<user_id>
 
 # 可选：Python服务地址（默认: http://127.0.0.1:8765）
 export FLOW_NOTIFY_WECHAT_SERVICE_URL=http://127.0.0.1:8765
+
+# 可选：本地服务绑定地址与端口
+export FLOW_NOTIFY_WECHAT_SERVICE_HOST=127.0.0.1
+export FLOW_NOTIFY_WECHAT_SERVICE_PORT=8765
 
 # 可选：自动触发规则
 export FLOW_NOTIFY_ON_ERROR=true

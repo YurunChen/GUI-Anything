@@ -6,7 +6,7 @@ function commandExists(command) {
   return result.status === 0;
 }
 
-export function runSessionsCommand({ rootDir }) {
+export function runSessionsCommand({ rootDir, workspaceDir = rootDir }) {
   if (!commandExists('bun')) {
     throw new Error('bun is required. Install from https://bun.sh');
   }
@@ -14,7 +14,7 @@ export function runSessionsCommand({ rootDir }) {
   const result = spawnSync('bun', ['run', 'src/main.ts', '--list-sessions'], {
     cwd: schemeDir,
     stdio: 'inherit',
-    env: { ...process.env, FLOW_ROOT_DIR: rootDir },
+    env: { ...process.env, FLOW_PROJECT_DIR: workspaceDir, FLOW_ROOT_DIR: workspaceDir },
   });
   if (typeof result.status === 'number') {
     return result.status;

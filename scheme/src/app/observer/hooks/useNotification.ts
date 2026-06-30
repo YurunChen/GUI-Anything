@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { NotificationService, FlowNotificationListener } from '../../../services/notification';
 import type { ActivityTree } from '../../../domain/types';
-import type { NotificationResult } from '../../../services/notification';
+import type { Exploration } from '../../../data/protocol/observer-protocol';
+import { SUMMARY_REASON_LIVE_PREVIEW } from '../../../data/protocol/summary-provenance';
 
 type NotifySummaryItem = {
   id: string;
+  explorationId?: string;
   text?: string;
   status?: string;
+  source?: string;
+  reason?: string;
+  flowchart?: { nodeTitle?: string };
   persistMeta?: { should_persist?: boolean } | null;
+};
+
+type CompletedExplorationNotification = {
+  exploration: Exploration;
+  summary?: NotifySummaryItem;
 };
 
 export function isKnowledgeNotifyEligible(item: NotifySummaryItem): boolean {
@@ -32,6 +42,30 @@ export function consumeNewKnowledgeNotifications(
   return notifications;
 }
 
+export function initialNotifiedExplorationIds(explorations: Exploration[]): Set<string> {
+  return new Set(explorations.map((exploration) => exploration.id));
+}
+
+export function consumeCompletedExplorationNotifications(
+  explorations: Exploration[],
+  notifiedIds: Set<string>,
+  summaryItems?: Record<string, NotifySummaryItem>,
+  pendingByExplorationId: Record<string, boolean> = {},
+): CompletedExplorationNotification[] {
+  const notifications: CompletedExplorationNotification[] = [];
+  for (const exploration of explorations) {
+    if (exploration.status !== 'complete') continue;
+    if (notifiedIds.has(exploration.id)) continue;
+    if (pendingByExplorationId[exploration.id]) continue;
+    const summary = findSummaryForExploration(summaryItems, exploration.id);
+    if (!summary || summary.status === 'pending') continue;
+    if (isLiveSummaryPreview(summary)) continue;
+    notifiedIds.add(exploration.id);
+    notifications.push({ exploration, summary });
+  }
+  return notifications;
+}
+
 /**
  * 通知服务 Hook
  * 负责初始化通知服务并监听关键事件
@@ -39,7 +73,9 @@ export function consumeNewKnowledgeNotifications(
 export function useNotification(
   sessionId?: string,
   tree?: ActivityTree,
-  summaryItems?: Record<string, NotifySummaryItem>
+  explorations: Exploration[] = [],
+  summaryItems?: Record<string, NotifySummaryItem>,
+  pendingByExplorationId: Record<string, boolean> = {},
 ) {
   const wechatUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID;
   const [notificationEnabled] = useState(() => {
@@ -52,9 +88,10 @@ export function useNotification(
     if (!wechatUserId) return 'WeChat notify not configured';
     return '';
   });
-  const notificationServiceRef = useRef<NotificationService | null>(null);
+  const [notifyArmed, setNotifyArmed] = useState(false);
   const listenerRef = useRef<FlowNotificationListener | null>(null);
   const notifiedKnowledgeIdsRef = useRef<Set<string>>(new Set());
+  const notifiedExplorationIdsRef = useRef<Set<string>>(new Set());
   const knowledgeInitializedRef = useRef(false);
 
   // 初始化通知服务
@@ -81,7 +118,6 @@ export function useNotification(
     };
 
     const service = new NotificationService(config);
-    notificationServiceRef.current = service;
 
     const listener = new FlowNotificationListener(
       service,
@@ -90,31 +126,40 @@ export function useNotification(
     );
     listenerRef.current = listener;
     notifiedKnowledgeIdsRef.current = new Set();
+    notifiedExplorationIdsRef.current = new Set();
     knowledgeInitializedRef.current = false;
-
-    // 发送启动测试消息（静默，不影响用户）
-    // service.testAll().then((results) => {
-    //   const successCount = Object.values(results).filter(Boolean).length;
-    //   if (successCount > 0) {
-    //     setLastNotifyStatus(`✓ ${successCount} platform(s) ready`);
-    //   }
-    // });
+    setNotifyArmed(false);
+    setLastNotifyStatus('');
 
     return () => {
-      notificationServiceRef.current = null;
       listenerRef.current = null;
     };
   }, [notificationEnabled, sessionId]);
 
   // 监听 tree 更新
   useEffect(() => {
-    if (!tree || !listenerRef.current) return;
+    if (!notifyArmed || !tree || !listenerRef.current) return;
     void listenerRef.current.onTreeUpdate(tree).catch(() => undefined);
-  }, [tree]);
+  }, [notifyArmed, tree]);
+
+  useEffect(() => {
+    if (!notifyArmed || !listenerRef.current) return;
+    for (const item of consumeCompletedExplorationNotifications(
+      explorations,
+      notifiedExplorationIdsRef.current,
+      summaryItems,
+      pendingByExplorationId,
+    )) {
+      void listenerRef.current.onExplorationComplete(
+        item.exploration,
+        item.summary,
+      ).catch(() => undefined);
+    }
+  }, [explorations, notifyArmed, summaryItems, pendingByExplorationId]);
 
   // 监听知识提取（基于新的可持久化 summary item）
   useEffect(() => {
-    if (!summaryItems || !listenerRef.current) return;
+    if (!notifyArmed || !summaryItems || !listenerRef.current) return;
 
     const items = Object.values(summaryItems);
     if (!knowledgeInitializedRef.current) {
@@ -129,27 +174,28 @@ export function useNotification(
         item.text || '检测到新的关键知识点'
       ).catch(() => undefined);
     }
-  }, [summaryItems]);
+  }, [notifyArmed, summaryItems]);
 
   /**
-   * 手动发送快照
+   * 手动开启本轮微信通知
    */
-  const sendManualSnapshot = useCallback(
-    (note?: string) => {
-      if (!tree || !listenerRef.current) {
-        setLastNotifyStatus('⚠ No active session');
+  const enableNotify = useCallback(
+    () => {
+      if (!listenerRef.current) {
+        setLastNotifyStatus('⚠ WeChat notify unavailable');
         return;
       }
 
-      listenerRef.current.sendManualSnapshot(tree, note).then((results) => {
-        setLastNotifyStatus(formatNotifyStatus(results));
-        setTimeout(() => setLastNotifyStatus(''), 3000);
-      }).catch((error) => {
-        setLastNotifyStatus(`⚠ ${error instanceof Error ? error.message : String(error)}`);
-        setTimeout(() => setLastNotifyStatus(''), 3000);
-      });
+      if (tree) {
+        listenerRef.current.prime(tree);
+      }
+      notifiedExplorationIdsRef.current = initialNotifiedExplorationIds(explorations);
+      knowledgeInitializedRef.current = false;
+      notifiedKnowledgeIdsRef.current = new Set();
+      setNotifyArmed(true);
+      setLastNotifyStatus('✓ WeChat notify on');
     },
-    [tree]
+    [explorations, tree]
   );
 
   /**
@@ -158,22 +204,32 @@ export function useNotification(
   const sendCompletion = useCallback(
     (summary?: string) => {
       if (!tree || !listenerRef.current) return;
-      listenerRef.current.onCompletion(tree, summary);
+      if (!notifyArmed) return;
+      void listenerRef.current.onCompletion(tree, summary);
     },
-    [tree]
+    [notifyArmed, tree]
   );
 
   return {
     notificationEnabled,
-    sendManualSnapshot,
+    enableNotify,
     sendCompletion,
     lastNotifyStatus,
   };
 }
 
-function formatNotifyStatus(results: NotificationResult[]): string {
-  if (results.length === 0) return '⚠ WeChat notification skipped';
-  const failed = results.find((result) => !result.success);
-  if (!failed) return '✓ WeChat snapshot sent';
-  return failed.error ? `⚠ WeChat send failed: ${failed.error}` : '⚠ WeChat send failed';
+function findSummaryForExploration(
+  items: Record<string, NotifySummaryItem> | undefined,
+  explorationId: string,
+): NotifySummaryItem | undefined {
+  if (!items) return undefined;
+  return Object.values(items).find((item) => (
+    item.explorationId === explorationId
+    || item.id === explorationId
+    || item.id.endsWith(`:${explorationId}`)
+  ));
+}
+
+function isLiveSummaryPreview(item: NotifySummaryItem): boolean {
+  return item.source === 'excerpt' && item.reason === SUMMARY_REASON_LIVE_PREVIEW;
 }

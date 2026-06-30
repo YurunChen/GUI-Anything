@@ -3,7 +3,9 @@
  */
 
 export type { ObserverLocale } from '../../../constants/observer-locale';
+export { resolveObserverLocale } from '../../../constants/observer-locale';
 import type { ObserverLocale } from '../../../constants/observer-locale';
+import { resolveObserverLocale } from '../../../constants/observer-locale';
 
 const MESSAGES = {
   en: {
@@ -52,7 +54,7 @@ const MESSAGES = {
     helpKeyNotesClose: '  i / Esc         close notes sidebar',
     helpKeyCalmEnable: '  c               enable calm compact layout',
     helpKeyCalmDisable: '  c               disable calm compact layout',
-    helpKeyNotify: '  s               push snapshot',
+    helpKeyNotify: '  s               enable WeChat notify',
     helpKeyQuitDefault: '  q, Ctrl+Q       quit observer',
     helpKeyQuitNotes: '  Esc             close notes · q/Ctrl+Q quit',
     helpKeyThemeBracket: '  [  ]            previous / next theme color',
@@ -154,8 +156,8 @@ const MESSAGES = {
     cmdHelpOpenShort: '? / help',
     cmdTheme: '[ ] theme',
     cmdThemeShort: '[ ] theme',
-    cmdNotify: 's push snapshot',
-    cmdNotifyShort: 's notify',
+    cmdNotify: 's enable notify',
+    cmdNotifyShort: 's notify on',
     cmdQuit: 'Esc close layer · q quit',
     cmdQuitShort: 'Esc close · q quit',
   },
@@ -203,7 +205,7 @@ const MESSAGES = {
     helpKeyNotesClose: '  i / Esc         关闭笔记侧栏',
     helpKeyCalmEnable: '  c               开启简洁一行布局',
     helpKeyCalmDisable: '  c               关闭简洁布局',
-    helpKeyNotify: '  s               推送快照',
+    helpKeyNotify: '  s               开启微信通知',
     helpKeyQuitDefault: '  q、Ctrl+Q       退出观察器',
     helpKeyQuitNotes: '  Esc             关闭笔记 · q/Ctrl+Q 退出',
     helpKeyThemeBracket: '  [  ]            上/下一个主题色彩',
@@ -303,20 +305,14 @@ const MESSAGES = {
     cmdHelpOpenShort: '? / 帮助',
     cmdTheme: '[ ] 换主题',
     cmdThemeShort: '[ ] 主题',
-    cmdNotify: 's 推送快照',
-    cmdNotifyShort: 's 通知',
+    cmdNotify: 's 开启通知',
+    cmdNotifyShort: 's 通知开',
     cmdQuit: 'Esc 关闭浮层 · q 退出',
     cmdQuitShort: 'Esc 关闭 · q 退出',
   },
 } as const;
 
 export type ObserverMessages = (typeof MESSAGES)[ObserverLocale];
-
-export function resolveObserverLocale(raw?: string): ObserverLocale {
-  const value = (raw || process.env.FLOW_LOCALE || process.env.LANG || 'en').trim().toLowerCase();
-  if (value.startsWith('zh')) return 'zh-Hans';
-  return 'en';
-}
 
 export function getObserverMessages(locale?: ObserverLocale): ObserverMessages {
   const resolved = locale ?? resolveObserverLocale();

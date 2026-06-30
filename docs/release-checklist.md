@@ -1,6 +1,7 @@
-# Release Checklist
+# Local Release Checklist
 
-This checklist keeps `gui-anything` release quality consistent.
+This checklist keeps clone-based GUI-Anything releases consistent. The project
+is installed from a local Git clone; it is not published to the npm registry.
 
 ## 1) Validate Locally
 
@@ -10,26 +11,26 @@ This checklist keeps `gui-anything` release quality consistent.
 - Run `ga doctor` in a clean shell
 - Run `ga flow --help` and `ga flow --continue --help` path checks
 
-## 2) Dry-Run Package
+## 2) Smoke Test Clone Install
 
-- Run `npm run release:dry-run`
-- Confirm `cli/`, `scripts/`, `scheme/`, and `README.md` are included
-- Confirm `bin.ga` points to `cli/ga.mjs`
+- From a fresh clone, run `./scripts/setup.sh`
+- Confirm `npm link` creates a working `ga` command
+- Confirm project-local `.claude/skills/llm-wiki` and `.agents/skills/llm-wiki` resolve
 
 ## 3) Smoke Test Install Paths
 
-- One-off: `npx gui-anything@latest doctor`
-- Global: `npm i -g gui-anything && ga doctor`
+- `ga doctor`
+- `ga flow --help`
+- `node ./cli/ga.mjs doctor`
 - Ensure public docs only mention `ga flow` and `ga doctor`
 
-## 4) Publish
+## 4) Tag GitHub Release
 
-- Bump version in root `package.json`
-- Run `npm run release:publish`
-- Tag release and update changelog
+- Bump version in root `package.json` if needed
+- Tag release and update changelog/release notes
 
 ## 5) Post-Release Verification
 
-- Fresh machine (or clean container) install check
+- Fresh clone install check
 - `ga doctor` passes with expected dependencies
 - `ga flow` starts and launches the two-pane workflow successfully

@@ -6,6 +6,7 @@
 export type NotificationType =
   | 'error'           // 错误/异常告警
   | 'completion'      // 实验完成通知
+  | 'exploration'     // 单轮 exploration digest
   | 'knowledge'       // 关键知识提取
   | 'progress'        // 阶段性进度报告
   | 'manual';         // 手动快照

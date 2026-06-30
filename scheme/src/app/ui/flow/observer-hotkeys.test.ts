@@ -29,7 +29,6 @@ describe('buildObserverHotkeyHints', () => {
     expect(ids).not.toContain('latest');
     expect(ids).toContain('mode');
     expect(ids).toContain('notes');
-    expect(ids).not.toContain('buddy-gallery');
     expect(ids).toContain('calm');
     expect(ids).toContain('help');
     expect(ids).toContain('theme');
@@ -73,7 +72,6 @@ describe('formatFooterHotkeyLines', () => {
     expect(line1).toContain('g → Focus');
     expect(line1).not.toContain('Timeline');
     expect(line1).toContain('? / F1 / Ctrl+/ / Ctrl-K help');
-    expect(line1).not.toContain('b buddy gallery');
     expect(line1).not.toContain('?:help');
     expect(line2).toContain('theme');
   });

@@ -10,6 +10,7 @@ import {
   typeCodeFromAxes,
   type PersonaSignals,
 } from './persona-score';
+import { pickLocalizedText } from '../../constants/observer-locale';
 
 const NOON = new Date(2026, 0, 1, 12, 0, 0).getTime(); // fixed daytime, avoids night classification
 
@@ -182,9 +183,9 @@ describe('ruleBasedPersona', () => {
     expect(p.typeCode).toHaveLength(6);
     expect(p.scores).toHaveLength(6);
     expect(p.archetypeCode && p.archetypeCode.length).toBeGreaterThan(0);
-    expect(p.cnName && p.cnName.length).toBeGreaterThan(0);
-    expect(p.dna).toContain('·');
-    expect(p.reading.length).toBeGreaterThan(0);
+    expect(pickLocalizedText(p.name, 'zh-Hans').length).toBeGreaterThan(0);
+    expect(pickLocalizedText(p.dna, 'zh-Hans')).toContain('·');
+    expect(pickLocalizedText(p.reading, 'en').length).toBeGreaterThan(0);
     expect(p.signatureNodeId).toBe('s1:a'); // highest toolCount
   });
 });

@@ -27,7 +27,7 @@ export type ObserverKeyAction =
   | { type: 'close_notes' }
   | { type: 'toggle_calm' }
   | { type: 'toggle_mode' }
-  | { type: 'send_snapshot' }
+  | { type: 'enable_notify' }
   | { type: 'file_wiki_audit' }
   | { type: 'open_html' }
   | { type: 'regenerate_html' }
@@ -105,8 +105,9 @@ export function dispatchObserverKey(
     return { type: 'toggle_mode' };
   }
 
-  if (key.name === 's' && state.notifyAvailable) {
-    return { type: 'send_snapshot' };
+  const isNotifyKey = key.name === 's' || key.name === 'S';
+  if (isNotifyKey && !key.ctrl && !key.meta && state.notifyAvailable) {
+    return { type: 'enable_notify' };
   }
 
   if (key.name === 'k' && !key.ctrl && !key.meta && state.wikiAuditAvailable) {

@@ -11,6 +11,20 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVICE_DIR="$PROJECT_ROOT/scheme/src/services/notification/weixin-service"
 VENV_DIR="$SERVICE_DIR/.venv"
 PYTHON_BIN="${PYTHON:-python3}"
+SERVICE_HOST="${FLOW_NOTIFY_WECHAT_SERVICE_HOST:-127.0.0.1}"
+SERVICE_PORT="${FLOW_NOTIFY_WECHAT_SERVICE_PORT:-8765}"
+SERVICE_URL="${FLOW_NOTIFY_WECHAT_SERVICE_URL:-http://${SERVICE_HOST}:${SERVICE_PORT}}"
+
+if [[ "$SERVICE_URL" =~ ^https?://(\[[^]]+\]|[^/:]+)(:([0-9]+))?(/.*)?$ ]]; then
+    if [[ -z "${FLOW_NOTIFY_WECHAT_SERVICE_HOST:-}" ]]; then
+        SERVICE_HOST="${BASH_REMATCH[1]}"
+        SERVICE_HOST="${SERVICE_HOST#[}"
+        SERVICE_HOST="${SERVICE_HOST%]}"
+    fi
+    if [[ -z "${FLOW_NOTIFY_WECHAT_SERVICE_PORT:-}" && -n "${BASH_REMATCH[3]:-}" ]]; then
+        SERVICE_PORT="${BASH_REMATCH[3]}"
+    fi
+fi
 
 BACKGROUND=0
 RESTART=0
@@ -90,9 +104,9 @@ say "✓ Dependencies OK"
 say ""
 
 # Check if already running
-LISTEN_PIDS="$(lsof -Pi :8765 -sTCP:LISTEN -t 2>/dev/null || true)"
+LISTEN_PIDS="$(lsof -Pi :"$SERVICE_PORT" -sTCP:LISTEN -t 2>/dev/null || true)"
 if [[ -n "$LISTEN_PIDS" ]]; then
-    say "⚠ Service already running on port 8765"
+    say "⚠ Service already running on port $SERVICE_PORT"
     say ""
     if [[ "$RESTART" == "1" ]]; then
         say "Stopping existing service..."
@@ -114,7 +128,7 @@ fi
 
 # Start service
 say "Starting Weixin Notification Service..."
-say "  URL: http://127.0.0.1:8765"
+say "  URL: $SERVICE_URL"
 say "  Logs: $SERVICE_DIR/weixin-service.log"
 say ""
 say "=========================================="
@@ -122,12 +136,12 @@ say ""
 
 # Run in background or foreground
 if [[ "$BACKGROUND" == "1" ]]; then
-    nohup "$VENV_DIR/bin/python" server.py > weixin-service.log 2>&1 &
+    FLOW_NOTIFY_WECHAT_SERVICE_HOST="$SERVICE_HOST" FLOW_NOTIFY_WECHAT_SERVICE_PORT="$SERVICE_PORT" nohup "$VENV_DIR/bin/python" server.py > weixin-service.log 2>&1 &
     PID=$!
     say "✓ Service started in background"
     say ""
 else
     echo "Press Ctrl+C to stop the service"
     echo ""
-    "$VENV_DIR/bin/python" server.py
+    FLOW_NOTIFY_WECHAT_SERVICE_HOST="$SERVICE_HOST" FLOW_NOTIFY_WECHAT_SERVICE_PORT="$SERVICE_PORT" "$VENV_DIR/bin/python" server.py
 fi

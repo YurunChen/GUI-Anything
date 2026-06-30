@@ -6,7 +6,9 @@
 
 set -e
 
-SERVICE_URL="${FLOW_NOTIFY_WECHAT_SERVICE_URL:-http://127.0.0.1:8765}"
+SERVICE_HOST="${FLOW_NOTIFY_WECHAT_SERVICE_HOST:-127.0.0.1}"
+SERVICE_PORT="${FLOW_NOTIFY_WECHAT_SERVICE_PORT:-8765}"
+SERVICE_URL="${FLOW_NOTIFY_WECHAT_SERVICE_URL:-http://${SERVICE_HOST}:${SERVICE_PORT}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVICE_LOG="$PROJECT_ROOT/scheme/src/services/notification/weixin-service/weixin-service.log"

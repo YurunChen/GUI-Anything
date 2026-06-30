@@ -18,16 +18,12 @@ import * as path from 'node:path';
 import { buildEvolutionModel } from './export-evolution';
 import { generateEvolutionHtml } from './template';
 import { watchSessionsDir } from '../../data/wiki/wiki-watch';
-import { resolveGitRoot } from '../../data/session/claude-project';
 import { personaAvatarFile } from './persona-avatar';
 import type { EvolutionExport } from '../../data/protocol/evolution-types';
+import { resolveObserverLocale } from '../../constants/observer-locale';
+import { evolutionServerPort, resolveEvolutionServerRoot } from './port';
 
-/** Deterministic per-project port (djb2 hash → 40000–49999). Doubles as the singleton lock. */
-export function evolutionServerPort(root: string): number {
-  let h = 5381;
-  for (let i = 0; i < root.length; i++) h = ((h << 5) + h + root.charCodeAt(i)) >>> 0;
-  return 40000 + (h % 10000);
-}
+export { evolutionServerPort } from './port';
 
 export interface StartEvolutionServerOptions {
   rootDir?: string;
@@ -36,25 +32,12 @@ export interface StartEvolutionServerOptions {
   idleMs?: number;
 }
 
-/** Resolve the project root ONCE here, so every downstream read uses the same wiki dir. */
-function resolveRoot(rootDir?: string): string {
-  const base = rootDir || process.env.FLOW_ROOT_DIR || process.env.FLOW_PROJECT_DIR || process.cwd();
-  try {
-    return resolveGitRoot(fs.realpathSync(base));
-  } catch {
-    try {
-      return resolveGitRoot(base);
-    } catch {
-      return base;
-    }
-  }
-}
-
 /** Minimal valid model for an empty project, so the live client still connects and
  *  auto-upgrades in place once the first milestone lands. */
 function emptyModel(root: string): EvolutionExport {
   return {
     version: '1.0',
+    locale: resolveObserverLocale(),
     generatedAt: Date.now(),
     aiUsed: false,
     project: {
@@ -71,7 +54,7 @@ function emptyModel(root: string): EvolutionExport {
 }
 
 export async function startEvolutionServer(options: StartEvolutionServerOptions = {}): Promise<void> {
-  const root = resolveRoot(options.rootDir);
+  const root = resolveEvolutionServerRoot(options.rootDir);
   const wikiRoot = path.join(root, 'wiki');
   const port = options.port || evolutionServerPort(root);
   const idleMs = options.idleMs ?? Number(process.env.EVO_SERVER_IDLE_MS || 30 * 60 * 1000);

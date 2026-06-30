@@ -9,10 +9,37 @@ import { escapeHtml, escapeJsonForScript } from '../shared/html-utils';
 import { themesToEmbeddableJson } from '../shared/theme-to-css';
 import { themes } from '../../app/ui/themes/index';
 import type { EvolutionExport } from '../../data/protocol/evolution-types';
+import { observerHtmlLang, resolveObserverLocale } from '../../constants/observer-locale';
 
 const DEFAULT_THEME = 'transparent';
 
 export function generateEvolutionHtml(data: EvolutionExport): string {
+  const locale = resolveObserverLocale(data.locale);
+  const zh = locale === 'zh-Hans';
+  const htmlLang = observerHtmlLang(locale);
+  const text = zh
+    ? {
+      title: '项目功能演进史',
+      crumbRoot: '项目演进',
+      crumbCurrent: '项目演进总览',
+      themeTitle: '切换主题 ([ / ])',
+      milestones: '个里程碑',
+      sessions: '个 session',
+      aiMainline: 'AI 合成主线',
+      ruleMainline: '规则合成主线',
+      keys: '<kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题',
+    }
+    : {
+      title: 'Project Evolution',
+      crumbRoot: 'Project evolution',
+      crumbCurrent: 'Overview',
+      themeTitle: 'Change theme ([ / ])',
+      milestones: 'milestones',
+      sessions: 'sessions',
+      aiMainline: 'AI synthesized mainline',
+      ruleMainline: 'rule-based mainline',
+      keys: '<kbd>j</kbd>/<kbd>k</kbd> change node · <kbd>[</kbd>/<kbd>]</kbd> change theme',
+    };
   const css = getEvolutionStyles();
   const js = getEvolutionClientScript();
   const jsonData = JSON.stringify(data);
@@ -26,11 +53,11 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
     .join('');
 
   return `<!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="${htmlLang}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>项目功能演进史</title>
+  <title>${escapeHtml(text.title)}</title>
   <style>${css}</style>
 </head>
 <body>
@@ -43,12 +70,12 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
   <div class="evo-app" id="app">
     <div class="evo-topbar">
       <nav class="evo-crumb">
-        <span class="evo-crumb__root">项目演进</span>
+        <span class="evo-crumb__root">${escapeHtml(text.crumbRoot)}</span>
         <span class="evo-crumb__sep">▸</span>
-        <span class="evo-crumb__cur">项目演进总览</span>
+        <span class="evo-crumb__cur">${escapeHtml(text.crumbCurrent)}</span>
       </nav>
       <div class="evo-theme">
-        <select id="theme-select" title="切换主题 ([ / ])">${options}</select>
+        <select id="theme-select" title="${escapeHtml(text.themeTitle)}">${options}</select>
       </div>
     </div>
 
@@ -64,13 +91,13 @@ export function generateEvolutionHtml(data: EvolutionExport): string {
 
     <div class="evo-footer">
       <div class="evo-footer__line">
-        GUI-Anything · 项目功能演进史 v${escapeHtml(data.version)} ·
-        ${nodeCount} 个里程碑 / ${sessionCount} 个 session ·
-        ${data.aiUsed ? 'AI 合成主线' : '规则合成主线'}
+        GUI-Anything · ${escapeHtml(text.title)} v${escapeHtml(data.version)} ·
+        ${nodeCount} ${escapeHtml(text.milestones)} / ${sessionCount} ${escapeHtml(text.sessions)} ·
+        ${escapeHtml(data.aiUsed ? text.aiMainline : text.ruleMainline)}
       </div>
       <div class="evo-footer__prov" id="evo-prov"></div>
       <div class="evo-footer__keys">
-        <kbd>j</kbd>/<kbd>k</kbd> 切节点 · <kbd>[</kbd>/<kbd>]</kbd> 换主题
+        ${text.keys}
       </div>
     </div>
   </div>

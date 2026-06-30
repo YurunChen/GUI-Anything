@@ -13,10 +13,14 @@ reference/
 .env.*
 !.env.example
 .claude/settings.local.json
+.cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/llm-wiki.mdc
 
 # Logs
-logs/*
-!logs/.gitkeep
+logs/
+scheme/logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -30,8 +34,13 @@ build/
 .turbo/
 .next/
 .cache/
+.vite/
+.parcel-cache/
 coverage/
+playwright-report/
+test-results/
 *.tsbuildinfo
+bun-install.cache
 
 # Python
 __pycache__/
@@ -46,10 +55,17 @@ temp/
 *.tmp
 *.swp
 
+# Large local source images; the docs site uses tracked thumbnails instead.
+assets/Personality/*.png
+
 # Claude Code local cache
 .claude/codespace/
 .claude/projects/
-.claude/skills/llm-wiki
+.claude/skills/*
+!.claude/skills/llm-wiki
+.agents/skills/*
+!.agents/skills/llm-wiki
+/scheme/.agents/
 .flow-runtime/
 
 # Local wiki knowledge data (runtime-generated; contains local paths & session transcripts)

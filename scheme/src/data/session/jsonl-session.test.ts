@@ -133,6 +133,9 @@ describe('extractExplorationsFromSession', () => {
 
   it('uses common bash command targets as workspace activity paths', () => {
     const filePath = path.join(tmpDir, 'session.jsonl');
+    const workspaceRoot = path.join(tmpDir, 'GUI-Anything');
+    const schemeSrcPath = path.join(workspaceRoot, 'scheme', 'src');
+    const docsPath = path.join(workspaceRoot, 'docs');
     const lines = [
       {
         type: 'user',
@@ -152,7 +155,7 @@ describe('extractExplorationsFromSession', () => {
               id: 'toolu_ls',
               name: 'Bash',
               input: {
-                command: 'ls /Users/yurunchen/project/Method/GUI-Anything/scheme/src',
+                command: `ls ${schemeSrcPath}`,
                 description: 'List scheme source directory',
               },
             },
@@ -161,7 +164,7 @@ describe('extractExplorationsFromSession', () => {
               id: 'toolu_find',
               name: 'Bash',
               input: {
-                command: 'find /Users/yurunchen/project/Method/GUI-Anything/docs -maxdepth 2 -type f',
+                command: `find ${docsPath} -maxdepth 2 -type f`,
                 description: 'Show docs tree',
               },
             },
@@ -182,8 +185,8 @@ describe('extractExplorationsFromSession', () => {
 
     const nodes = extractExplorationsFromSession(filePath)[0].nodes;
 
-    expect(nodes[0].fileActivity?.path).toBe('/Users/yurunchen/project/Method/GUI-Anything/scheme/src');
-    expect(nodes[1].fileActivity?.path).toBe('/Users/yurunchen/project/Method/GUI-Anything/docs');
+    expect(nodes[0].fileActivity?.path).toBe(schemeSrcPath);
+    expect(nodes[1].fileActivity?.path).toBe(docsPath);
     expect(nodes[2].fileActivity?.path).toBe('scheme/src/app');
   });
 });

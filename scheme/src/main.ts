@@ -63,6 +63,35 @@ async function listSessions(): Promise<void> {
 
 async function main() {
   const args = Bun.argv.slice(2);
+  const printUsage = () => {
+    console.log('Usage:');
+    console.log('  bun run src/main.ts "<prompt>"         # Direct mode (Claude runs once)');
+    console.log('  bun run src/main.ts --flow "<prompt>"  # Flow mode (persistent + timeline view)');
+    console.log('  bun run src/main.ts --live             # Live observer (dual-pane right pane; same as --observer)');
+    console.log('  bun run src/main.ts --observer         # Alias for --live');
+    console.log('  bun run src/main.ts --web              # Web API mode');
+    console.log('');
+    console.log('  # Project Evolution HTML:');
+    console.log('  bun run src/main.ts --export-html -o evolution.html               # Project overview, default cross-session scope');
+    console.log('  bun run src/main.ts --export-html --scope session --session-id <id> -o evo.html  # Single-session drilldown');
+    console.log('  bun run src/main.ts --export-html --no-ai --theme catppuccin       # Skip AI and synthesize with rules');
+    console.log('');
+    console.log('  # Web Mirror (real-time browser viewer):');
+    console.log('  bun run src/main.ts --web-mirror');
+    console.log('  bun run src/main.ts --web-mirror --port 8080');
+  };
+  if (args.includes('--help') || args.includes('-h')) {
+    printUsage();
+    return;
+  }
+
+  if (args.includes('--evolution-port')) {
+    const { evolutionServerPort, resolveEvolutionServerRoot } = await import('./export/evolution/port');
+    const root = resolveEvolutionServerRoot();
+    console.log(evolutionServerPort(root));
+    return;
+  }
+
   const isWebMode = args.includes('--web');
   const isObserverMode = args.includes('--observer');
   const isFlowMode = args.includes('--flow');
@@ -170,21 +199,7 @@ async function main() {
     const { renderTUI } = await import('./app/ui/index');
     await renderTUI(prompt, false);
   } else {
-    console.log('Usage:');
-    console.log('  bun run src/main.ts "<prompt>"         # Direct mode (Claude runs once)');
-    console.log('  bun run src/main.ts --flow "<prompt>"  # Flow mode (persistent + timeline view)');
-    console.log('  bun run src/main.ts --live             # Live observer (dual-pane right pane; same as --observer)');
-    console.log('  bun run src/main.ts --observer         # Alias for --live');
-    console.log('  bun run src/main.ts --web              # Web API mode');
-    console.log('');
-    console.log('  # Project Evolution HTML (intent 演进史):');
-    console.log('  bun run src/main.ts --export-html -o evolution.html               # 项目总览（默认，跨 session）');
-    console.log('  bun run src/main.ts --export-html --scope session --session-id <id> -o evo.html  # 单 session 下钻');
-    console.log('  bun run src/main.ts --export-html --no-ai --theme catppuccin       # 跳过 AI，规则合成主线');
-    console.log('');
-    console.log('  # Web Mirror (real-time browser viewer):');
-    console.log('  bun run src/main.ts --web-mirror');
-    console.log('  bun run src/main.ts --web-mirror --port 8080');
+    printUsage();
     process.exit(1);
   }
 }

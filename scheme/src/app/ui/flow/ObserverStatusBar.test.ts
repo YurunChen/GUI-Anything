@@ -23,7 +23,7 @@ describe('formatSessionShort', () => {
 });
 
 describe('resolveIntentTitleBudget', () => {
-  it('reserves only the intent badge chrome after removing the runtime buddy slot', () => {
+  it('reserves only the intent badge chrome', () => {
     expect(resolveIntentTitleBudget({
       contentWidth: 96,
       badgeLength: 'Design'.length,

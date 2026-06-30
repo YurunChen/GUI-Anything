@@ -4,6 +4,7 @@
  */
 
 export type { EvolutionExport } from '../../data/protocol/evolution-types';
+import type { ObserverLocale } from '../../constants/observer-locale';
 
 export interface ExportEvolutionOptions {
   outputPath?: string;
@@ -16,4 +17,6 @@ export interface ExportEvolutionOptions {
   workspaceRoot?: string;
   /** Explicit wiki root (server resolves once and passes down); else resolved from env/cwd. */
   wikiRoot?: string;
+  /** Display locale; defaults to FLOW_LOCALE/LANG via the shared resolver. */
+  locale?: ObserverLocale;
 }

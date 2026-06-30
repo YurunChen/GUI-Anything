@@ -1,58 +1,62 @@
 # Contributing to GUI-Anything
 
-感谢考虑贡献！本文说明如何**搭建环境、构建验证、提交 PR**。架构细节见 [docs/development.md](docs/development.md)，Agent 红线见 [AGENTS.md](AGENTS.md)。
+Thanks for considering a contribution. This guide covers local setup,
+verification, and pull request expectations. Architecture details live in
+[docs/development.md](docs/development.md), and coding-agent guardrails live in
+[AGENTS.md](AGENTS.md).
 
 <p align="right">
-  <a href="README.md">English README</a> · <a href="README_CN.md">简体中文 README</a>
+  <a href="README.md">English README</a> · <a href="README_CN.md">Simplified Chinese README</a>
 </p>
 
 ---
 
-## 你需要什么
+## Requirements
 
-| 依赖 | 用途 | 安装 |
-|------|------|------|
-| [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | 左栏 Agent（手测 `ga flow`） | 官方文档 |
-| [Bun](https://bun.sh) | 运行 / 测试 `scheme/` | `curl -fsSL https://bun.sh/install \| bash` |
-| [Zellij](https://zellij.dev) | 双栏 launcher | `brew install zellij`（macOS） |
-| Node.js ≥ 20 | `ga` CLI 与 npm 包测试 | 官方 LTS |
-| Git | 版本管理 | 系统包管理器 |
+| Dependency | Purpose | Install |
+| --- | --- | --- |
+| [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) | Left-pane agent for manual `ga flow` checks | Official docs |
+| [Bun](https://bun.sh) | Runtime and test runner for `scheme/` | `curl -fsSL https://bun.sh/install \| bash` |
+| [Zellij](https://zellij.dev) | Dual-pane launcher | `brew install zellij` on macOS |
+| Node.js >= 20 | `ga` CLI and local `npm link` | Official LTS |
+| Git | Version control | System package manager |
 
-可选：已登录 Claude Code、可访问 `~/.claude/projects/.../*.jsonl` 的本地 session（用于 live 手测）。
+Optional: a logged-in Claude Code setup with local session JSONL files under
+`~/.claude/projects/.../*.jsonl` for live manual testing.
 
 ---
 
-## 首次构建（5 分钟）
+## First Setup
 
 ```bash
 git clone https://github.com/YurunChen/GUI-Anything.git
 cd GUI-Anything
 
-./scripts/setup.sh          # Bun 依赖、Zellij 检查、llm-wiki skill symlink
-cd scheme && bun install    # setup 已跑过可跳过
+./scripts/setup.sh          # Bun deps, Zellij check, llm-wiki skill symlink
+cd scheme && bun install    # can be skipped if setup already completed it
 
-# 验证
+# Verify
 cd scheme && bun test && bunx tsc --noEmit
-cd .. && ga doctor          # 需先把 repo 加入 PATH，或 npm link / 全局安装
+cd .. && ga doctor          # requires npm link, PATH setup, or direct node usage
 ```
 
-### 让 `ga` 指向本地代码
+### Point `ga` at your checkout
 
-开发时任选其一：
+Use either option during development:
 
 ```bash
-# 方式 A：npm link（推荐）
+# Option A: npm link, recommended for local development
 npm link
 ga doctor
 
-# 方式 B：直接用 node 跑 CLI
+# Option B: run the CLI directly
 node ./cli/ga.mjs doctor
 node ./cli/ga.mjs flow
 ```
 
-### 仅调试右栏 Observer
+### Run only the right-pane Observer
 
-不启动 Zellij 双栏时，可单独跑 observer：
+When you do not need the full Zellij layout, run the Observer directly:
 
 ```bash
 cd scheme
@@ -61,208 +65,230 @@ FLOW_SESSION_ID=<claude-session-uuid> \
 bun run start:live
 ```
 
-`FLOW_SESSION_ID` 来自 `~/.claude/projects/` 下对应 JSONL 文件名（UUID 部分）。
+`FLOW_SESSION_ID` comes from the matching JSONL filename under
+`~/.claude/projects/`.
 
 ---
 
-## 日常开发循环
+## Daily Development Loop
 
-```
-1. 从 main 拉最新代码，开 feature 分支
-2. 读需求 → 确定改动层（data / services / hooks / ui）
-3. 改 scheme/src/（必要时 scripts/、skills/、cli/）
-4. 跑验证命令（见下节）
-5. 按需更新 docs/ · README · AGENTS.md
-6. 开 PR，填写行为变化与测试说明
-```
+1. Pull the latest `main` and create a feature branch.
+2. Read the request and identify the changed layer: `data`, `services`, hooks,
+   or UI.
+3. Edit `scheme/src/`, and only touch `scripts/`, `skills/`, or `cli/` when the
+   request requires it.
+4. Run the relevant verification commands.
+5. Update `docs/`, `README.md`, `README_CN.md`, or `AGENTS.md` when user-visible
+   behavior changes.
+6. Open a pull request with a clear change summary and test plan.
 
-### 改动落在哪一层？
+### Where should a change live?
 
-| 你要做… | 先改 / 主要看… |
-|---------|----------------|
-| 新持久化字段、文件 IO | `scheme/src/data/` |
-| 摘要、wiki、session 策略 | `scheme/src/services/` |
-| React 编排、轮询 | `scheme/src/app/observer/hooks/` |
-| 展示、快捷键、主题 | `scheme/src/app/ui/` |
-| 跨层数据结构 | `scheme/src/data/protocol/` **先改类型** |
-| 启动参数、env 注入 | `scripts/flow-run.sh` |
-| 对外 CLI | `cli/ga.mjs` |
+| Task | Start here |
+| --- | --- |
+| New persisted fields or file IO | `scheme/src/data/` |
+| Summary, wiki, or session policy | `scheme/src/services/` |
+| React orchestration and polling | `scheme/src/app/observer/hooks/` |
+| Presentation, keys, and themes | `scheme/src/app/ui/` |
+| Cross-layer data shapes | `scheme/src/data/protocol/` first |
+| Launch flags and env injection | `scripts/flow-run.sh` |
+| Public CLI behavior | `cli/ga.mjs` |
 
-**不要**：在 UI 组件里直接 `fs`；在多个模块复制 session binding / resume 分支。细则见 [AGENTS.md §4](AGENTS.md)。
+Do not put `fs` access in UI components. Do not duplicate session binding,
+resume, or wiki persistence policy branches across modules. See
+[AGENTS.md section 4](AGENTS.md) for the dependency rules.
 
 ---
 
-## 提交 PR 前的验证
+## Verification Before a Pull Request
 
-在 PR 描述里说明你跑了哪些检查。最低要求：
+List the checks you ran in the PR description. Minimum expectations:
 
 ```bash
-# 1. scheme 单元测试 + 类型检查（必跑）
+# 1. Scheme tests and type check, required for code changes
 cd scheme && bun test && bunx tsc --noEmit
 
-# 2. 根目录 CLI 测试（改了 cli/ 时必跑）
+# 2. Root CLI checks, required when cli/ changes
 cd .. && npm run verify
 
-# 3. 环境自检（行为变更涉及 flow 时建议跑）
+# 3. Environment check, recommended when flow behavior changes
 ga doctor
 ```
 
-### 手测清单（UI / session / wiki 相关）
+### Manual checks for UI, session, and wiki changes
 
-- [ ] `ga flow` 能启动双栏，右栏快捷键可用（先点击右栏聚焦）
-- [ ] 改动涉及 resume：`ga flow -c` / `ga flow -r <id>` 行为符合预期
-- [ ] 改动涉及 wiki：KNOWLEDGE 卡片与 write badge 不混淆
-- [ ] 新 `FLOW_*` 已写入 `./scripts/flow-run.sh --help` 与 [docs/development.md §5.2](docs/development.md)
+- [ ] `ga flow` starts the dual-pane layout, and right-pane shortcuts work after
+      the right pane is focused.
+- [ ] Resume behavior is correct for `ga flow -c` and `ga flow -r <id>` when the
+      change touches session binding.
+- [ ] KNOWLEDGE cards and wiki write badges remain separate concepts when the
+      change touches wiki behavior.
+- [ ] New `FLOW_*` variables are documented in `./scripts/flow-run.sh --help`
+      and [docs/development.md section 5.2](docs/development.md).
 
-### Definition of Done
+### Definition of done
 
-- [ ] 行为变更有测试，或 PR 中说明为何不测
-- [ ] `bun test` + `tsc --noEmit` 通过
-- [ ] 未违反 [AGENTS.md](AGENTS.md) 架构红线
-- [ ] 相关 `docs/` / `README` 已同步（或说明无需更新）
-- [ ] **未提交** `wiki/`、`.flow-runtime/`、本地 log、密钥
+- [ ] Behavior changes have tests, or the PR explains why a test is not useful.
+- [ ] `bun test` and `tsc --noEmit` pass.
+- [ ] The architecture rules in [AGENTS.md](AGENTS.md) are still respected.
+- [ ] Related `docs/` or README files are updated, or the PR explains why no
+      docs update is needed.
+- [ ] `wiki/`, `.flow-runtime/`, local logs, and secrets are not committed.
 
 ---
 
-## 开 Pull Request
+## Open a Pull Request
 
-### 1. 分支
+### 1. Branch
 
 ```bash
 git checkout main
 git pull origin main
-git checkout -b feat/short-description   # 或 fix/、docs/
+git checkout -b feat/short-description
 ```
 
-命名建议：`feat/wiki-retrieval-cache`、`fix/resume-banner-copy`、`docs/flow-env-table`。
+Use a focused branch name such as `feat/wiki-retrieval-cache`,
+`fix/resume-banner-copy`, or `docs/flow-env-table`.
 
 ### 2. Commit
 
-遵循仓库现有风格（简短、动词开头、说明「为什么」）：
+Follow the existing style: short, imperative, and specific about the change.
 
-```
+```text
 feat: add calm mode toggle to exploration cards
 fix: prevent duplicate summary regen on continue bind
 docs: document FLOW_LOG_MODULES in development guide
 test: cover session-runtime-policy replay branch
 ```
 
-- **一次 PR 只做一件事** — 不要夹带无关 refactor
-- **小步可验证** — Reviewer 能独立理解 diff 意图
+Keep one pull request to one coherent change. Avoid unrelated refactors and
+large formatting-only diffs.
 
-### 3. PR 描述模板
-
-复制到 PR body：
+### 3. PR body template
 
 ```markdown
 ## Summary
-<!-- 1–3 句：解决什么问题、用户可见变化 -->
+<!-- 1-3 sentences: problem, approach, user-visible change -->
 
 ## Changes
-<!-- 关键文件 / 模块；若动到策略单点请注明 -->
+<!-- Key files or modules; call out changes to single-source policy modules -->
 
 ## Test plan
 - [ ] `cd scheme && bun test && bunx tsc --noEmit`
-- [ ] `npm run verify`（若改了 cli/）
-- [ ] 手测：<!-- ga flow / -c / -r / 具体场景 -->
+- [ ] `npm run verify` if `cli/` changed
+- [ ] Manual check: <!-- ga flow / -c / -r / exact scenario -->
 
 ## Docs
-- [ ] 已更新 docs/ / README / AGENTS.md
-- [ ] 无需文档（原因：<!-- 例如纯内部 refactor，无行为变化 -->）
+- [ ] Updated docs / README / AGENTS.md
+- [ ] No docs needed because <!-- reason -->
 
 ## Risks
-<!-- 可选：回归点、未覆盖 edge case -->
+<!-- Optional: regression risk or uncovered edge case -->
 ```
 
-### 4. Review 时我们关注什么
+### 4. Review focus
 
-| 维度 | 说明 |
-|------|------|
-| **依赖方向** | UI 是否误 import services/repository |
-| **策略单点** | binding、resume、wiki 门禁是否重复实现 |
-| **协议先行** | 行为变更是否先改 `data/protocol/` |
-| **测试** | 关键分支是否有覆盖 |
-| **文档** | 用户可见变化是否同步 README / docs |
-
----
-
-## 不要提交的内容
-
-| 路径 / 内容 | 原因 |
-|-------------|------|
-| `wiki/` | 本地知识库，已在 `.gitignore` |
-| `.flow-runtime/` | Zellij layout 缓存 |
-| `logs/`、`*.log` | 本地调试输出 |
-| `.env`、token、Webhook URL | 密钥 |
-| 大规模格式化 / 无关文件移动 | 增加 Review 噪音 |
-
-若误加入，提交前：`git restore --staged <path>` 并确认 `.gitignore`。
+| Area | What reviewers check |
+| --- | --- |
+| Dependency direction | UI does not import services or repositories directly |
+| Single source of truth | Binding, resume, and wiki gates are not reimplemented elsewhere |
+| Protocol first | Cross-layer behavior changes update `data/protocol/` first |
+| Tests | Important branches are covered |
+| Docs | User-visible changes are reflected in README or docs |
 
 ---
 
-## 文档该写在哪
+## Do Not Commit
 
-| 改了… | 至少更新… |
-|-------|-----------|
-| 对外命令、`ga flow` 行为 | `README.md` · `README_CN.md` |
-| `FLOW_*` / session 模式 | [docs/development.md §5](docs/development.md) · `AGENTS.md` |
-| Wiki 检索 / 策展 | [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md) |
-| UI import / chrome | [docs/data-governance/ui-layer-rules.md](docs/data-governance/ui-layer-rules.md) |
-| 新 wiki CLI flag | [scripts/wiki/README.md](scripts/wiki/README.md) |
-| Agent skill 行为 | `skills/<name>/SKILL.md` |
+| Path or content | Reason |
+| --- | --- |
+| `wiki/` | Local project memory |
+| `.flow-runtime/` | Zellij layout cache |
+| `logs/`, `*.log` | Local debug output |
+| `.env`, tokens, webhook URLs | Secrets |
+| Large unrelated formatting or file moves | Review noise |
 
-原则：**设计细节进 `docs/`，根目录 README 保持短。**
+If something was staged by mistake, run `git restore --staged <path>` and check
+whether `.gitignore` needs an update.
 
 ---
 
-## 常见问题
+## Documentation Ownership
+
+| Changed behavior | Update at least |
+| --- | --- |
+| Public commands or `ga flow` behavior | `README.md` and `README_CN.md` |
+| `FLOW_*` variables or session modes | [docs/development.md section 5](docs/development.md) and `AGENTS.md` |
+| Wiki retrieval or curation | [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md) |
+| UI imports or chrome behavior | [docs/data-governance/ui-layer-rules.md](docs/data-governance/ui-layer-rules.md) |
+| New wiki CLI flag | [scripts/wiki/README.md](scripts/wiki/README.md) |
+| Agent skill behavior | `skills/<name>/SKILL.md` |
+
+Keep design details in `docs/`. Keep root README files concise.
+
+---
+
+## Troubleshooting
 
 <details>
 <summary><b><code>ga: command not found</code></b></summary>
 
-在仓库根目录执行 `npm link`，或使用 `node ./cli/ga.mjs`。
+Run `npm link` from the repository root, or call the CLI directly with
+`node ./cli/ga.mjs`.
 </details>
 
 <details>
 <summary><b><code>zellij: command not found</code></b></summary>
 
-安装 Zellij 后重跑 `ga doctor`。macOS：`brew install zellij`。
+Install Zellij and rerun `ga doctor`. On macOS:
+
+```bash
+brew install zellij
+```
 </details>
 
 <details>
-<summary><b>Observer 快捷键无效</b></summary>
+<summary><b>Observer shortcuts do not work</b></summary>
 
-在 Zellij 中**先点击右栏**使其获得焦点，再按 `g` / `i` / `?` 等。
+Focus the right pane first, then press shortcuts such as `g`, `i`, or `?`.
 </details>
 
 <details>
-<summary><b><code>bun test</code> 失败</b></summary>
+<summary><b><code>bun test</code> fails</b></summary>
 
-确认在 `scheme/` 目录下运行；依赖问题可试 `rm -rf node_modules && bun install`。
+Confirm that the command is running inside `scheme/`. For dependency issues,
+try:
+
+```bash
+rm -rf node_modules && bun install
+```
 </details>
 
 <details>
-<summary><b>残留 Zellij session / 孤儿进程</b></summary>
+<summary><b>Stale Zellij sessions or orphan processes</b></summary>
 
 ```bash
 ./scripts/flow-run.sh --cleanup
 ```
 </details>
 
-更多运维说明：[docs/development.md §5.4](docs/development.md) · [README Troubleshooting](README.md#troubleshooting)
+More operations notes: [docs/development.md section 5.4](docs/development.md)
+and [README troubleshooting](README.md#troubleshooting).
 
 ---
 
-## 发布（维护者）
+## Release Notes for Maintainers
 
-Contributor 通常不需要发包。维护者发布 `gui-anything` npm 包时见 [docs/release-checklist.md](docs/release-checklist.md)。
+GUI-Anything currently supports local clone installation only. It is not
+published as an npm package. Before creating a GitHub release, use
+[docs/release-checklist.md](docs/release-checklist.md).
 
 ---
 
-## 获取帮助
+## Get Help
 
-- **Bug / 功能请求**：GitHub Issues
-- **架构与扩展**： [docs/development.md](docs/development.md)
-- **Wiki 链路**： [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md)
+- Bugs and feature requests: GitHub Issues.
+- Architecture and extension guide: [docs/development.md](docs/development.md).
+- Wiki data flow: [docs/data-governance/data-flow.md](docs/data-governance/data-flow.md).
 
-欢迎 PR。小修复、测试、文档改进同样有价值。
+Small fixes, tests, and documentation improvements are welcome.

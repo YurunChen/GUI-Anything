@@ -29,6 +29,7 @@ import { buildShellChromeProps } from '../../observer/view-model/shell-props';
 import { getObserverMessages } from '../i18n/observer-messages';
 
 import { CommandBar } from './CommandBar';
+import { ExportStatusBar } from './ExportStatusBar';
 import { HelpOverlay } from './HelpOverlay';
 import { PersonalityStrip } from './PersonalityStrip';
 import type { PersonalityStripInfo } from '../../observer/view-model/personality-strip-view';
@@ -69,7 +70,7 @@ interface FlowObserverShellProps {
   flowBodyVisible?: boolean;
   recentInspirations: InspirationRecord[];
   onSaveInspiration: (text: string) => { saved: boolean; id?: string };
-  onSendSnapshot?: (note?: string) => void;
+  onEnableNotify?: () => void;
   onFileWikiAudit?: () => { filed: boolean; targetId?: string };
   onExportHtml?: (force?: boolean) => void;
   exportStatus?: string;
@@ -100,7 +101,8 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
   const chromeHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const spinnerIntervalMs = useMemo(() => resolveSpinnerIntervalMs(), []);
-  const personalityMotionFrame = useFlowMotionFrame(Boolean(props.personalityStripInfo), spinnerIntervalMs ?? 720);
+  const chromeMotionActive = Boolean(props.personalityStripInfo || props.exportStatus);
+  const chromeMotionFrame = useFlowMotionFrame(chromeMotionActive, spinnerIntervalMs ?? 720);
   const notesSidebarWidth = useMemo(
     () => (showNotes ? resolveNotesSidebarWidth(terminalWidth) : 0),
     [showNotes, terminalWidth],
@@ -147,7 +149,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     tree: props.tree,
     runtimeModel: props.runtimeModel,
     tokenDisplay: props.tokenDisplay,
-    notifyStatus: chromeHint ?? props.exportStatus ?? props.notifyStatus,
+    notifyStatus: chromeHint ?? props.notifyStatus,
     themeNotification: themeSwitchBanner
       ? `${themeSwitchBanner.frame} ${themeSwitchBanner.familyLabel} · ${themeSwitchBanner.themeLabel}`
       : showThemeNotification
@@ -169,7 +171,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
         : 'default',
     observerMode,
     calmMode,
-    notifyAvailable: !!props.onSendSnapshot,
+    notifyAvailable: !!props.onEnableNotify,
     wikiAuditAvailable: !!props.onFileWikiAudit,
     htmlExportAvailable: !!props.onExportHtml,
   }), [
@@ -178,7 +180,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
     observerMode,
     props.onExportHtml,
     props.onFileWikiAudit,
-    props.onSendSnapshot,
+    props.onEnableNotify,
     showNotes,
   ]);
 
@@ -228,7 +230,7 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       showHelp,
       showNotes,
       inspirationInputFocused,
-      notifyAvailable: !!props.onSendSnapshot,
+      notifyAvailable: !!props.onEnableNotify,
       wikiAuditAvailable: !!props.onFileWikiAudit,
       htmlExportAvailable: !!props.onExportHtml,
     });
@@ -259,8 +261,8 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
       case 'toggle_mode':
         setObserverMode(nextObserverViewMode);
         break;
-      case 'send_snapshot':
-        props.onSendSnapshot?.();
+      case 'enable_notify':
+        props.onEnableNotify?.();
         break;
       case 'file_wiki_audit':
         handleFileWikiAudit();
@@ -367,12 +369,17 @@ export function FlowObserverShell(props: FlowObserverShellProps): ReactNode {
           <PersonalityStrip
             personality={props.personalityStripInfo}
             terminalWidth={terminalWidth}
-            motionFrame={personalityMotionFrame}
+            motionFrame={chromeMotionFrame}
+          />
+          <ExportStatusBar
+            status={props.exportStatus}
+            terminalWidth={terminalWidth}
+            motionFrame={chromeMotionFrame}
           />
           <CommandBar
             terminalWidth={terminalWidth}
             context={hotkeyContext}
-            active={Boolean(chromeHint || themeSwitchBanner || showThemeNotification)}
+            active={Boolean(chromeHint || props.exportStatus || themeSwitchBanner || showThemeNotification)}
           />
         </>
       )}

@@ -6,7 +6,7 @@ import { FlowObserverShell } from '../ui/flow/FlowObserverShell';
 import { buildSessionBanner } from '../../services/session/session-banner';
 import { getSessionBundleService } from '../../services/session/session-bundle-service';
 import { bundleHasDisplayData } from '../../data/wiki/session-bundle-mappers';
-import { getObserverMessages } from '../ui/i18n/observer-messages';
+import { getObserverMessages, resolveObserverLocale } from '../ui/i18n/observer-messages';
 
 import { useSessionPolling } from './hooks/useSessionPolling';
 import { useExplorationSummaries } from './hooks/useExplorationSummaries';
@@ -147,6 +147,7 @@ export function LiveObserverContainer(): ReactNode {
     sessionPath,
     runtime.presentation.allowWikiLiveSearch,
   );
+  const observerLocale = resolveObserverLocale();
   const personalityStripInfo = useMemo(
     () => buildPersonalityStripInfo(resolveLiveCodingPersona({
       graphSnapshot,
@@ -154,15 +155,15 @@ export function LiveObserverContainer(): ReactNode {
       flowchartHints: mergedFlowchartHints,
       explorationPersistStatus,
       wikiMatchesByExploration,
-    })) ?? undefined,
-    [graphSnapshot, explorations, mergedFlowchartHints, explorationPersistStatus, wikiMatchesByExploration],
+    }), observerLocale) ?? undefined,
+    [graphSnapshot, explorations, mergedFlowchartHints, explorationPersistStatus, wikiMatchesByExploration, observerLocale],
   );
 
   const {
     notificationEnabled,
-    sendManualSnapshot,
+    enableNotify,
     lastNotifyStatus,
-  } = useNotification(sessionId, tree ?? undefined, summaryItems);
+  } = useNotification(sessionId, tree ?? undefined, explorations, summaryItems, pendingByExplorationId);
 
   const { exportHtml, lastExportStatus } = useEvolutionExport();
 
@@ -216,7 +217,7 @@ export function LiveObserverContainer(): ReactNode {
       summaryItems={summaryItems}
       workspaceTree={workspaceTree}
       sessionIntent={sessionIntent}
-      onSendSnapshot={notificationEnabled ? sendManualSnapshot : undefined}
+      onEnableNotify={notificationEnabled ? enableNotify : undefined}
       onFileWikiAudit={handleFileWikiAudit}
       onExportHtml={exportHtml}
       exportStatus={lastExportStatus}

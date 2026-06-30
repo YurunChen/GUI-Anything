@@ -5,6 +5,7 @@ FastAPI server for Flow Notification to send WeChat messages
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -219,4 +220,6 @@ async def pair_receiver(request: PairReceiverRequest):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="info")
+    host = os.environ.get("FLOW_NOTIFY_WECHAT_SERVICE_HOST", "127.0.0.1")
+    port = int(os.environ.get("FLOW_NOTIFY_WECHAT_SERVICE_PORT", "8765"))
+    uvicorn.run(app, host=host, port=port, log_level="info")

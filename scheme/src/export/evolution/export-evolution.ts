@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { defaultProjectEvolutionRepository } from '../../data/wiki/project-evolution-repository';
 import { resolveWorkspaceRootForCache } from '../../data/session/workspace-root';
 import type { EvolutionExport, ProjectEvolutionRaw } from '../../data/protocol/evolution-types';
+import { resolveObserverLocale } from '../../constants/observer-locale';
 import { buildEvolutionExport, type EraSynthesizer } from '../../services/evolution/evolution-service';
 import { ruleBasedPersona } from '../../services/evolution/persona-score';
 import type { TransitionSynthesizer } from '../../services/ai/evolution-transitions';
@@ -71,6 +72,8 @@ export interface BuildEvolutionModelOptions {
   wikiRoot?: string;
   /** Mark the model as served by the live WS server (client opens a socket instead of polling). */
   liveServer?: boolean;
+  /** Display locale; defaults to FLOW_LOCALE/LANG via the shared resolver. */
+  locale?: ExportEvolutionOptions['locale'];
 }
 
 /**
@@ -107,6 +110,7 @@ export async function buildEvolutionModel(
     theme: options.theme || process.env.FLOW_THEME,
     eraSynthesizer,
   });
+  data.locale = resolveObserverLocale(options.locale);
 
   // P4: AI intent-transition narrative (best-effort; omitted on failure or --no-ai).
   if (!options.noAi) {
@@ -164,6 +168,7 @@ export async function exportEvolutionToHtml(options: ExportEvolutionOptions = {}
   if (data === null) {
     const html = generateEmptyEvolutionHtml({
       workspaceRoot: options.workspaceRoot ?? resolveWorkspaceRootForCache(),
+      locale: options.locale,
     });
     if (options.outputPath) {
       const dir = path.dirname(options.outputPath);

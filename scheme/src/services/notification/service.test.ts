@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { resetLoggerConfigForTests } from '../../utils/logger';
+import { DEFAULT_WECHAT_SERVICE_URL } from './config';
 import { NotificationService } from './service';
 
 const originalEnv = { ...process.env };
@@ -37,11 +38,13 @@ describe('NotificationService', () => {
   test('sends a WeChat notification through the local service', async () => {
     process.env.FLOW_NOTIFY_WECHAT_USER_ID = 'user@im.wechat';
     const requests: string[] = [];
-    globalThis.fetch = mockFetch((url) => {
+    let sentText = '';
+    globalThis.fetch = mockFetch((url, init) => {
       requests.push(url);
       if (url.endsWith('/status')) {
         return jsonResponse({ logged_in: true, account_id: 'bot@im.bot' });
       }
+      sentText = JSON.parse(String(init?.body || '{}')).text;
       return jsonResponse({ success: true, message: 'ok' });
     });
 
@@ -52,13 +55,51 @@ describe('NotificationService', () => {
       title: 'snapshot',
       content: 'body',
       timestamp: Date.now(),
+      metadata: {
+        phase: 'verify',
+        toolCount: 3,
+        sessionId: '1234567890abcdef',
+      },
     });
 
     expect(results).toHaveLength(1);
     expect(results[0]).toMatchObject({ platform: 'wechat', success: true });
     expect(requests).toEqual([
-      'http://127.0.0.1:8765/status',
-      'http://127.0.0.1:8765/send',
+      `${DEFAULT_WECHAT_SERVICE_URL}/status`,
+      `${DEFAULT_WECHAT_SERVICE_URL}/send`,
+    ]);
+    expect(sentText.match(/snapshot/g)?.length).toBe(1);
+    expect(sentText).not.toContain('📌');
+    expect(sentText).toContain('snapshot\n\nbody');
+    expect(sentText).not.toContain('Session');
+    expect(sentText).not.toContain('阶段 verify');
+    expect(sentText).not.toContain('3 tools');
+  });
+
+  test('normalizes a trailing slash in the WeChat service URL', async () => {
+    process.env.FLOW_NOTIFY_WECHAT_USER_ID = 'user@im.wechat';
+    process.env.FLOW_NOTIFY_WECHAT_SERVICE_URL = `${DEFAULT_WECHAT_SERVICE_URL}/`;
+    const requests: string[] = [];
+    globalThis.fetch = mockFetch((url) => {
+      requests.push(url);
+      if (url.endsWith('/status')) {
+        return jsonResponse({ logged_in: true, account_id: 'bot@im.bot' });
+      }
+      return jsonResponse({ success: true, message: 'ok' });
+    });
+
+    const service = new NotificationService();
+    await service.notify({
+      type: 'manual',
+      priority: 'normal',
+      title: 'snapshot',
+      content: 'body',
+      timestamp: Date.now(),
+    });
+
+    expect(requests).toEqual([
+      `${DEFAULT_WECHAT_SERVICE_URL}/status`,
+      `${DEFAULT_WECHAT_SERVICE_URL}/send`,
     ]);
   });
 
@@ -111,10 +152,10 @@ describe('NotificationService', () => {
   });
 });
 
-function mockFetch(handler: (url: string) => Response): typeof fetch {
-  return (async (input: RequestInfo | URL) => {
+function mockFetch(handler: (url: string, init?: RequestInit) => Response): typeof fetch {
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
-    return handler(url);
+    return handler(url, init);
   }) as typeof fetch;
 }
 

@@ -14,6 +14,109 @@ export function getEvolutionClientScript(): string {
   var THEMES = JSON.parse(document.getElementById('evo-theme-data').textContent);
   var ICONS = ${getIconCatalogJson()};
   var DELTA_ICON = ${getDeltaIconJson()};
+  var LOCALE = DATA.locale === 'zh-Hans' ? 'zh-Hans' : 'en';
+  var IS_ZH = LOCALE === 'zh-Hans';
+  var TEXT = IS_ZH ? {
+    noEras: '暂无演化主线',
+    era: '纪元',
+    refinedSteps: '个细化步骤',
+    tools: '工具',
+    errors: '错误',
+    files: '文件',
+    transition: '转折',
+    noNodes: '暂无时间节点',
+    activeSpan: '活跃时间跨度',
+    toolCalls: '工具调用 Σ',
+    errorTotal: '报错 Σ',
+    knowledgeHits: '知识命中',
+    knowledgeSaved: '知识沉淀',
+    filesTouched: '涉及文件',
+    legendTitle: '节点左缘色带表示该里程碑的试错强度',
+    legendLabel: '试错强度',
+    heatLow: '顺畅',
+    heatMid: '有波折',
+    heatHigh: '多次报错',
+    projectKicker: 'Project Evolution',
+    projectTitle: '项目功能演进史',
+    projectSub: '从散点的意图变化，连成一条能力生长的主线。',
+    eras: '纪元',
+    milestones: '里程碑',
+    mainTab: '演进主线',
+    knowledgeTab: '知识市集',
+    personaTab: '编码人格',
+    retrievalFallback: '(检索)',
+    depositFallback: '(知识沉淀)',
+    matchScore: '匹配度',
+    reuse: '复用',
+    deposit: '沉淀',
+    type: '类型',
+    status: '状态',
+    relatedMilestone: '相关里程碑',
+    triggerQuestion: '触发问题',
+    reusedKnowledge: '复用的旧知识',
+    newKnowledge: '新沉淀的知识',
+    knowledgeTitle: '知识卡片市集',
+    knowledgeSub: '每张卡片是这个项目复用或沉淀的一条知识，点开看它具体的内容与效果。',
+    all: '全部',
+    close: '关闭',
+    personaFallback: '编码人格',
+    signatureMoment: '代表时刻：',
+    closestPersona: '最接近的人格',
+    aiPersonaFoot: 'AI 解读 · 规则判定（无问卷）',
+    rulePersonaFoot: '规则判定（无问卷，未启用 AI 解读）',
+    model: '模型',
+    generatedAt: '生成于'
+  } : {
+    noEras: 'No evolution mainline yet',
+    era: 'Era',
+    refinedSteps: 'refined steps',
+    tools: 'tools',
+    errors: 'errors',
+    files: 'files',
+    transition: 'Transition',
+    noNodes: 'No timeline nodes yet',
+    activeSpan: 'Active span',
+    toolCalls: 'Tool calls Σ',
+    errorTotal: 'Errors Σ',
+    knowledgeHits: 'Knowledge hits',
+    knowledgeSaved: 'Knowledge saved',
+    filesTouched: 'Files touched',
+    legendTitle: 'The left color rail shows trial-and-error intensity for each milestone',
+    legendLabel: 'Trial intensity',
+    heatLow: 'Smooth',
+    heatMid: 'Bumpy',
+    heatHigh: 'Many errors',
+    projectKicker: 'Project Evolution',
+    projectTitle: 'Project Evolution',
+    projectSub: 'Scattered intent changes become a readable capability timeline.',
+    eras: 'Eras',
+    milestones: 'Milestones',
+    mainTab: 'Mainline',
+    knowledgeTab: 'Knowledge Market',
+    personaTab: 'Coding Persona',
+    retrievalFallback: '(retrieval)',
+    depositFallback: '(knowledge saved)',
+    matchScore: 'Match',
+    reuse: 'Reuse',
+    deposit: 'Deposit',
+    type: 'Type',
+    status: 'Status',
+    relatedMilestone: 'Related milestone',
+    triggerQuestion: 'Trigger question',
+    reusedKnowledge: 'Reused knowledge',
+    newKnowledge: 'New knowledge',
+    knowledgeTitle: 'Knowledge Card Market',
+    knowledgeSub: 'Each card is a piece of project knowledge that was reused or saved. Open one to inspect its content and impact.',
+    all: 'All',
+    close: 'Close',
+    personaFallback: 'Coding Persona',
+    signatureMoment: 'Signature moment: ',
+    closestPersona: 'Closest personas',
+    aiPersonaFoot: 'AI reading · rule-based judgement (no questionnaire)',
+    rulePersonaFoot: 'Rule-based judgement (no questionnaire, AI reading disabled)',
+    model: 'Model',
+    generatedAt: 'Generated at'
+  };
 
   /* ---------- icons ---------- */
   function icon(name, cls) {
@@ -42,6 +145,15 @@ export function getEvolutionClientScript(): string {
     return String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
+  }
+  function pickLocalized(primary, secondary, fallback) {
+    return IS_ZH
+      ? (primary || fallback || secondary || '')
+      : (secondary || fallback || primary || '');
+  }
+  function localized(text) {
+    if (!text) return '';
+    return text[LOCALE] || '';
   }
   function monthLabel(at) {
     var d = new Date(at);
@@ -79,7 +191,7 @@ export function getEvolutionClientScript(): string {
 
   /* ---------- rendering ---------- */
   function renderEras(eras) {
-    if (!eras.length) return '<div class="evo-empty">暂无演化主线</div>';
+    if (!eras.length) return '<div class="evo-empty">' + esc(TEXT.noEras) + '</div>';
     return eras.map(function (era, i) {
       var scenes = (era.sceneAdds || []).map(function (s) {
         return '<span class="scene">' + esc(s) + '</span>';
@@ -87,7 +199,7 @@ export function getEvolutionClientScript(): string {
       return '<div class="era" data-era-id="' + esc(era.id) + '">' +
         '<div class="era__marker">' + icon(era.icon || 'flag') + '</div>' +
         '<div class="era__body">' +
-          '<div class="era__index">纪元 ' + (i + 1) + '</div>' +
+          '<div class="era__index">' + esc(TEXT.era) + ' ' + (i + 1) + '</div>' +
           '<div class="era__title">' + esc(era.title) + '</div>' +
           (era.abstract ? '<div class="era__abstract">' + esc(era.abstract) + '</div>' : '') +
           (scenes ? '<div class="era__scenes">' + scenes + '</div>' : '') +
@@ -106,7 +218,7 @@ export function getEvolutionClientScript(): string {
         '</div>';
     }).join('');
     return '<div class="node__children">' +
-      '<div class="node__children-label">' + children.length + ' 个细化步骤</div>' +
+      '<div class="node__children-label">' + children.length + ' ' + esc(TEXT.refinedSteps) + '</div>' +
       '<div class="node__children-wrap"><div class="node__children-inner">' + rows + '</div></div>' +
       '</div>';
   }
@@ -115,12 +227,12 @@ export function getEvolutionClientScript(): string {
   function renderNodeBadge(metrics) {
     if (!metrics) return '';
     var parts = [];
-    if (metrics.toolCount) parts.push('<span class="nbadge__item">' + icon('wrench', 'evo-ico--sm') + fmtNum(metrics.toolCount) + ' 工具</span>');
-    if (metrics.errorCount) parts.push('<span class="nbadge__item nbadge__item--err">' + icon('alert-triangle', 'evo-ico--sm') + fmtNum(metrics.errorCount) + ' 错误</span>');
+    if (metrics.toolCount) parts.push('<span class="nbadge__item">' + icon('wrench', 'evo-ico--sm') + fmtNum(metrics.toolCount) + ' ' + esc(TEXT.tools) + '</span>');
+    if (metrics.errorCount) parts.push('<span class="nbadge__item nbadge__item--err">' + icon('alert-triangle', 'evo-ico--sm') + fmtNum(metrics.errorCount) + ' ' + esc(TEXT.errors) + '</span>');
     var dur = fmtDuration(metrics.elapsedMs);
     if (dur) parts.push('<span class="nbadge__item">' + icon('refresh', 'evo-ico--sm') + '~' + dur + '</span>');
     if (metrics.tokens) parts.push('<span class="nbadge__item">' + icon('zap', 'evo-ico--sm') + fmtNum(metrics.tokens) + ' tok</span>');
-    if (metrics.files && metrics.files.length) parts.push('<span class="nbadge__item">' + icon('file-text', 'evo-ico--sm') + metrics.files.length + ' 文件</span>');
+    if (metrics.files && metrics.files.length) parts.push('<span class="nbadge__item">' + icon('file-text', 'evo-ico--sm') + metrics.files.length + ' ' + esc(TEXT.files) + '</span>');
     if (!parts.length) return '';
     return '<div class="node__badge">' + parts.join('') + '</div>';
   }
@@ -139,14 +251,14 @@ export function getEvolutionClientScript(): string {
     return '<div class="trans">' +
       '<div class="trans__rail">' + icon('git-branch', 'evo-ico--sm') + '</div>' +
       '<div class="trans__body">' +
-        '<span class="trans__label">转折</span>' +
+        '<span class="trans__label">' + esc(TEXT.transition) + '</span>' +
         '<span class="trans__why">' + esc(e.why) + '</span>' +
         (e.evidence ? '<span class="trans__ev">' + icon('search', 'evo-ico--sm') + esc(e.evidence) + '</span>' : '') +
       '</div></div>';
   }
 
   function renderNodes(nodes, opts) {
-    if (!nodes.length) return '<div class="evo-empty">暂无时间节点</div>';
+    if (!nodes.length) return '<div class="evo-empty">' + esc(TEXT.noNodes) + '</div>';
     var html = '';
     var lastMonth = null;
     nodes.forEach(function (node) {
@@ -179,24 +291,24 @@ export function getEvolutionClientScript(): string {
         '<div class="kpi__label">' + esc(label) + '</div></div>');
     }
     var span = fmtDuration(m.elapsedMs);
-    if (span) card('refresh', span, '活跃时间跨度');
-    card('wrench', fmtNum(m.toolCount), '工具调用 Σ');
-    card('alert-triangle', fmtNum(m.errorCount), '报错 Σ');
-    card('search', fmtNum(m.retrievals), '知识命中');
-    card('book', fmtNum(m.writes), '知识沉淀');
+    if (span) card('refresh', span, TEXT.activeSpan);
+    card('wrench', fmtNum(m.toolCount), TEXT.toolCalls);
+    card('alert-triangle', fmtNum(m.errorCount), TEXT.errorTotal);
+    card('search', fmtNum(m.retrievals), TEXT.knowledgeHits);
+    card('book', fmtNum(m.writes), TEXT.knowledgeSaved);
     if (m.tokens) card('zap', fmtNum(m.tokens), 'Token Σ');
-    if (m.files && m.files.length) card('file-text', fmtNum(m.files.length), '涉及文件');
+    if (m.files && m.files.length) card('file-text', fmtNum(m.files.length), TEXT.filesTouched);
     if (!cards.length) return '';
     return '<section class="evo-kpi-wrap"><div class="evo-kpi">' + cards.join('') + '</div></section>';
   }
 
   /* Color-encoding legend (non-negotiable: any color encoding ships a legend). */
   function renderLegend() {
-    return '<div class="evo-legend" title="节点左缘色带表示该里程碑的试错强度">' +
-      '<span class="evo-legend__label">试错强度</span>' +
-      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--low"></i>顺畅</span>' +
-      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--mid"></i>有波折</span>' +
-      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--high"></i>多次报错</span>' +
+    return '<div class="evo-legend" title="' + esc(TEXT.legendTitle) + '">' +
+      '<span class="evo-legend__label">' + esc(TEXT.legendLabel) + '</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--low"></i>' + esc(TEXT.heatLow) + '</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--mid"></i>' + esc(TEXT.heatMid) + '</span>' +
+      '<span class="evo-legend__item"><i class="evo-legend__swatch sw--high"></i>' + esc(TEXT.heatHigh) + '</span>' +
       '</div>';
   }
 
@@ -324,14 +436,14 @@ export function getEvolutionClientScript(): string {
     var p = DATA.project;
     var subSteps = p.nodes.reduce(function (a, n) { return a + ((n.children && n.children.length) || 0); }, 0);
     renderView(projectView, p, {
-      kicker: 'Project Evolution', title: '抽象演化主线',
-      heroIcon: 'compass', heroTitle: '项目功能演进史',
-      heroSub: '从散点的意图变化，连成一条能力生长的主线。',
+      kicker: TEXT.projectKicker, title: TEXT.mainTab,
+      heroIcon: 'compass', heroTitle: TEXT.projectTitle,
+      heroSub: TEXT.projectSub,
       stats: [
-        { num: p.eras.length, label: '纪元' },
-        { num: p.nodes.length, label: '里程碑' },
+        { num: p.eras.length, label: TEXT.eras },
+        { num: p.nodes.length, label: TEXT.milestones },
         { num: DATA.sessions.length, label: 'Session' },
-        { num: subSteps, label: '细化步骤' },
+        { num: subSteps, label: TEXT.refinedSteps },
       ],
     });
     spy(projectView, p);
@@ -385,9 +497,9 @@ export function getEvolutionClientScript(): string {
   // Panels other than 'main' are populated by renderers below; a tab whose
   // renderer yields no content stays hidden so the bar only shows real sections.
   var TAB_DEFS = [
-    { id: 'main', label: '演进主线', icon: 'compass' },
-    { id: 'knowledge', label: '知识市集', icon: 'git-branch', render: renderKnowledgeFlow },
-    { id: 'persona', label: '编码人格', icon: 'sparkles', render: renderPersona }
+    { id: 'main', label: TEXT.mainTab, icon: 'compass' },
+    { id: 'knowledge', label: TEXT.knowledgeTab, icon: 'git-branch', render: renderKnowledgeFlow },
+    { id: 'persona', label: TEXT.personaTab, icon: 'sparkles', render: renderPersona }
   ];
 
   /* P3: knowledge-card marketplace — every reuse/deposit is a tappable card. */
@@ -399,7 +511,7 @@ export function getEvolutionClientScript(): string {
     (k.inflow || []).forEach(function (it) {
       KFLOW_CARDS.push({
         kind: 'in', icon: 'search',
-        title: it.request || '(检索)',
+        title: it.request || TEXT.retrievalFallback,
         tags: it.tags || [],
         score: (typeof it.score === 'number' && it.score > 0) ? it.score : null,
         excerpt: it.excerpt || '',
@@ -409,7 +521,7 @@ export function getEvolutionClientScript(): string {
     });
     (k.outflow || []).forEach(function (it) {
       // Human-readable first: concise milestone title over the internal targetId.
-      var title = it.nodeTitle || it.question || it.contextKey || it.targetPath || '(知识沉淀)';
+      var title = it.nodeTitle || it.question || it.contextKey || it.targetPath || TEXT.depositFallback;
       KFLOW_CARDS.push({
         kind: 'out', icon: 'book',
         title: title,
@@ -429,14 +541,14 @@ export function getEvolutionClientScript(): string {
     }).join('');
     var badge = '';
     if (card.kind === 'in' && card.score != null) {
-      badge = '<span class="kcard__badge">匹配度 ' + (Math.round(card.score * 100) / 100) + '</span>';
+      badge = '<span class="kcard__badge">' + esc(TEXT.matchScore) + ' ' + (Math.round(card.score * 100) / 100) + '</span>';
     } else if (card.kind === 'out' && card.status) {
       badge = '<span class="kcard__badge kcard__badge--' + esc(card.status) + '">' + esc(card.status) + '</span>';
     }
     return '<button class="kcard kcard--' + card.kind + ' reveal" data-kcard="' + idx + '">' +
       '<div class="kcard__top">' +
         '<span class="kcard__ico">' + icon(card.icon) + '</span>' +
-        '<span class="kcard__kind">' + (card.kind === 'in' ? '复用' : '沉淀') + '</span>' +
+        '<span class="kcard__kind">' + esc(card.kind === 'in' ? TEXT.reuse : TEXT.deposit) + '</span>' +
         badge +
       '</div>' +
       '<h3 class="kcard__title">' + esc(card.title) + '</h3>' +
@@ -449,19 +561,19 @@ export function getEvolutionClientScript(): string {
       return '<span class="kcard__tag">' + esc(t) + '</span>';
     }).join('');
     var meta = [];
-    if (card.kind === 'in' && card.score != null) meta.push('匹配度 ' + (Math.round(card.score * 100) / 100));
-    if (card.type) meta.push('类型 ' + card.type);
-    if (card.kind === 'out' && card.status) meta.push('状态 ' + card.status);
+    if (card.kind === 'in' && card.score != null) meta.push(TEXT.matchScore + ' ' + (Math.round(card.score * 100) / 100));
+    if (card.type) meta.push(TEXT.type + ' ' + card.type);
+    if (card.kind === 'out' && card.status) meta.push(TEXT.status + ' ' + card.status);
     var jump = card.nodeId
       ? '<button class="kmodal__jump" data-jump-node="' + esc(card.nodeId) + '">' +
-          icon('arrow-right', 'evo-ico--sm') + esc(card.nodeTitle || '相关里程碑') + '</button>'
+          icon('arrow-right', 'evo-ico--sm') + esc(card.nodeTitle || TEXT.relatedMilestone) + '</button>'
       : '';
     var ask = (card.kind === 'out' && card.question && card.question !== card.title)
-      ? '<div class="kmodal__ask"><span class="kmodal__ask-label">触发问题</span>' + esc(card.question) + '</div>'
+      ? '<div class="kmodal__ask"><span class="kmodal__ask-label">' + esc(TEXT.triggerQuestion) + '</span>' + esc(card.question) + '</div>'
       : '';
     return '<div class="kmodal__head">' +
         '<span class="kcard__ico">' + icon(card.icon) + '</span>' +
-        '<span class="kcard__kind">' + (card.kind === 'in' ? '复用的旧知识' : '新沉淀的知识') + '</span>' +
+        '<span class="kcard__kind">' + esc(card.kind === 'in' ? TEXT.reusedKnowledge : TEXT.newKnowledge) + '</span>' +
       '</div>' +
       '<h2 class="kmodal__title">' + esc(card.title) + '</h2>' +
       (meta.length ? '<div class="kmodal__meta">' + meta.map(esc).join(' · ') + '</div>' : '') +
@@ -485,18 +597,18 @@ export function getEvolutionClientScript(): string {
 
     return '<div class="kflow">' +
       '<div class="kflow__intro">' +
-        '<h2 class="kflow__title">知识卡片市集</h2>' +
-        '<p class="kflow__sub">每张卡片是这个项目复用或沉淀的一条知识，点开看它具体的内容与效果。</p>' +
+        '<h2 class="kflow__title">' + esc(TEXT.knowledgeTitle) + '</h2>' +
+        '<p class="kflow__sub">' + esc(TEXT.knowledgeSub) + '</p>' +
       '</div>' +
       '<div class="kmkt__filters">' +
-        chip('all', '全部', KFLOW_CARDS.length) +
-        chip('in', '复用的旧知识', inCount) +
-        chip('out', '新沉淀', outCount) +
+        chip('all', TEXT.all, KFLOW_CARDS.length) +
+        chip('in', TEXT.reusedKnowledge, inCount) +
+        chip('out', TEXT.newKnowledge, outCount) +
       '</div>' +
       '<div class="kmkt__grid">' + cards + '</div>' +
       '<div class="kmodal" id="kmodal">' +
         '<div class="kmodal__panel" role="dialog" aria-modal="true">' +
-          '<button class="kmodal__x" data-kmodal-close aria-label="关闭">✕</button>' +
+          '<button class="kmodal__x" data-kmodal-close aria-label="' + esc(TEXT.close) + '">✕</button>' +
           '<div class="kmodal__body"></div>' +
         '</div>' +
       '</div>' +
@@ -535,9 +647,9 @@ export function getEvolutionClientScript(): string {
       var leanRight = v >= 50;
       return '<div class="persona__axis">' +
         '<div class="persona__axis-head">' +
-          '<span class="persona__pole' + (leanRight ? '' : ' is-lean') + '">' + esc(s.leftLabel) + '</span>' +
-          '<span class="persona__axis-name">' + esc(s.axis) + '</span>' +
-          '<span class="persona__pole' + (leanRight ? ' is-lean' : '') + '">' + esc(s.rightLabel) + '</span>' +
+          '<span class="persona__pole' + (leanRight ? '' : ' is-lean') + '">' + esc(localized(s.leftLabel)) + '</span>' +
+          '<span class="persona__axis-name">' + esc(localized(s.axis)) + '</span>' +
+          '<span class="persona__pole' + (leanRight ? ' is-lean' : '') + '">' + esc(localized(s.rightLabel)) + '</span>' +
         '</div>' +
         '<div class="persona__track"><div class="persona__fill" style="width:' + v + '%"></div>' +
           '<div class="persona__knob" style="left:' + v + '%"></div></div>' +
@@ -548,12 +660,18 @@ export function getEvolutionClientScript(): string {
       var node = null;
       (DATA.project.nodes || []).forEach(function (n) { if (n.id === p.signatureNodeId) node = n; });
       if (node) sig = '<button class="persona__sig" data-jump-node="' + esc(node.id) + '">' +
-        icon('flag', 'evo-ico--sm') + ' 代表时刻：' + esc(node.title) + '</button>';
+        icon('flag', 'evo-ico--sm') + esc(TEXT.signatureMoment) + esc(node.title) + '</button>';
     }
 
     // Avatar: generated clay portrait if present, else the sparkles icon fallback.
+    var name = localized(p.name);
+    var intro = localized(p.intro);
+    var devStyle = localized(p.devStyle);
+    var catchphrase = localized(p.catchphrase);
+    var dnaText = localized(p.dna);
+    var reading = localized(p.reading);
     var avatar = p.avatar
-      ? '<div class="persona__avatar"><img src="' + esc(p.avatar) + '" alt="' + esc(p.cnName || '编码人格') + '" loading="lazy"></div>'
+      ? '<div class="persona__avatar"><img src="' + esc(p.avatar) + '" alt="' + esc(name || TEXT.personaFallback) + '" loading="lazy"></div>'
       : '<div class="persona__badge">' + icon('sparkles', 'evo-ico--lg') + '</div>';
 
     var rarity = p.rarity
@@ -564,26 +682,26 @@ export function getEvolutionClientScript(): string {
       ? '<div class="persona__code">' + esc(p.archetypeCode || p.typeCode) + '</div>' : '';
 
     var meta = '';
-    if (p.devStyle || p.catchphrase) {
+    if (devStyle || catchphrase) {
       meta = '<div class="persona__meta">' +
-        (p.devStyle ? '<span class="persona__style">' + esc(p.devStyle) + '</span>' : '') +
-        (p.catchphrase ? '<span class="persona__quote">“' + esc(p.catchphrase) + '”</span>' : '') +
+        (devStyle ? '<span class="persona__style">' + esc(devStyle) + '</span>' : '') +
+        (catchphrase ? '<span class="persona__quote">“' + esc(catchphrase) + '”</span>' : '') +
         '</div>';
     }
 
-    var dna = p.dna ? '<div class="persona__dna">' + esc(p.dna) + '</div>' : '';
+    var dna = dnaText ? '<div class="persona__dna">' + esc(dnaText) + '</div>' : '';
 
     var spectrum = '';
     if (p.spectrum && p.spectrum.length) {
       var rows = p.spectrum.map(function (sp) {
         var pct = Math.round(Math.max(0, Math.min(1, sp.similarity || 0)) * 100);
         return '<div class="persona__spec-row">' +
-          '<span class="persona__spec-name">' + esc(sp.cn) + '<em>' + esc(sp.code) + '</em></span>' +
+          '<span class="persona__spec-name">' + esc(localized(sp.name)) + '<em>' + esc(sp.code) + '</em></span>' +
           '<span class="persona__spec-bar"><i style="width:' + pct + '%"></i></span>' +
           '<span class="persona__spec-pct">' + pct + '%</span>' +
           '</div>';
       }).join('');
-      spectrum = '<div class="persona__spectrum"><div class="persona__spec-label">最接近的人格</div>' + rows + '</div>';
+      spectrum = '<div class="persona__spectrum"><div class="persona__spec-label">' + esc(TEXT.closestPersona) + '</div>' + rows + '</div>';
     }
 
     return '<div class="persona">' +
@@ -591,15 +709,15 @@ export function getEvolutionClientScript(): string {
         rarity +
         avatar +
         codeLine +
-        '<h2 class="persona__title">' + esc(p.cnName || p.title || '编码人格') + '</h2>' +
-        (p.intro || p.tagline ? '<p class="persona__tagline">' + esc(p.intro || p.tagline) + '</p>' : '') +
+        '<h2 class="persona__title">' + esc(name || TEXT.personaFallback) + '</h2>' +
+        (intro ? '<p class="persona__tagline">' + esc(intro) + '</p>' : '') +
         meta +
         '<div class="persona__axes">' + sliders + '</div>' +
         dna +
-        (p.reading ? '<p class="persona__reading">' + esc(p.reading) + '</p>' : '') +
+        (reading ? '<p class="persona__reading">' + esc(reading) + '</p>' : '') +
         spectrum +
         sig +
-        '<div class="persona__foot">' + (DATA.aiUsed ? 'AI 解读 · 规则判定（无问卷）' : '规则判定（无问卷，未启用 AI 解读）') + '</div>' +
+        '<div class="persona__foot">' + esc(DATA.aiUsed ? TEXT.aiPersonaFoot : TEXT.rulePersonaFoot) + '</div>' +
       '</div>' +
       '</div>';
   }
@@ -705,11 +823,11 @@ export function getEvolutionClientScript(): string {
     if (!p) { el.style.display = 'none'; return; }
     var bits = [];
     if (p.agent) bits.push(esc(p.agent));
-    if (p.model) bits.push('模型 ' + esc(p.model));
+    if (p.model) bits.push(esc(TEXT.model) + ' ' + esc(p.model));
     if (p.builtAt) {
       var d = new Date(p.builtAt);
       if (!isNaN(d.getTime())) {
-        bits.push('生成于 ' + d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) +
+        bits.push(esc(TEXT.generatedAt) + ' ' + d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) +
           '-' + ('0' + d.getDate()).slice(-2) + ' ' +
           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2));
       }

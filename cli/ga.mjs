@@ -6,19 +6,20 @@ import { parseFlowArgs, runFlowCommand } from './lib/flow.mjs';
 import { runSessionsCommand } from './lib/sessions.mjs';
 import { parseExportArgs, runExportCommand } from './lib/export.mjs';
 import { runNotifyCommand } from './lib/notify.mjs';
+import { resolveWorkspaceDir } from './lib/workspace.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = path.resolve(__dirname, '..');
+const toolRootDir = path.resolve(__dirname, '..');
 
 function printRootHelp() {
   console.log('ga - GUI-Anything CLI');
   console.log('');
   console.log('Usage:');
-  console.log('  ga flow [--continue] [--resume [sessionId]] [--model <model>] [prompt]');
+  console.log('  ga flow [--continue] [--resume [sessionId]] [--model <model>] [--watch] [--open] [prompt]');
   console.log('  ga sessions                          List captured session history');
   console.log('  ga export [-o <file>] [--no-ai] [--theme <t>] [--watch]');
-  console.log('  ga notify setup|status|test');
+  console.log('  ga notify setup|status|test|clean');
   console.log('  ga doctor');
   console.log('');
   console.log('Notes:');
@@ -35,19 +36,19 @@ function printFlowHelp() {
   console.log('  ga flow --resume');
   console.log('  ga flow --resume <sessionId>');
   console.log('  ga flow --model <model> [prompt]');
+  console.log('  ga flow --watch [--open]');
   console.log('');
   console.log('Options:');
   console.log('  -c, --continue         Continue the latest session');
   console.log('  -r, --resume [id]      Resume with picker or explicit session id');
   console.log('  -m, --model <model>    Claude model name');
-  console.log('  --no-watch             Do not auto-refresh the evolution HTML while working');
-  console.log('  --no-open              Do not auto-open the evolution HTML in a browser');
+  console.log('  --watch                Start the live evolution sidecar');
+  console.log('  --open                 Open the live evolution page (implies --watch)');
   console.log('  --skip-doctor          Skip startup guardrails (not recommended)');
   console.log('');
-  console.log('By default, ga flow opens wiki/knowledge/outputs/evolution.html and keeps');
-  console.log('it refreshed (deterministic) as you work. New projects open a placeholder');
-  console.log('that turns into the timeline on the first milestone. Press `h` in the');
-  console.log('observer to export/open HTML, or `r` to regenerate with AI enrichment.');
+  console.log('ga flow starts the Zellij dual-pane TUI. In the observer, press `h`');
+  console.log('to export/open HTML, or `r` to regenerate with AI enrichment.');
+  console.log('Use `--watch --open` for the live browser sidecar.');
   console.log('');
   console.log('Notifications:');
   console.log('  ga notify setup        Configure optional WeChat notifications');
@@ -72,19 +73,20 @@ function printExportHelp() {
 
 async function main(argv) {
   const [command, ...rest] = argv;
+  const workspaceDir = resolveWorkspaceDir();
   if (!command || command === '--help' || command === '-h') {
     printRootHelp();
     return 0;
   }
 
   if (command === 'doctor') {
-    const report = runDoctor({ rootDir });
+    const report = runDoctor({ rootDir: workspaceDir, notifyRootDir: toolRootDir });
     console.log(formatDoctorReport(report));
     return report.ok ? 0 : 1;
   }
 
   if (command === 'notify') {
-    return await runNotifyCommand({ rootDir, args: rest });
+    return await runNotifyCommand({ rootDir: toolRootDir, args: rest });
   }
 
   if (command === 'flow') {
@@ -94,7 +96,7 @@ async function main(argv) {
         printFlowHelp();
         return 0;
       }
-      return await runFlowCommand({ rootDir, options });
+      return await runFlowCommand({ rootDir: toolRootDir, workspaceDir, options });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga flow: ${message}`);
@@ -105,7 +107,7 @@ async function main(argv) {
 
   if (command === 'sessions' || command === 'ls') {
     try {
-      return runSessionsCommand({ rootDir });
+      return runSessionsCommand({ rootDir: toolRootDir, workspaceDir });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga sessions: ${message}`);
@@ -120,7 +122,7 @@ async function main(argv) {
         printExportHelp();
         return 0;
       }
-      return runExportCommand({ rootDir, options });
+      return runExportCommand({ rootDir: toolRootDir, workspaceDir, options });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`ga export: ${message}`);

@@ -50,11 +50,11 @@ function claudeAuthHint() {
   };
 }
 
-export function runDoctor({ rootDir } = {}) {
+export function runDoctor({ rootDir, notifyRootDir } = {}) {
   const projectRoot = rootDir ?? process.cwd();
   const wikiDir = path.join(projectRoot, 'wiki');
   const sessionIndexPath = path.join(wikiDir, 'sessions', '_index.json');
-  const notifyConfig = readNotifyConfig(projectRoot);
+  const notifyConfig = readNotifyConfig(notifyRootDir ?? projectRoot);
   const notifyUserId = process.env.FLOW_NOTIFY_WECHAT_USER_ID || notifyConfig.FLOW_NOTIFY_WECHAT_USER_ID || '';
 
   const auth = claudeAuthHint();
@@ -136,6 +136,9 @@ export function formatDoctorReport(report) {
     }
   }
   lines.push('');
-  lines.push(report.ok ? 'Environment is ready.' : 'Environment is not ready.');
+  const hasWarnings = report.checks.some((check) => !check.ok && !check.required);
+  lines.push(report.ok
+    ? (hasWarnings ? 'Environment is ready with warnings.' : 'Environment is ready.')
+    : 'Environment is not ready.');
   return lines.join('\n');
 }

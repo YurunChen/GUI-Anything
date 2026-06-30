@@ -19,6 +19,6 @@ describe('observer i18n', () => {
     expect(en.calmNoSummary).toContain('round');
     expect(zh.calmNoSummary).toContain('本轮');
     expect(en.excerptWithOutput('q', 1, 'out', 0)).toContain('tool');
-    expect(zh.excerptWithOutput('q', 1, 'out', 0)).toContain('工具');
+    expect(zh.excerptWithOutput('q', 1, 'out', 0)).toContain('工具调用');
   });
 });

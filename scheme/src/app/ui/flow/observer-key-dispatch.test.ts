@@ -59,8 +59,10 @@ describe('dispatchObserverKey', () => {
     ).toBe('close_notes_input');
   });
 
-  test('s requires notifyAvailable', () => {
-    expect(dispatchObserverKey({ name: 's', ctrl: false, meta: false }, baseState)?.type).toBe('send_snapshot');
+  test('s enables notify when available', () => {
+    expect(dispatchObserverKey({ name: 's', ctrl: false, meta: false }, baseState)?.type).toBe('enable_notify');
+    expect(dispatchObserverKey({ name: 'S', ctrl: false, meta: false, shift: true }, baseState)?.type).toBe('enable_notify');
+    expect(dispatchObserverKey({ name: 's', ctrl: true, meta: false }, baseState)).toBeNull();
     expect(
       dispatchObserverKey(
         { name: 's', ctrl: false, meta: false },

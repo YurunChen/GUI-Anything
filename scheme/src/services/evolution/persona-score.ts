@@ -16,6 +16,7 @@
  */
 
 import type { CodingPersona, EvolutionNode } from '../../data/protocol/evolution-types';
+import { localizedText, pickLocalizedText, type LocalizedText, type ObserverLocale } from '../../constants/observer-locale';
 import {
   ARCHETYPES,
   EGGS,
@@ -45,10 +46,10 @@ export interface PersonaSignals {
 }
 
 export interface PersonaAxis {
-  axis: string;
+  axis: LocalizedText;
   value: number;
-  leftLabel: string;
-  rightLabel: string;
+  leftLabel: LocalizedText;
+  rightLabel: LocalizedText;
   /** Single-letter codes for the left/right poles, used to assemble the type code. */
   leftCode: string;
   rightCode: string;
@@ -56,7 +57,7 @@ export interface PersonaAxis {
 
 export interface ArchetypeMatch {
   code: string;
-  spectrum: { code: string; cn: string; similarity: number }[];
+  spectrum: { code: string; name: LocalizedText; similarity: number }[];
 }
 
 export interface PersonaMatchSignals extends EggSignals {
@@ -134,12 +135,48 @@ export function computePersonaAxes(s: PersonaSignals): PersonaAxis[] {
   const drift = clamp(s.pivotShare * 100);
 
   return [
-    { axis: '思维广度', value: divergent, leftLabel: '聚焦', rightLabel: '发散', leftCode: 'F', rightCode: 'D' },
-    { axis: '工作节奏', value: tinker, leftLabel: '规划', rightLabel: '试错', leftCode: 'P', rightCode: 'T' },
-    { axis: '知识取向', value: reuse, leftLabel: '原创', rightLabel: '复用', leftCode: 'O', rightCode: 'R' },
-    { axis: '产出倾向', value: ship, leftLabel: '探索', rightLabel: '交付', leftCode: 'E', rightCode: 'S' },
-    { axis: '节律', value: night, leftLabel: '昼间', rightLabel: '夜行', leftCode: 'U', rightCode: 'N' },
-    { axis: '路线', value: drift, leftLabel: '坚守', rightLabel: '漂移', leftCode: 'K', rightCode: 'V' },
+    {
+      axis: localizedText('Thinking breadth', '思维广度'),
+      value: divergent,
+      leftLabel: localizedText('Focused', '聚焦'),
+      rightLabel: localizedText('Divergent', '发散'),
+      leftCode: 'F', rightCode: 'D',
+    },
+    {
+      axis: localizedText('Work rhythm', '工作节奏'),
+      value: tinker,
+      leftLabel: localizedText('Planned', '规划'),
+      rightLabel: localizedText('Tinkering', '试错'),
+      leftCode: 'P', rightCode: 'T',
+    },
+    {
+      axis: localizedText('Knowledge stance', '知识取向'),
+      value: reuse,
+      leftLabel: localizedText('Original', '原创'),
+      rightLabel: localizedText('Reuse', '复用'),
+      leftCode: 'O', rightCode: 'R',
+    },
+    {
+      axis: localizedText('Output mode', '产出倾向'),
+      value: ship,
+      leftLabel: localizedText('Explore', '探索'),
+      rightLabel: localizedText('Ship', '交付'),
+      leftCode: 'E', rightCode: 'S',
+    },
+    {
+      axis: localizedText('Schedule', '节律'),
+      value: night,
+      leftLabel: localizedText('Daytime', '昼间'),
+      rightLabel: localizedText('Night', '夜行'),
+      leftCode: 'U', rightCode: 'N',
+    },
+    {
+      axis: localizedText('Route', '路线'),
+      value: drift,
+      leftLabel: localizedText('Steady', '坚守'),
+      rightLabel: localizedText('Drifting', '漂移'),
+      leftCode: 'K', rightCode: 'V',
+    },
   ];
 }
 
@@ -148,9 +185,11 @@ export function typeCodeFromAxes(axes: PersonaAxis[]): string {
   return axes.map((a) => (a.value >= 50 ? a.rightCode : a.leftCode)).join('');
 }
 
-/** Human-readable DNA string of dominant pole labels, e.g. "聚焦·试错·复用·交付·夜行·坚守". */
-export function dnaFromAxes(axes: PersonaAxis[]): string {
-  return axes.map((a) => (a.value >= 50 ? a.rightLabel : a.leftLabel)).join('·');
+/** Human-readable DNA string of dominant pole labels. */
+export function dnaFromAxes(axes: PersonaAxis[]): LocalizedText {
+  const join = (locale: ObserverLocale, sep: string) =>
+    axes.map((a) => pickLocalizedText(a.value >= 50 ? a.rightLabel : a.leftLabel, locale)).join(sep);
+  return localizedText(join('en', ' · '), join('zh-Hans', '·'));
 }
 
 const MAX_DIST = Math.sqrt(6 * 100 * 100); // farthest possible distance in 6-dim 0–100 space
@@ -168,7 +207,7 @@ export function matchArchetype(axes: PersonaAxis[], signals: PersonaMatchSignals
     let sum = 0;
     for (let i = 0; i < 6; i++) sum += (vec[i] - a.dims[i]) ** 2;
     const dist = Math.sqrt(sum);
-    return { code: a.code, cn: a.cn, similarity: Math.round((1 - dist / MAX_DIST) * 100) / 100 };
+    return { code: a.code, name: a.name, similarity: Math.round((1 - dist / MAX_DIST) * 100) / 100 };
   }).sort((x, y) => y.similarity - x.similarity);
 
   if (egg) {
@@ -274,21 +313,33 @@ export function ruleBasedPersona(nodes: EvolutionNode[], sessionCount: number): 
   )[0];
 
   return {
-    scores: axes.map(({ axis, value, leftLabel, rightLabel }) => ({ axis, value, leftLabel, rightLabel })),
+    scores: axes.map(({ axis, value, leftLabel, rightLabel }) => ({
+      axis,
+      value,
+      leftLabel,
+      rightLabel,
+    })),
     typeCode,
     archetypeCode: arch.code,
-    cnName: arch.cn,
+    name: arch.name,
     intro: arch.intro,
     catchphrase: arch.catchphrase,
     devStyle: arch.devStyle,
     rarity: arch.rarity,
     dna,
     spectrum: match.spectrum,
-    title: arch.cn,
-    tagline: arch.intro,
-    reading:
-      `基于本项目的真实行为推导出「${arch.cn}」（${arch.devStyle}）：` +
-      axes.map((a) => `${a.axis}偏${a.value >= 50 ? a.rightLabel : a.leftLabel}`).join('、') + '。',
+    reading: localizedText(
+      `Inferred from real project behavior as "${pickLocalizedText(arch.name, 'en')}" ` +
+        `(${pickLocalizedText(arch.devStyle, 'en')}): ` +
+        axes.map((a) => `${pickLocalizedText(a.axis, 'en')} leans ${
+          pickLocalizedText(a.value >= 50 ? a.rightLabel : a.leftLabel, 'en')
+        }`).join(', ') + '.',
+      `基于本项目的真实行为推导出「${pickLocalizedText(arch.name, 'zh-Hans')}」` +
+        `（${pickLocalizedText(arch.devStyle, 'zh-Hans')}）：` +
+        axes.map((a) => `${pickLocalizedText(a.axis, 'zh-Hans')}偏${
+          pickLocalizedText(a.value >= 50 ? a.rightLabel : a.leftLabel, 'zh-Hans')
+        }`).join('、') + '。',
+    ),
     signatureNodeId: signature?.id,
   };
 }

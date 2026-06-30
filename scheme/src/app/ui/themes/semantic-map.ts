@@ -1,6 +1,6 @@
 /**
  * Semantic color tokens — theme-agnostic aliases over ColorScheme.
- * Maps tui-design slots: fg.default/muted, bg.base/surface/overlay, accent, status.
+ * Maps theme slots: fg.default/muted, bg.base/surface/overlay, accent, status.
  *
  * Layering (dark): base (primary) → grouped (secondary) → elevated (tertiary) → highlight.
  */

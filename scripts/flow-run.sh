@@ -14,10 +14,12 @@
 
 set -euo pipefail
 
-ROOT_DIR="${FLOW_ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-SCHEME_DIR="$ROOT_DIR/scheme"
+TOOL_ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="${FLOW_PROJECT_DIR:-$(pwd)}"
+ROOT_DIR="$(cd "$ROOT_DIR" && pwd)"
+SCHEME_DIR="${FLOW_SCHEME_DIR:-$TOOL_ROOT_DIR/scheme}"
 LAYOUT_DIR="${FLOW_LAYOUT_DIR:-${TMPDIR:-/tmp}/gui-anything-flow/layouts}"
-NOTIFY_ENV_FILE="$ROOT_DIR/.flow-runtime/notify.env"
+NOTIFY_ENV_FILE="${FLOW_NOTIFY_ENV_FILE:-$TOOL_ROOT_DIR/.flow-runtime/notify.env}"
 MODEL=""
 CONTINUE=0
 RESUME=0
@@ -84,7 +86,9 @@ while [[ $# -gt 0 ]]; do
       echo "      --cleanup        Kill/delete stale flow zellij sessions and exit"
       echo ""
       echo "Environment:"
-      echo "  FLOW_PROJECT_DIR / FLOW_ROOT_DIR / FLOW_WIKI_DIR"
+      echo "  FLOW_PROJECT_DIR     Project cwd for Claude JSONL, wiki, logs, and resume index"
+      echo "  FLOW_ROOT_DIR        Internal runtime root written by the launcher"
+      echo "  FLOW_WIKI_DIR        Explicit wiki directory override"
       echo "  FLOW_RESUME_MODE       bind_specific | auto_latest | continue | continue_picker"
       echo "  FLOW_LOG_LEVEL         debug | info | warn | error (default: info)"
       echo "  FLOW_LOG_MODULES       Comma filter, e.g. binding,session,summary,runtime"
@@ -96,6 +100,7 @@ while [[ $# -gt 0 ]]; do
       echo "  FLOW_WIKI_MODEL        Override wiki agent model"
       echo "  FLOW_NOTIFY_WECHAT_USER_ID   Enable WeChat notify hotkey"
       echo "  FLOW_NOTIFY_WECHAT_SERVICE_URL  WeChat service URL (default: http://127.0.0.1:8765)"
+      echo "  FLOW_NOTIFY_WECHAT_SERVICE_HOST/PORT  Bind local WeChat service (default: 127.0.0.1/8765)"
       echo "  FLOW_NOTIFY_ENABLED    false = disable WeChat notifications"
       echo "  FLOW_NOTIFY_PROGRESS_INTERVAL  Progress interval minutes (0 = disabled)"
       echo "  wiki/sessions/_index.json  Continue binding (workspace-scoped)"

@@ -8,11 +8,14 @@ import type {
   Exploration,
   FlowchartHint,
   FlowGraphNode,
+  FlowGraphNodeStatus,
   FlowGraphSnapshot,
+  SessionScopedId,
   PersistResultStatus,
   TitleDelta,
   WikiMatch,
 } from '../../data/protocol/observer-protocol';
+import { makeSessionScopedId } from '../../data/protocol/observer-protocol';
 import { ruleBasedPersona } from './persona-score';
 
 export interface LivePersonaInput {
@@ -23,21 +26,119 @@ export interface LivePersonaInput {
   wikiMatchesByExploration?: Record<string, WikiMatch | null>;
 }
 
+export const LIVE_PERSONA_MIN_COMPLETED_EXPLORATIONS = 3;
+export const LIVE_PERSONA_REFRESH_COMPLETED_EXPLORATIONS = 3;
+
 export function resolveLiveCodingPersona(input: LivePersonaInput): CodingPersona | null {
   if (input.graphSnapshot.nodes.length === 0) return null;
-  return ruleBasedPersona(buildLivePersonaNodes(input), 1);
+  const evidenceInput = buildLivePersonaEvidenceInput(input);
+  if (!evidenceInput) return null;
+  return ruleBasedPersona(buildLivePersonaNodes(evidenceInput, 'explorations'), 1);
 }
 
-export function buildLivePersonaNodes(input: LivePersonaInput): EvolutionNode[] {
+type LivePersonaMetricSource = 'graph' | 'explorations';
+
+export function buildLivePersonaNodes(
+  input: LivePersonaInput,
+  metricSource: LivePersonaMetricSource = 'graph',
+): EvolutionNode[] {
   const orderedExplorations = sortExplorationsByTimeline(input.explorations);
   return input.graphSnapshot.nodes.map((node) => (
-    toEvolutionNode(node, relatedExplorations(node, orderedExplorations, input), input)
+    toEvolutionNode(node, relatedExplorations(node, orderedExplorations, input), input, metricSource)
   ));
 }
 
-function toEvolutionNode(node: FlowGraphNode, explorations: Exploration[], input: LivePersonaInput): EvolutionNode {
+export function stableLivePersonaExplorations(explorations: Exploration[]): Exploration[] {
+  const completed = sortExplorationsByTimeline(explorations)
+    .filter((exploration) => exploration.status === 'complete');
+  if (completed.length < LIVE_PERSONA_MIN_COMPLETED_EXPLORATIONS) return [];
+  const stableCount = Math.floor(completed.length / LIVE_PERSONA_REFRESH_COMPLETED_EXPLORATIONS)
+    * LIVE_PERSONA_REFRESH_COMPLETED_EXPLORATIONS;
+  return completed.slice(0, stableCount);
+}
+
+function buildLivePersonaEvidenceInput(input: LivePersonaInput): LivePersonaInput | null {
+  const explorations = stableLivePersonaExplorations(input.explorations);
+  if (explorations.length === 0) return null;
+
+  const nodes = input.graphSnapshot.nodes
+    .map((node) => {
+      const related = relatedExplorations(node, explorations, input);
+      return related.length > 0 ? toStableEvidenceNode(node, related, input) : null;
+    })
+    .filter((node): node is FlowGraphNode => Boolean(node));
+  if (nodes.length === 0) return null;
+
+  return {
+    ...input,
+    explorations,
+    graphSnapshot: {
+      ...input.graphSnapshot,
+      nodes,
+    },
+  };
+}
+
+function toStableEvidenceNode(
+  node: FlowGraphNode,
+  related: Exploration[],
+  input: LivePersonaInput,
+): FlowGraphNode {
+  const representative = related.find((item) => item.id === node.explorationId) ?? related.at(-1)!;
+  const sessionId = node.id.split(':')[0] || 'current';
+  const representativeHint = input.flowchartHints?.[representative.id];
+  const nodeSlug = slugFlowchartNodeId(representativeHint?.nodeId ?? node.intentKey, representative.id);
+
+  return {
+    ...node,
+    id: makeSessionScopedId(sessionId, `${nodeSlug}_${representative.id}`) as SessionScopedId,
+    explorationId: representative.id,
+    label: representativeHint?.nodeTitle?.trim() || node.label,
+    status: stableNodeStatus(related),
+    startedAt: Math.min(...related.map((item) => item.startedAt)),
+    endedAt: related.at(-1)?.endedAt,
+    metaBadges: {
+      tools: related.reduce((sum, item) => sum + item.nodes.filter((child) => child.type === 'tool').length, 0),
+      errors: related.reduce((sum, item) => sum + item.errorCounts.tool + item.errorCounts.system + item.errorCounts.result, 0),
+      wiki: stableWikiState(related, node, input),
+    },
+  };
+}
+
+function stableNodeStatus(related: Exploration[]): FlowGraphNodeStatus {
+  const hasErrors = related.some((item) =>
+    item.errorCounts.tool + item.errorCounts.system + item.errorCounts.result > 0);
+  if (hasErrors) return 'error';
+  if (related.some((item) => item.status === 'interrupted')) return 'interrupted';
+  return 'complete';
+}
+
+function stableWikiState(
+  related: Exploration[],
+  node: FlowGraphNode,
+  input: LivePersonaInput,
+): FlowGraphNode['metaBadges']['wiki'] {
+  for (let i = related.length - 1; i >= 0; i -= 1) {
+    const status = input.explorationPersistStatus?.[related[i].id];
+    if (status) return status;
+  }
+  return related.some((item) => item.id === node.explorationId) ? node.metaBadges.wiki : 'none';
+}
+
+function toEvolutionNode(
+  node: FlowGraphNode,
+  explorations: Exploration[],
+  input: LivePersonaInput,
+  metricSource: LivePersonaMetricSource,
+): EvolutionNode {
   const related = explorations.length > 0 ? explorations : [];
   const representative = related.find((item) => item.id === node.explorationId) ?? related.at(-1);
+  const toolCount = metricSource === 'explorations' && related.length > 0
+    ? related.reduce((sum, item) => sum + item.nodes.filter((child) => child.type === 'tool').length, 0)
+    : node.metaBadges.tools;
+  const errorCount = metricSource === 'explorations' && related.length > 0
+    ? related.reduce((sum, item) => sum + item.errorCounts.tool + item.errorCounts.system + item.errorCounts.result, 0)
+    : node.metaBadges.errors;
   const writes = related.length > 0
     ? related.filter((item) => isPersisted(item.id, node, input)).length
     : nodeWriteFallback(node);
@@ -65,8 +166,8 @@ function toEvolutionNode(node: FlowGraphNode, explorations: Exploration[], input
     delta: resolveNodeDelta(representative, related, input),
     children,
     metrics: {
-      toolCount: node.metaBadges.tools,
-      errorCount: node.metaBadges.errors,
+      toolCount,
+      errorCount,
       retrievals,
       writes,
       interrupted,

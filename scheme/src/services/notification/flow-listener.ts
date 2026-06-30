@@ -1,6 +1,12 @@
 import type { ActivityTree, RepeatAlert } from '../../domain/types';
+import type { Exploration } from '../../data/protocol/observer-protocol';
 import type { NotificationService } from './service';
 import type { NotificationResult } from './types';
+
+type ExplorationNotifySummary = {
+  text?: string;
+  flowchart?: { nodeTitle?: string };
+};
 
 /**
  * Flow Observer 事件监听器
@@ -28,6 +34,11 @@ export class FlowNotificationListener {
     await this.checkProgress(tree);
   }
 
+  prime(tree: ActivityTree): void {
+    this.lastErrorCount = tree.alerts.filter((a) => a.severity === 'error').length;
+    this.lastToolCount = tree.stats.toolCallCount;
+  }
+
   /**
    * 监听任务完成事件
    */
@@ -52,6 +63,30 @@ export class FlowNotificationListener {
       sessionId: this.sessionId,
       projectDir: this.projectDir,
       extractedAt: new Date().toISOString(),
+    });
+  }
+
+  async onExplorationComplete(
+    exploration: Exploration,
+    summary?: ExplorationNotifySummary,
+  ): Promise<NotificationResult[]> {
+    const content = this.buildExplorationDigest(exploration, summary);
+    const toolCount = exploration.nodes.filter((node) => node.type === 'tool').length;
+    const intent = resolveExplorationIntent(exploration, summary);
+
+    return this.notificationService.notify({
+      type: 'exploration',
+      priority: 'normal',
+      title: `意图: ${truncateNotifyText(intent, 80)}`,
+      content,
+      timestamp: Date.now(),
+      metadata: {
+        sessionId: this.sessionId,
+        projectDir: this.projectDir,
+        phase: exploration.currentPhase,
+        toolCount,
+        explorationId: exploration.id,
+      },
     });
   }
 
@@ -131,7 +166,7 @@ export class FlowNotificationListener {
     const lines: string[] = [];
 
     lines.push(`**当前阶段**: ${tree.phase.current}`);
-    lines.push(`**工具调用**: ${tree.stats.toolCallCount}`);
+    lines.push(`**tool calls**: ${tree.stats.toolCallCount}`);
     lines.push(`**思考次数**: ${tree.stats.thinkingCount}`);
     lines.push(`**回复次数**: ${tree.stats.responseCount}`);
 
@@ -158,6 +193,16 @@ export class FlowNotificationListener {
     return `当前进度:\n\n${this.buildSnapshotContent(tree)}\n\n⏱️ 已运行: ${duration}`;
   }
 
+  private buildExplorationDigest(exploration: Exploration, summary?: ExplorationNotifySummary): string {
+    const toolCount = exploration.nodes.filter((node) => node.type === 'tool').length;
+    const summaryText = summary?.text?.trim() || '未生成';
+
+    return [
+      `工具: ${toolCount} 次`,
+      `摘要: ${truncateNotifyText(summaryText, 180)}`,
+    ].join('\n');
+  }
+
   /**
    * 格式化持续时间
    */
@@ -174,4 +219,19 @@ export class FlowNotificationListener {
       return `${seconds}秒`;
     }
   }
+}
+
+function truncateNotifyText(text: string, maxLength: number): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, Math.max(0, maxLength - 1))}…`;
+}
+
+function resolveExplorationIntent(
+  exploration: Exploration,
+  summary?: ExplorationNotifySummary,
+): string {
+  return summary?.flowchart?.nodeTitle?.trim()
+    || exploration.question.trim()
+    || '未命名任务';
 }

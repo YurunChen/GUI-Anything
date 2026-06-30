@@ -303,7 +303,7 @@ bun run src/main.ts --web-mirror --port 8080        # 指定端口
 
 # Knowledge Graph
 bun run src/main.ts --knowledge-graph -o graph.html
-bun run src/main.ts --knowledge-graph --since 7d    # 只看最近7天
+bun run src/main.ts --knowledge-graph --since 7d    # 只看 7 天窗口
 ```
 
 ### TUI 快捷键新增
@@ -381,9 +381,9 @@ bun run src/main.ts --knowledge-graph --since 7d    # 只看最近7天
 
 ---
 
-## 🎯 Quick Win（今天就能做的事）
+## 🎯 Quick Win（最快可执行路径）
 
-如果想今天就看到效果，最快路径：
+最快可执行路径：
 
 ```bash
 # 1. 创建最小 HTML 导出（~2h）

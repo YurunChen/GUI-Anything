@@ -504,14 +504,14 @@ span.evo-ico.iconify { line-height: 0; }
 .kmkt__chip {
   display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
   font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
-  background: var(--bg-secondary, #16161e); color: var(--fg-secondary, #a9b1d6);
+  background: var(--control-background, var(--bg-secondary, #16161e)); color: var(--fg-secondary, #a9b1d6);
   border: 1px solid var(--border-muted, #2a2b3c);
   transition: background .2s ease, color .2s ease, border-color .2s ease;
 }
 .kmkt__chip:hover { border-color: var(--accent-primary, #7aa2f7); }
 .kmkt__chip.is-active {
   background: var(--accent-primary, #7aa2f7); border-color: var(--accent-primary, #7aa2f7);
-  color: var(--bg-primary, #1a1b26);
+  color: var(--active-foreground, var(--bg-primary, #1a1b26));
 }
 .kmkt__chip-n {
   font-size: 11px; padding: 0 7px; border-radius: 999px;
@@ -525,7 +525,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kcard {
   display: flex; flex-direction: column; gap: 10px; text-align: left; cursor: pointer;
   padding: 16px; border-radius: 16px; min-width: 0;
-  background: color-mix(in srgb, var(--bg-secondary, #16161e) 60%, transparent);
+  background: var(--raised-surface, color-mix(in srgb, var(--bg-secondary, #16161e) 60%, transparent));
   border: 1px solid color-mix(in srgb, var(--border-normal, #3b3d52) 60%, transparent);
   border-top: 3px solid var(--border-normal, #3b3d52);
   backdrop-filter: blur(12px) saturate(1.15);
@@ -544,7 +544,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kcard__ico {
   display: inline-flex; align-items: center; justify-content: center;
   width: 30px; height: 30px; border-radius: 9px;
-  background: var(--bg-tertiary, #20212e); color: var(--accent-primary, #7aa2f7); flex: none;
+  background: var(--control-background, var(--bg-tertiary, #20212e)); color: var(--accent-primary, #7aa2f7); flex: none;
 }
 .kcard--out .kcard__ico { color: var(--status-success, #9ece6a); }
 .kcard__kind {
@@ -554,7 +554,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kcard__badge {
   margin-left: auto; font-size: 10.5px; white-space: nowrap;
   padding: 2px 9px; border-radius: 999px;
-  background: var(--bg-tertiary, #20212e); color: var(--fg-muted, #787c99);
+  background: var(--control-background, var(--bg-tertiary, #20212e)); color: var(--fg-muted, #787c99);
 }
 .kcard__badge--saved   { color: var(--status-success, #9ece6a); }
 .kcard__badge--updated { color: var(--status-info, #7dcfff); }
@@ -566,7 +566,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kcard__tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
 .kcard__tag {
   font-size: 11px; padding: 2px 8px; border-radius: 999px;
-  background: var(--bg-tertiary, #20212e); color: var(--fg-muted, #787c99);
+  background: var(--control-background, var(--bg-tertiary, #20212e)); color: var(--fg-muted, #787c99);
   border: 1px solid var(--border-muted, #2a2b3c);
 }
 
@@ -574,7 +574,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kmodal {
   position: fixed; inset: 0; z-index: 50; display: none;
   align-items: center; justify-content: center; padding: 20px;
-  background: color-mix(in srgb, var(--bg-primary, #1a1b26) 70%, transparent);
+  background: var(--modal-backdrop, color-mix(in srgb, var(--bg-primary, #1a1b26) 70%, transparent));
   -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
 }
 .kmodal.is-open { display: flex; animation: kmodal-fade .18s ease; }
@@ -582,7 +582,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kmodal__panel {
   position: relative; width: min(560px, 92vw); max-height: 85vh; overflow: auto;
   padding: 30px; border-radius: 20px;
-  background: color-mix(in srgb, var(--bg-secondary, #16161e) 78%, transparent);
+  background: var(--overlay-surface, color-mix(in srgb, var(--bg-secondary, #16161e) 78%, transparent));
   border: 1px solid color-mix(in srgb, var(--accent-primary, #7aa2f7) 28%, transparent);
   backdrop-filter: blur(20px) saturate(1.25);
   -webkit-backdrop-filter: blur(20px) saturate(1.25);
@@ -594,7 +594,7 @@ span.evo-ico.iconify { line-height: 0; }
   position: absolute; top: 14px; right: 14px; cursor: pointer;
   width: 30px; height: 30px; border-radius: 8px; font-size: 15px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--bg-tertiary, #20212e); color: var(--fg-muted, #787c99);
+  background: var(--control-background, var(--bg-tertiary, #20212e)); color: var(--fg-muted, #787c99);
   border: 1px solid var(--border-muted, #2a2b3c);
 }
 .kmodal__x:hover { color: var(--fg-primary, #c0caf5); border-color: var(--accent-primary, #7aa2f7); }
@@ -607,7 +607,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kmodal__ask {
   font-size: 13px; line-height: 1.6; color: var(--fg-secondary, #a9b1d6);
   margin: 0 0 14px; padding: 10px 12px; border-radius: 10px;
-  background: var(--bg-tertiary, #20212e);
+  background: var(--control-background, var(--bg-tertiary, #20212e));
   border-left: 3px solid color-mix(in srgb, var(--accent-secondary,#bb9af7) 60%, transparent);
 }
 .kmodal__ask-label {
@@ -621,7 +621,7 @@ span.evo-ico.iconify { line-height: 0; }
 .kmodal__jump {
   margin-top: 16px; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
   font-size: 13px; padding: 8px 14px; border-radius: 10px;
-  background: var(--bg-tertiary, #20212e); color: var(--accent-secondary, #bb9af7);
+  background: var(--control-background, var(--bg-tertiary, #20212e)); color: var(--accent-secondary, #bb9af7);
   border: 1px solid var(--border-muted, #2a2b3c);
 }
 .kmodal__jump:hover { border-color: var(--accent-secondary, #bb9af7); }

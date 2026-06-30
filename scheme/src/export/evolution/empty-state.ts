@@ -5,16 +5,36 @@
  */
 
 import { escapeHtml } from '../shared/html-utils';
+import { observerHtmlLang, resolveObserverLocale } from '../../constants/observer-locale';
 
-export function generateEmptyEvolutionHtml(opts: { workspaceRoot?: string } = {}): string {
+export function generateEmptyEvolutionHtml(opts: { workspaceRoot?: string; locale?: string } = {}): string {
+  const locale = resolveObserverLocale(opts.locale);
+  const zh = locale === 'zh-Hans';
+  const text = zh
+    ? {
+      title: '项目演进史 · 等待第一个里程碑',
+      heading: '项目演进史正在等待第一个里程碑',
+      line1: '这是一个全新的项目，还没有捕获到任何探索记录。',
+      line2: '开始在左侧 Claude 面板里干活吧——当出现第一个意图里程碑时，这一页会自动变成真正的演进时间线。',
+      live: '实时监听中',
+      refresh: '本页每 5 秒自动刷新',
+    }
+    : {
+      title: 'Project Evolution · Waiting for the first milestone',
+      heading: 'Project Evolution is waiting for the first milestone',
+      line1: 'This is a new project. No exploration records have been captured yet.',
+      line2: 'Start working in the Claude pane. When the first intent milestone appears, this page will become the real evolution timeline.',
+      live: 'Watching live',
+      refresh: 'This page refreshes every 5 seconds',
+    };
   const ws = opts.workspaceRoot ? escapeHtml(opts.workspaceRoot) : '';
   return `<!doctype html>
-<html lang="zh">
+<html lang="${observerHtmlLang(locale)}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta http-equiv="refresh" content="5" />
-<title>项目演进史 · 等待第一个里程碑</title>
+<title>${escapeHtml(text.title)}</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -59,11 +79,11 @@ export function generateEmptyEvolutionHtml(opts: { workspaceRoot?: string } = {}
 <body>
   <main class="card">
     <div class="pulse"></div>
-    <h1>项目演进史正在等待第一个里程碑</h1>
-    <p>这是一个全新的项目，还没有捕获到任何探索记录。</p>
-    <p>开始在左侧 Claude 面板里干活吧——当出现第一个意图里程碑时，这一页会自动变成真正的演进时间线。</p>
+    <h1>${escapeHtml(text.heading)}</h1>
+    <p>${escapeHtml(text.line1)}</p>
+    <p>${escapeHtml(text.line2)}</p>
     ${ws ? `<p class="ws"><code>${ws}</code></p>` : ''}
-    <p class="hint"><span class="live"><span class="dot"></span>实时监听中</span> · 本页每 5 秒自动刷新</p>
+    <p class="hint"><span class="live"><span class="dot"></span>${escapeHtml(text.live)}</span> · ${escapeHtml(text.refresh)}</p>
   </main>
 </body>
 </html>
