@@ -188,13 +188,17 @@ Project memory stays local by default. Related turns accumulate by intent; curat
 
 ## Demo Gallery
 
-Planned screen recordings for this section (see [Roadmap](#roadmap)):
+Watch the promotional walkthrough:
 
-| File | Length | Story |
-|------|--------|-------|
-| `assets/demo/hero.mp4` / `hero.gif` | 12–18s | Start `ga flow`, then watch timeline and flowchart update |
-| `assets/demo/knowledge.gif` | 8–12s | A prior wiki hit appears inline, then `k` audits a bad match |
-| `assets/demo/resume.gif` | 8–12s | `ga flow --resume <id>` replays without re-summary |
+<p align="center">
+  <video src="assets/video/video.mp4" poster="assets/video/Cover.jpg" controls width="960">
+    <a href="assets/video/video.mp4">Open the 85-second MP4 demo</a>
+  </video>
+</p>
+
+<p align="center">
+  <strong><a href="assets/video/video.mp4">Open the 85-second MP4 demo</a></strong>
+</p>
 
 Static preview: [`assets/demo/readme-hero.svg`](assets/demo/readme-hero.svg).
 
@@ -305,7 +309,7 @@ GUI-Anything is early but usable. The core Claude Code sidecar path is the suppo
 
 ## Roadmap
 
-- Record real `ga flow` demo videos for the README gallery
+- Add shorter task-focused clips for knowledge retrieval and strict resume
 - Improve Web Mirror polish for phone and tablet monitoring
 - Add importers for session formats beyond Claude Code
 - Expand wiki maintenance reports and bad-match audit workflows
