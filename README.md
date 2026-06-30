@@ -1,40 +1,52 @@
-<p align="right">
-  <strong>English</strong> · <a href="README_CN.md">简体中文</a>
-</p>
-
 <p align="center">
-  <img src="assets/demo/readme-hero.svg" alt="GUI-Anything banner: Claude Code, Flow Observer, live map, local memory, and reliable replay" width="960">
+  <img src="assets/demo/readme-hero-story.png" alt="GUI-Anything pixel-art banner: a developer lost in a long AI coding-session maze while a quiet sidecar records the path into reusable memory" width="960">
 </p>
 
 <h1 align="center">GUI-Anything</h1>
 
+<p align="center"><strong>The flight recorder for long Claude Code sessions.</strong></p>
+
 <p align="center">
-  <strong>The flight recorder for long Claude Code sessions.</strong>
+  <strong>English</strong> · <a href="README_CN.md">简体中文</a>
 </p>
 
 <p align="center">
-  Claude keeps coding in the left pane. GUI-Anything watches from the right,<br>
-  turns long sessions into a live map, and brings useful context back when you need it.
-</p>
-
-<p align="center">
-  <a href="#quick-start"><b>Quick Start</b></a> ·
-  <a href="#sidecar-view"><b>Sidecar View</b></a> ·
-  <a href="#memory-layer"><b>Memory Layer</b></a> ·
-  <a href="#how-it-works"><b>Architecture</b></a> ·
-  <a href="#contributing"><b>Contributing</b></a>
+  <a href="#quick-start">⚡ Quick Start</a> &nbsp;·&nbsp;
+  <a href="#sidecar-view">🪟 Sidecar View</a> &nbsp;·&nbsp;
+  <a href="#why-it-is-different">✨ Why Different</a> &nbsp;·&nbsp;
+  <a href="#how-it-works">🧭 How It Works</a> &nbsp;·&nbsp;
+  <a href="#demo-gallery">🎬 Demos</a> &nbsp;·&nbsp;
+  <a href="#contributing">🤝 Contribute</a> &nbsp;·&nbsp;
+  <a href="#faq">❓ FAQ</a> &nbsp;·&nbsp;
+  <a href="#acknowledgements">🙏 Acknowledgements</a>
 </p>
 
 <p align="center">
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-111827?style=flat-square" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/tests-621%2B-10b981?style=flat-square" alt="621+ tests">
+  <img src="https://img.shields.io/badge/tests-531%2B-10b981?style=flat-square" alt="531+ tests">
   <img src="https://img.shields.io/badge/themes-33-7c3aed?style=flat-square" alt="33 themes">
   <img src="https://img.shields.io/badge/local--first-memory-0f172a?style=flat-square" alt="local-first memory">
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Claude%20Code-Native%20Sidecar-5CC8FF" alt="Claude Code native sidecar">
+  <img src="https://img.shields.io/badge/Bun-Runtime-F9F1E1?logo=bun&logoColor=000000" alt="Bun runtime">
+  <img src="https://img.shields.io/badge/Zellij-Dual%20Pane-007808" alt="Zellij dual pane">
+</p>
+
 <br>
 
-> Vibe coding is fast until the trail disappears. GUI-Anything adds the missing sidecar: live timeline, intent graph, project memory, and replay you can trust — without wrapping or driving Claude Code.
+> **GUI-Anything** is a sidecar for long Claude Code sessions. Claude keeps coding in the left pane; the Flow Observer watches from the right, turns scrollback into a live map, and brings useful project memory back when you need it — without wrapping or driving the agent.
+>
+> **Run / Capture / Guide by design:** the observer reads the session stream in real time, distills summaries and intent graphs on demand, and surfaces prior local wiki hits while the current exploration is still running.
+>
+> <p align="center"><strong>⭐ Star this project if you want a local-first flight recorder for vibe coding sessions, thank you!</strong></p>
+
+<p align="center">
+  <img src="assets/demo/session-story-comic-claude.png" alt="Pixel comic showing a developer and an orange Claude companion losing the trail in a long AI coding session, then GUI-Anything records the path into reusable memory" width="960">
+</p>
+
+<p align="center"><em>Long sessions move fast. GUI-Anything keeps the trail.</em></p>
 
 <table align="center">
 <tr>
@@ -57,9 +69,7 @@ Relevant project memory appears inline while the current exploration is still ru
 
 ## Quick Start
 
-**Requirements:** [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) · [Bun](https://bun.sh) · [Zellij](https://zellij.dev)
-
-Install from source:
+### Happy Path
 
 ```bash
 git clone https://github.com/YurunChen/GUI-Anything.git
@@ -69,7 +79,15 @@ ga doctor
 ga flow
 ```
 
-Everyday commands:
+`ga flow` opens a Zellij dual-pane layout: Claude Code on the left, Flow Observer on the right. In the observer, press `h` for project evolution HTML or `r` for AI-enriched regeneration.
+
+### Prerequisites
+
+- **[Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code)** — the agent GUI-Anything observes
+- **[Bun](https://bun.sh)** — runtime for the observer and tests
+- **[Zellij](https://zellij.dev)** — dual-pane launcher used by `ga flow`
+
+### Everyday Commands
 
 | Command | Purpose |
 |---------|---------|
@@ -78,7 +96,17 @@ Everyday commands:
 | `ga flow --continue` | Continue session; summarize only new explorations |
 | `ga flow --resume <session-id>` | Replay saved session data |
 | `ga flow --model sonnet "your task"` | Start with a specific model and prompt |
+| `ga flow --watch --open` | Start the live project evolution browser sidecar |
 | `./scripts/flow-run.sh --cleanup` | Tear down stale flow runtime |
+
+### Verify Setup
+
+```bash
+ga doctor
+cd scheme && bun test && bunx tsc --noEmit
+```
+
+`ga doctor` should report Claude Code, Bun, and Zellij as available. The scheme checks are the minimum bar before opening a PR.
 
 ---
 
@@ -104,9 +132,12 @@ Focus the **right pane** first, then use:
 | `[` `]` | Previous / next theme |
 | `k` | Flag a wrong wiki match |
 | `h` | Export and open project evolution HTML |
+| `r` | Regenerate project evolution HTML with AI enrichment |
 | `q` | Quit observer |
 
 Chinese UI: `FLOW_LOCALE=zh-Hans`.
+
+After each stable window of three completed explorations, the observer can show a localized `Personality` strip above the command bar. The HTML evolution export keeps the richer persona card for sharing.
 
 ---
 
@@ -124,20 +155,27 @@ Project memory stays local by default. Related turns accumulate by intent; curat
 
 ---
 
-## What Makes It Different
+## Why It Is Different
 
-| Capability | Design choice |
-|------------|---------------|
-| **Native dual-pane Claude** | The left side is still Claude Code. GUI-Anything observes instead of taking over. |
-| **Live flowchart** | Exploration turns become a readable intent graph with responsive terminal layouts. |
-| **Inline KNOWLEDGE hits** | Prior local wiki entries surface while the current exploration is still running. |
-| **Intent-aware curation** | Same-task turns compound into a bucket; pivot or idle sweep writes durable context. |
-| **Honest resume** | `--resume` replays saved session data. It does not silently rebuild the story. |
-| **Continue without drift** | `--continue` keeps existing context and summarizes only new explorations. |
-| **33 terminal themes** | Hot-swap with `[` and `]`; Spectra is the kinetic showcase. |
-| **Shareable HTML** | Export a project evolution page, single-session drill-down, or knowledge graph. |
-| **Web Mirror** | Watch progress from a browser when the terminal is not the best display. |
-| **WeChat notifications** | Walk away and still catch errors or milestones. |
+- 🪟 **Sidecar, not wrapper.** Claude Code stays native in the left pane. GUI-Anything observes instead of taking over.
+- 🗺️ **Live map, not scrollback.** Exploration turns become a readable intent graph with responsive terminal layouts.
+- 🧠 **Memory while you work.** Prior local wiki entries surface inline while the current exploration is still running.
+- 🧷 **Intent-aware curation.** Same-task turns compound into a bucket; pivot or idle sweep writes durable context.
+- ⏪ **Honest resume.** `--resume` replays saved session data. It does not silently rebuild the story.
+- 🔁 **Continue without drift.** `--continue` keeps existing context and summarizes only new explorations.
+- 🎨 **33 terminal themes.** Hot-swap with `[` and `]`; Spectra is the kinetic showcase.
+- 📤 **Shareable HTML.** Export a project evolution page, single-session drill-down, or knowledge graph.
+- 🌐 **Web Mirror.** Watch progress from a browser when the terminal is not the best display.
+- 📱 **WeChat notifications.** Walk away and still catch errors or milestones.
+
+| Typical long-session coding | GUI-Anything |
+|-----------------------------|--------------|
+| Raw terminal scrollback only | Live timeline, phases, tools, and errors |
+| Context disappears between sessions | Local wiki retrieval surfaces prior work inline |
+| Resume rebuilds or re-summarizes silently | Strict replay; continue only fills new explorations |
+| Wrapper controls the agent | Native Claude Code sidecar |
+| Every turn writes durable memory | Intent buckets; curation on pivot or idle sweep |
+| Output judged by vibe only | KNOWLEDGE hits can be audited with `k` |
 
 ---
 
@@ -188,6 +226,10 @@ More detail: [data flow](docs/data-governance/data-flow.md) · [development guid
 ga export -o evolution.html
 
 # In ga flow, press h to export and open the project evolution page.
+# Press r for AI-enriched regeneration from the observer.
+
+# Live project evolution sidecar during a flow session.
+ga flow --watch --open
 
 # Single-session drill-down.
 ga export --scope session --session-id <id> -o evo.html
@@ -214,6 +256,9 @@ See [docs/IDEAS_HTML_INTEGRATION.md](docs/IDEAS_HTML_INTEGRATION.md).
 ```bash
 ga notify setup
 ga flow
+
+# Reset local WeChat notification state if setup needs to be redone.
+ga notify clean
 ```
 
 See [docs/NOTIFICATION.md](docs/NOTIFICATION.md) and [docs/NOTIFICATION_WECHAT.md](docs/NOTIFICATION_WECHAT.md).
@@ -238,7 +283,7 @@ See [scripts/wiki/README.md](scripts/wiki/README.md).
 
 ## Project Status
 
-GUI-Anything is early but usable. The core Claude Code sidecar path is the supported path today.
+GUI-Anything is early but usable. The core Claude Code sidecar path is the supported path.
 
 | Area | Status |
 |------|--------|
@@ -326,6 +371,10 @@ By default, in `<repo>/wiki/`, which is gitignored. Override with `FLOW_WIKI_DIR
 ## License
 
 MIT. Claude Code and third-party tools are subject to their own terms.
+
+## Acknowledgements
+
+GUI-Anything is developed by the [AI4GC Lab](https://ai4gc.org/) at Zhejiang University.
 
 <p align="center">
   <strong>Stop losing the thread.</strong><br>
