@@ -195,8 +195,6 @@ https://github.com/user-attachments/assets/a56444ea-0cf6-4778-8479-c6c1de90a7ac
   <a href="assets/video/video.mp4">Open local MP4</a>
 </p>
 
-Static preview: [`assets/demo/readme-hero.svg`](assets/demo/readme-hero.svg).
-
 ---
 
 ## How It Works
